@@ -1,0 +1,57 @@
+package config_test
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/JiaHui/gohome/internal/config"
+)
+
+func TestParseConfig(t *testing.T) {
+	yaml := `
+endpoint:
+  url: "http://localhost:8080/v1"
+  model: "my-model"
+  max_tokens: 4096
+  temperature: 0.7
+server:
+  host: "127.0.0.1"
+  port: 3000
+storage:
+  path: "~/.agent-chat/data.db"
+approval:
+  default_timeout: 300
+  auto_approve_all: false
+  whitelist:
+    - tool: "file_read"
+      allow: "always"
+system_prompt: "You are helpful."
+`
+	f, err := os.CreateTemp("", "config*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+	f.WriteString(yaml)
+	f.Close()
+
+	cfg, err := config.Load(f.Name())
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Endpoint.URL != "http://localhost:8080/v1" {
+		t.Errorf("got URL %q", cfg.Endpoint.URL)
+	}
+	if cfg.Server.Port != 3000 {
+		t.Errorf("got port %d", cfg.Server.Port)
+	}
+	home, _ := os.UserHomeDir()
+	wantPath := filepath.Join(home, ".agent-chat/data.db")
+	if cfg.Storage.Path != wantPath {
+		t.Errorf("got path %q, want %q", cfg.Storage.Path, wantPath)
+	}
+	if len(cfg.Approval.Whitelist) != 1 || cfg.Approval.Whitelist[0].Tool != "file_read" {
+		t.Errorf("unexpected whitelist: %+v", cfg.Approval.Whitelist)
+	}
+}
