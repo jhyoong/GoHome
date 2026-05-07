@@ -217,3 +217,65 @@ body {
   background: #f38ba8; color: #1e1e2e;
   border: none; border-radius: 6px; cursor: pointer; font-weight: 600;
 }
+
+.tool-call-block {
+  margin-top: 8px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  overflow: hidden;
+  font-size: 12px;
+}
+
+.tool-call-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: #f5f5f5;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.tool-call-header:hover { background: #ebebeb; }
+
+.tool-call-status.approved { color: #40a02b; font-weight: bold; }
+.tool-call-status.denied { color: #d20f39; font-weight: bold; }
+
+.tool-call-name { flex: 1; font-weight: 600; font-family: monospace; }
+.tool-call-toggle { color: #666; font-size: 10px; }
+
+.tool-call-body { padding: 8px 10px; background: #fafafa; }
+
+.tool-call-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #888;
+  margin-bottom: 4px;
+  margin-top: 8px;
+}
+
+.tool-call-label:first-child { margin-top: 0; }
+
+.tool-call-pre {
+  background: #f0f0f0;
+  padding: 6px 8px;
+  border-radius: 4px;
+  overflow: auto;
+  max-height: 200px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 11px;
+}
+
+.btn-stop {
+  padding: 8px 16px;
+  background: #f38ba8;
+  color: #1e1e2e;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+}
