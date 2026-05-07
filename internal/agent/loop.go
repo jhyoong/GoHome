@@ -100,10 +100,12 @@ func (l *Loop) Run(ctx context.Context, sessionID, tabID, userMessage string,
 				if approvalErr != nil {
 					result = "error: " + approvalErr.Error()
 				}
-				l.store.AddToolResult(ctx, session.ToolResult{
+				if _, err := l.store.AddToolResult(ctx, session.ToolResult{
 					MessageID: assistantMsg.ID, ToolName: tc.Function.Name,
-					Params: tc.Function.Arguments, Result: "", Approved: false,
-				})
+					Params: tc.Function.Arguments, Result: result, Approved: false,
+				}); err != nil {
+					return fmt.Errorf("saving tool result: %w", err)
+				}
 				if onToolResult != nil {
 					onToolResult(tc.Function.Name, tc.Function.Arguments, result, false)
 				}
@@ -118,10 +120,12 @@ func (l *Loop) Run(ctx context.Context, sessionID, tabID, userMessage string,
 						log.Printf("tool %q error: %v", tc.Function.Name, err)
 					}
 				}
-				l.store.AddToolResult(ctx, session.ToolResult{
+				if _, err := l.store.AddToolResult(ctx, session.ToolResult{
 					MessageID: assistantMsg.ID, ToolName: tc.Function.Name,
 					Params: tc.Function.Arguments, Result: result, Approved: true,
-				})
+				}); err != nil {
+					return fmt.Errorf("saving tool result: %w", err)
+				}
 				if onToolResult != nil {
 					onToolResult(tc.Function.Name, tc.Function.Arguments, result, true)
 				}
