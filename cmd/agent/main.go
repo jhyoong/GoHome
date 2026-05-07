@@ -111,7 +111,7 @@ func main() {
 		Approval: cfg.Approval,
 	})
 
-	staticFS, err := fs.Sub(gohome.WebDist, "web/dist")
+	staticFS, err := fs.Sub(gohome.WebStatic, "web/static")
 	if err != nil {
 		log.Fatalf("embed sub: %v", err)
 	}

@@ -3,5 +3,5 @@ package gohome
 
 import "embed"
 
-//go:embed web/dist
-var WebDist embed.FS
+//go:embed web/static
+var WebStatic embed.FS
