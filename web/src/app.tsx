@@ -95,6 +95,11 @@ function App() {
     send({ type: 'message', session_id: activeSessionId, content });
   };
 
+  const handleStop = () => {
+    send({ type: 'stop' });
+    setBusy(false);
+  };
+
   const handleApproval = (approved: boolean) => {
     if (!awaitingApproval) return;
     send({ type: 'tool_response', request_id: awaitingApproval.request_id, approved });
@@ -116,7 +121,9 @@ function App() {
           messages={messages}
           streamingContent={streamingContent}
           onSend={handleSend}
-          disabled={busy || awaitingApproval !== null}
+          onStop={handleStop}
+          busy={busy}
+          disabled={awaitingApproval !== null}
         />
         {awaitingApproval && (
           <div class="approval-modal">
