@@ -5,7 +5,6 @@ A single-binary Go server that runs a local AI chat interface in your browser. I
 ## Requirements
 
 - Go 1.22+
-- Node.js (for building the frontend)
 - A local OpenAI-compatible LLM endpoint (e.g. llama.cpp, Ollama)
 
 ## Quick Start
@@ -70,8 +69,7 @@ All fields are optional — defaults are used if the config file is missing.
 ## Make Targets
 
 ```
-make build     Build frontend + binary
-make frontend  Build frontend only (web/dist/)
+make build     Build binary
 make test      Run all tests
 make run       Build and run
 make clean     Remove build artifacts
@@ -81,7 +79,7 @@ make clean     Remove build artifacts
 
 ```
 cmd/agent/          Binary entry point
-embed.go            Embeds web/dist into the binary
+embed.go            Embeds web/static into the binary
 internal/
   config/           YAML config loader with tilde expansion
   session/          SQLite store (sessions, messages, tool results)
@@ -91,7 +89,7 @@ internal/
   mcp/              MCP client (stdio and SSE transports)
   agent/            Agentic loop — streams LLM, executes tools, loops back
   server/           HTTP REST + WebSocket (4-goroutine model per connection)
-web/src/            Preact frontend (TypeScript)
+web/static/         Vanilla JS frontend (no build step)
 ```
 
 Each WebSocket connection runs 4 goroutines: reader, writer, pingLoop, dispatcher. The agent loop streams tokens to the browser and pauses for user approval before executing any tool.
