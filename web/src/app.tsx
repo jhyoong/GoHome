@@ -2,7 +2,7 @@ import { h, render } from 'preact';
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { Sidebar } from './components/Sidebar';
 import { ChatView } from './components/ChatView';
-import type { Session, ChatMessage, ServerMsg, ClientMsg, ApprovalRequest } from './types';
+import type { Session, ChatMessage, ServerMsg, ClientMsg, ApprovalRequest, ToolResult } from './types';
 import './app.css';
 
 function App() {
@@ -41,6 +41,24 @@ function App() {
         case 'tool_approval':
           setAwaitingApproval({ request_id: msg.request_id, tool: msg.tool, params: msg.params });
           break;
+        case 'tool_result': {
+          const tr: ToolResult = {
+            id: crypto.randomUUID(),
+            tool_name: msg.tool,
+            params: JSON.stringify(msg.params),
+            result: msg.result,
+            approved: msg.approved,
+          };
+          const syntheticMsg: ChatMessage = {
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            content: '',
+            tool_results: [tr],
+            created_at: new Date().toISOString(),
+          };
+          setMessages(m => [...m, syntheticMsg]);
+          break;
+        }
         case 'done':
           setStreamingContent(prev => {
             if (prev) {
@@ -54,6 +72,10 @@ function App() {
             }
             return '';
           });
+          setBusy(false);
+          break;
+        case 'stopped':
+          setStreamingContent('');
           setBusy(false);
           break;
         case 'error':
@@ -91,14 +113,13 @@ function App() {
       created_at: new Date().toISOString(),
     };
     setMessages(m => [...m, userMsg]);
-    setBusy(true);
+    if (!busy) setBusy(true);
     send({ type: 'message', session_id: activeSessionId, content });
   };
 
-  const handleStop = () => {
+  const handleStop = useCallback(() => {
     send({ type: 'stop' });
-    setBusy(false);
-  };
+  }, [send]);
 
   const handleApproval = (approved: boolean) => {
     if (!awaitingApproval) return;
