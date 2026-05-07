@@ -25,7 +25,12 @@ func NewLoop(client *llm.Client, reg *tools.Registry, store *session.Store, syst
 }
 
 func (l *Loop) Run(ctx context.Context, sessionID, tabID, userMessage string,
-	broker *approval.Broker, onToken func(string), onError func(string)) error {
+	broker *approval.Broker,
+	onToken func(string),
+	onError func(string),
+	onToolResult func(tool, params, result string, approved bool),
+	steerCh <-chan string,
+) error {
 
 	msgs, err := l.store.GetMessages(ctx, sessionID)
 	if err != nil {
@@ -42,6 +47,24 @@ func (l *Loop) Run(ctx context.Context, sessionID, tabID, userMessage string,
 	llmTools := toAnySlice(l.registry.ToLLMTools())
 
 	for {
+		// Drain any steering messages before the next LLM call.
+		if steerCh != nil {
+		drainSteering:
+			for {
+				select {
+				case steerMsg := <-steerCh:
+					if _, err := l.store.AddMessage(ctx, session.Message{
+						SessionID: sessionID, Role: "user", Content: steerMsg,
+					}); err != nil {
+						return fmt.Errorf("saving steering message: %w", err)
+					}
+					history = append(history, llm.Message{Role: "user", Content: steerMsg})
+				default:
+					break drainSteering
+				}
+			}
+		}
+
 		var toolCalls []llm.ToolCall
 		var gotToolCalls bool
 
@@ -81,6 +104,9 @@ func (l *Loop) Run(ctx context.Context, sessionID, tabID, userMessage string,
 					MessageID: assistantMsg.ID, ToolName: tc.Function.Name,
 					Params: tc.Function.Arguments, Result: "", Approved: false,
 				})
+				if onToolResult != nil {
+					onToolResult(tc.Function.Name, tc.Function.Arguments, result, false)
+				}
 			} else {
 				t, ok := l.registry.Get(tc.Function.Name)
 				if !ok {
@@ -96,6 +122,9 @@ func (l *Loop) Run(ctx context.Context, sessionID, tabID, userMessage string,
 					MessageID: assistantMsg.ID, ToolName: tc.Function.Name,
 					Params: tc.Function.Arguments, Result: result, Approved: true,
 				})
+				if onToolResult != nil {
+					onToolResult(tc.Function.Name, tc.Function.Arguments, result, true)
+				}
 			}
 
 			toolResults = append(toolResults, llm.Message{

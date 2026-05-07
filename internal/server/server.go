@@ -276,6 +276,8 @@ func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string) {
 	err := wc.loop.Run(ctx, sessionID, wc.tabID, content, wc.broker,
 		func(token string) { wc.send(outMsg{Type: "token", Data: token}) },
 		func(errMsg string) { wc.send(outMsg{Type: "error", Message: errMsg}) },
+		nil,
+		nil,
 	)
 	if err != nil && ctx.Err() == nil {
 		wc.send(outMsg{Type: "error", Message: err.Error()})
