@@ -73,6 +73,7 @@ function onHistory(msg) {
   activeSessionId = msg.session_id;
   state.messages = msg.messages;
   clearStreamEl();
+  setBusy(false);
   dom.messages.innerHTML = state.messages.map(msgHtml).join('');
   scrollToBottom();
   renderSessions(state.sessions);
@@ -128,12 +129,16 @@ function appendToken(text) {
 function finalizeStream(messageId) {
   if (streamingEl) {
     const content = streamingEl.querySelector('.message-content').textContent;
-    state.messages.push({
+    const msg = {
       id: messageId || crypto.randomUUID(),
       role: 'assistant',
       content,
       created_at: new Date().toISOString(),
-    });
+    };
+    state.messages.push(msg);
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = msgHtml(msg);
+    streamingEl.replaceWith(wrapper.firstElementChild);
     streamingEl = null;
   }
   setBusy(false);
@@ -155,7 +160,7 @@ function addToolResult(msg) {
   const tr = {
     id: crypto.randomUUID(),
     tool_name: msg.tool,
-    params: JSON.stringify(msg.params),
+    params: msg.params,
     result: msg.result,
     approved: msg.approved,
   };
@@ -211,11 +216,15 @@ function escHtml(s) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
-function formatJSON(s) {
-  try { return JSON.stringify(JSON.parse(s), null, 2); } catch { return s; }
+function formatJSON(v) {
+  if (typeof v === 'string') {
+    try { return JSON.stringify(JSON.parse(v), null, 2); } catch { return v; }
+  }
+  return JSON.stringify(v, null, 2);
 }
 
 function scrollToBottom() {
@@ -296,11 +305,13 @@ document.addEventListener('DOMContentLoaded', () => {
   dom.errorClose.addEventListener('click', () => { dom.errorBanner.hidden = true; });
 
   dom.approvalAllow.addEventListener('click', () => {
+    if (!state.awaitingApproval) return;
     send({ type: 'tool_response', request_id: state.awaitingApproval.request_id, approved: true });
     hideApprovalModal();
   });
 
   dom.approvalDeny.addEventListener('click', () => {
+    if (!state.awaitingApproval) return;
     send({ type: 'tool_response', request_id: state.awaitingApproval.request_id, approved: false });
     hideApprovalModal();
   });
