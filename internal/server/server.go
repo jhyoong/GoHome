@@ -323,10 +323,10 @@ func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string, steer
 		steerCh,
 	)
 	if err != nil || ctx.Err() != nil {
-		if ctx.Err() != nil {
-			wc.send(outMsg{Type: "stopped"})
-		} else {
+		if err != nil && ctx.Err() == nil {
 			wc.send(outMsg{Type: "error", Message: err.Error()})
+		} else {
+			wc.send(outMsg{Type: "stopped"})
 		}
 		return
 	}

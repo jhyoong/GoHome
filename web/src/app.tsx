@@ -15,6 +15,7 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const tabID = useRef(crypto.randomUUID());
+  const activeSessionIdRef = useRef<string | null>(null);
 
   const send = useCallback((msg: ClientMsg) => {
     wsRef.current?.send(JSON.stringify(msg));
@@ -37,6 +38,7 @@ function App() {
           setMessages(msg.messages);
           setStreamingContent('');
           setActiveSessionId(msg.session_id);
+          activeSessionIdRef.current = msg.session_id;
           break;
         case 'tool_approval':
           setAwaitingApproval({ request_id: msg.request_id, tool: msg.tool, params: msg.params });
@@ -86,7 +88,12 @@ function App() {
     };
 
     ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'new_session' } satisfies ClientMsg));
+      const sid = activeSessionIdRef.current;
+      if (sid) {
+        ws.send(JSON.stringify({ type: 'load_session', session_id: sid } satisfies ClientMsg));
+      } else {
+        ws.send(JSON.stringify({ type: 'new_session' } satisfies ClientMsg));
+      }
     };
 
     let retryDelay = 1000;
