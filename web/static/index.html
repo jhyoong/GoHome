@@ -17,12 +17,12 @@
     <main class="main">
       <div id="error-banner" class="error-banner" hidden>
         <span id="error-text"></span>
-        <button id="error-close">×</button>
+        <button id="error-close" type="button" aria-label="Close error">×</button>
       </div>
       <div class="chat-view">
         <div id="messages" class="messages"></div>
         <form id="input-form" class="input-bar">
-          <input id="input" type="text" placeholder="Type a message..." />
+          <input id="input" type="text" placeholder="Type a message..." aria-label="Message" />
           <button id="stop-btn" type="button" class="btn-stop" hidden>Stop</button>
           <button id="send-btn" type="submit" disabled>Send</button>
         </form>
