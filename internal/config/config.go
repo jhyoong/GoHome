@@ -11,6 +11,7 @@ import (
 
 type EndpointConfig struct {
 	URL         string  `yaml:"url"`
+	APIKey      string  `yaml:"api_key"`
 	Model       string  `yaml:"model"`
 	MaxTokens   int     `yaml:"max_tokens"`
 	Temperature float64 `yaml:"temperature"`

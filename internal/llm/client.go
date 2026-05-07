@@ -47,6 +47,12 @@ func NewClient(cfg config.EndpointConfig) *Client {
 	return &Client{cfg: cfg, http: &http.Client{}}
 }
 
+func (c *Client) setAuth(req *http.Request) {
+	if c.cfg.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.cfg.APIKey)
+	}
+}
+
 type reqBody struct {
 	Model       string        `json:"model"`
 	Messages    []Message     `json:"messages"`
@@ -67,6 +73,7 @@ func (c *Client) Complete(ctx context.Context, messages []Message, tools []inter
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	c.setAuth(req)
 
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -113,6 +120,7 @@ func (c *Client) Stream(ctx context.Context, messages []Message, tools []interfa
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
+	c.setAuth(req)
 
 	resp, err := c.http.Do(req)
 	if err != nil {
