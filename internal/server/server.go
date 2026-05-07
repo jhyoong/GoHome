@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -111,9 +110,9 @@ type wsConn struct {
 	broker    *approval.Broker
 	store     *session.Store
 	loop      *agent.Loop
-	busy      int32
 
 	mu        sync.Mutex
+	running   bool
 	runCancel context.CancelFunc
 	steerCh   chan string
 }
@@ -229,23 +228,21 @@ func (wc *wsConn) dispatcher(ctx context.Context) {
 		case msg := <-wc.inbound:
 			switch msg.Type {
 			case "message":
-				if !atomic.CompareAndSwapInt32(&wc.busy, 0, 1) {
-					// Agent is running — route to steer channel instead of rejecting.
-					wc.mu.Lock()
+				wc.mu.Lock()
+				if wc.running {
 					ch := wc.steerCh
 					wc.mu.Unlock()
 					if ch != nil {
 						select {
 						case ch <- msg.Content:
 						default:
-							// Channel full; drop silently.
 						}
 					}
 					continue
 				}
 				steerCh := make(chan string, 8)
 				runCtx, cancel := context.WithCancel(ctx)
-				wc.mu.Lock()
+				wc.running = true
 				wc.steerCh = steerCh
 				wc.runCancel = cancel
 				wc.mu.Unlock()
@@ -302,8 +299,8 @@ func (wc *wsConn) dispatcher(ctx context.Context) {
 
 func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string, steerCh chan string) {
 	defer func() {
-		atomic.StoreInt32(&wc.busy, 0)
 		wc.mu.Lock()
+		wc.running = false
 		wc.runCancel = nil
 		wc.steerCh = nil
 		wc.mu.Unlock()
@@ -325,7 +322,7 @@ func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string, steer
 		},
 		steerCh,
 	)
-	if err != nil {
+	if err != nil || ctx.Err() != nil {
 		if ctx.Err() != nil {
 			wc.send(outMsg{Type: "stopped"})
 		} else {
@@ -334,7 +331,7 @@ func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string, steer
 		return
 	}
 	wc.send(outMsg{Type: "done", MessageID: ""})
-	sessions, _ := wc.store.ListSessions(context.Background())
+	sessions, _ := wc.store.ListSessions(ctx)
 	wc.send(outMsg{Type: "sessions", Data: sessions})
 }
 
