@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -111,6 +112,10 @@ type wsConn struct {
 	store     *session.Store
 	loop      *agent.Loop
 	busy      int32
+
+	mu        sync.Mutex
+	runCancel context.CancelFunc
+	steerCh   chan string
 }
 
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
@@ -124,9 +129,8 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		CheckOrigin: func(r *http.Request) bool {
 			origin := r.Header.Get("Origin")
 			if origin == "" {
-				return true // non-browser client
+				return true
 			}
-			// Allow localhost/127.0.0.1 origins (local development)
 			return strings.HasPrefix(origin, "http://localhost") ||
 				strings.HasPrefix(origin, "http://127.0.0.1") ||
 				strings.HasPrefix(origin, "https://localhost") ||
@@ -212,7 +216,6 @@ func (wc *wsConn) pingLoop(ctx context.Context) {
 			select {
 			case wc.outbound <- outMsg{ping: true}:
 			default:
-				// channel full, skip this ping
 			}
 		case <-ctx.Done():
 			return
@@ -227,12 +230,37 @@ func (wc *wsConn) dispatcher(ctx context.Context) {
 			switch msg.Type {
 			case "message":
 				if !atomic.CompareAndSwapInt32(&wc.busy, 0, 1) {
-					wc.send(outMsg{Type: "error", Message: "busy: previous request still running"})
+					// Agent is running — route to steer channel instead of rejecting.
+					wc.mu.Lock()
+					ch := wc.steerCh
+					wc.mu.Unlock()
+					if ch != nil {
+						select {
+						case ch <- msg.Content:
+						default:
+							// Channel full; drop silently.
+						}
+					}
 					continue
 				}
-				go wc.runAgent(ctx, msg.SessionID, msg.Content)
+				steerCh := make(chan string, 8)
+				runCtx, cancel := context.WithCancel(ctx)
+				wc.mu.Lock()
+				wc.steerCh = steerCh
+				wc.runCancel = cancel
+				wc.mu.Unlock()
+				go wc.runAgent(runCtx, msg.SessionID, msg.Content, steerCh)
+
+			case "stop":
+				wc.mu.Lock()
+				if wc.runCancel != nil {
+					wc.runCancel()
+				}
+				wc.mu.Unlock()
+
 			case "tool_response":
 				wc.broker.Respond(msg.RequestID, msg.Approved)
+
 			case "new_session":
 				sess, err := wc.store.CreateSession(ctx)
 				if err != nil {
@@ -242,6 +270,7 @@ func (wc *wsConn) dispatcher(ctx context.Context) {
 				sessions, _ := wc.store.ListSessions(ctx)
 				wc.send(outMsg{Type: "sessions", Data: sessions})
 				wc.send(outMsg{Type: "history", SessionID: sess.ID, Messages: []session.Message{}})
+
 			case "load_session":
 				msgs, err := wc.store.GetMessagesWithResults(ctx, msg.SessionID)
 				if err != nil {
@@ -252,39 +281,60 @@ func (wc *wsConn) dispatcher(ctx context.Context) {
 					msgs = []session.Message{}
 				}
 				wc.send(outMsg{Type: "history", SessionID: msg.SessionID, Messages: msgs})
+
 			case "delete_session":
 				wc.store.DeleteSession(ctx, msg.SessionID)
 				sessions, _ := wc.store.ListSessions(ctx)
 				wc.send(outMsg{Type: "sessions", Data: sessions})
 			}
+
 		case req := <-wc.approvals:
 			wc.send(outMsg{
 				Type: "tool_approval", RequestID: req.ID,
 				Tool: req.Tool, Params: req.Params,
 			})
+
 		case <-ctx.Done():
 			return
 		}
 	}
 }
 
-func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string) {
-	defer atomic.StoreInt32(&wc.busy, 0)
+func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string, steerCh chan string) {
+	defer func() {
+		atomic.StoreInt32(&wc.busy, 0)
+		wc.mu.Lock()
+		wc.runCancel = nil
+		wc.steerCh = nil
+		wc.mu.Unlock()
+	}()
 	if wc.loop == nil {
 		return
 	}
 	err := wc.loop.Run(ctx, sessionID, wc.tabID, content, wc.broker,
 		func(token string) { wc.send(outMsg{Type: "token", Data: token}) },
 		func(errMsg string) { wc.send(outMsg{Type: "error", Message: errMsg}) },
-		nil,
-		nil,
+		func(tool, params, result string, approved bool) {
+			wc.send(outMsg{
+				Type:     "tool_result",
+				Tool:     tool,
+				Params:   json.RawMessage(params),
+				Result:   result,
+				Approved: approved,
+			})
+		},
+		steerCh,
 	)
-	if err != nil && ctx.Err() == nil {
-		wc.send(outMsg{Type: "error", Message: err.Error()})
+	if err != nil {
+		if ctx.Err() != nil {
+			wc.send(outMsg{Type: "stopped"})
+		} else {
+			wc.send(outMsg{Type: "error", Message: err.Error()})
+		}
 		return
 	}
 	wc.send(outMsg{Type: "done", MessageID: ""})
-	sessions, _ := wc.store.ListSessions(ctx)
+	sessions, _ := wc.store.ListSessions(context.Background())
 	wc.send(outMsg{Type: "sessions", Data: sessions})
 }
 
