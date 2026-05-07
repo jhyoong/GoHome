@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/JiaHui/gohome/internal/config"
@@ -127,6 +128,7 @@ func (c *Client) Stream(ctx context.Context, messages []Message, tools []interfa
 	toolBuf := make(map[int]*ToolCall)
 
 	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		line := scanner.Text()
 		if !strings.HasPrefix(line, "data: ") {
@@ -183,9 +185,14 @@ func (c *Client) Stream(ctx context.Context, messages []Message, tools []interfa
 		if choice.FinishReason != nil {
 			switch *choice.FinishReason {
 			case "tool_calls":
-				calls := make([]ToolCall, len(toolBuf))
-				for i, tc := range toolBuf {
-					calls[i] = *tc
+				idxs := make([]int, 0, len(toolBuf))
+				for i := range toolBuf {
+					idxs = append(idxs, i)
+				}
+				sort.Ints(idxs)
+				calls := make([]ToolCall, len(idxs))
+				for j, idx := range idxs {
+					calls[j] = *toolBuf[idx]
 				}
 				onToolCalls(calls)
 			case "stop":

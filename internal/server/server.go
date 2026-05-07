@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -19,10 +21,6 @@ const (
 	pongWait     = 40 * time.Second
 	writeWait    = 10 * time.Second
 )
-
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
-}
 
 type Config struct {
 	Store    *session.Store
@@ -100,6 +98,7 @@ type outMsg struct {
 	MessageID string          `json:"message_id,omitempty"`
 	SessionID string          `json:"session_id,omitempty"`
 	Messages  any             `json:"messages,omitempty"`
+	ping      bool
 }
 
 type wsConn struct {
@@ -111,6 +110,7 @@ type wsConn struct {
 	broker    *approval.Broker
 	store     *session.Store
 	loop      *agent.Loop
+	busy      int32
 }
 
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
@@ -118,6 +118,20 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	if tabID == "" {
 		http.Error(w, "missing tab query parameter", http.StatusBadRequest)
 		return
+	}
+
+	upgrader := websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				return true // non-browser client
+			}
+			// Allow localhost/127.0.0.1 origins (local development)
+			return strings.HasPrefix(origin, "http://localhost") ||
+				strings.HasPrefix(origin, "http://127.0.0.1") ||
+				strings.HasPrefix(origin, "https://localhost") ||
+				strings.HasPrefix(origin, "https://127.0.0.1")
+		},
 	}
 
 	conn, err := upgrader.Upgrade(w, r, nil)
@@ -174,8 +188,14 @@ func (wc *wsConn) writer(ctx context.Context) {
 		select {
 		case msg := <-wc.outbound:
 			wc.conn.SetWriteDeadline(time.Now().Add(writeWait))
-			if err := wc.conn.WriteJSON(msg); err != nil {
-				return
+			if msg.ping {
+				if err := wc.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+					return
+				}
+			} else {
+				if err := wc.conn.WriteJSON(msg); err != nil {
+					return
+				}
 			}
 		case <-ctx.Done():
 			return
@@ -189,9 +209,10 @@ func (wc *wsConn) pingLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
-			wc.conn.SetWriteDeadline(time.Now().Add(writeWait))
-			if err := wc.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				return
+			select {
+			case wc.outbound <- outMsg{ping: true}:
+			default:
+				// channel full, skip this ping
 			}
 		case <-ctx.Done():
 			return
@@ -205,6 +226,10 @@ func (wc *wsConn) dispatcher(ctx context.Context) {
 		case msg := <-wc.inbound:
 			switch msg.Type {
 			case "message":
+				if !atomic.CompareAndSwapInt32(&wc.busy, 0, 1) {
+					wc.send(outMsg{Type: "error", Message: "busy: previous request still running"})
+					continue
+				}
 				go wc.runAgent(ctx, msg.SessionID, msg.Content)
 			case "tool_response":
 				wc.broker.Respond(msg.RequestID, msg.Approved)
@@ -244,6 +269,7 @@ func (wc *wsConn) dispatcher(ctx context.Context) {
 }
 
 func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string) {
+	defer atomic.StoreInt32(&wc.busy, 0)
 	if wc.loop == nil {
 		return
 	}
