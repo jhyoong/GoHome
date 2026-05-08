@@ -276,6 +276,7 @@ func (wc *wsConn) dispatcher(ctx context.Context) {
 					sess, err := wc.store.CreateSession(ctx)
 					if err != nil {
 						wc.send(outMsg{Type: "error", Message: err.Error()})
+						cancel()
 						wc.mu.Lock()
 						wc.running = false
 						wc.runCancel = nil
@@ -315,7 +316,11 @@ func (wc *wsConn) dispatcher(ctx context.Context) {
 				wc.broker.Respond(msg.RequestID, true)
 
 			case "list_sessions":
-				sessions, _ := wc.store.ListSessions(ctx)
+				sessions, err := wc.store.ListSessions(ctx)
+				if err != nil {
+					wc.send(outMsg{Type: "error", Message: err.Error()})
+					continue
+				}
 				if sessions == nil {
 					sessions = []session.Session{}
 				}
