@@ -32,9 +32,18 @@
           <h3>Tool Approval Required</h3>
           <p>Tool: <code id="approval-tool"></code></p>
           <pre id="approval-params" class="params"></pre>
-          <div class="approval-buttons">
+          <div id="always-allow-editor" hidden>
+            <label class="pattern-label">Pattern</label>
+            <input id="always-allow-pattern" type="text" class="pattern-input" />
+            <div class="approval-buttons" style="margin-top:10px">
+              <button id="always-allow-confirm" class="btn-allow">Confirm</button>
+              <button id="always-allow-cancel" class="btn-deny">Cancel</button>
+            </div>
+          </div>
+          <div id="approval-main-buttons" class="approval-buttons">
             <button id="approval-allow" class="btn-allow">Allow</button>
             <button id="approval-deny" class="btn-deny">Deny</button>
+            <button id="approval-always-allow" class="btn-always-allow">Always Allow</button>
           </div>
         </div>
       </div>

@@ -6,6 +6,24 @@ const state = {
   awaitingApproval: null,
 };
 
+function isChainedShellCommand(cmd) {
+  let inSingle = false, inDouble = false;
+  for (let i = 0; i < cmd.length; i++) {
+    const ch = cmd[i];
+    if (ch === "'" && !inDouble) { inSingle = !inSingle; continue; }
+    if (ch === '"' && !inSingle) { inDouble = !inDouble; continue; }
+    if (inSingle || inDouble) continue;
+    if (ch === '|' || ch === ';') return true;
+    if (ch === '&' && i + 1 < cmd.length && cmd[i + 1] === '&') return true;
+  }
+  return false;
+}
+
+function suggestPattern(cmd) {
+  const base = cmd.trim().split(/\s+/)[0] || cmd.trim();
+  return base ? base + ' *' : '*';
+}
+
 let activeSessionId = null;
 let ws = null;
 let streamingEl = null;
@@ -212,9 +230,16 @@ function showError(text) {
 }
 
 function showApprovalModal(msg) {
-  state.awaitingApproval = { request_id: msg.request_id, tool: msg.tool, params: msg.params };
+  const params = msg.params || {};
+  const shellCmd = msg.tool === 'shell' ? (params.command || '') : '';
+  const chained = msg.tool === 'shell' && isChainedShellCommand(shellCmd);
+
+  state.awaitingApproval = { request_id: msg.request_id, tool: msg.tool, params };
   dom.approvalTool.textContent = msg.tool;
-  dom.approvalParams.textContent = JSON.stringify(msg.params, null, 2);
+  dom.approvalParams.textContent = JSON.stringify(params, null, 2);
+  dom.approvalAlwaysAllow.hidden = chained;
+  dom.alwaysAllowEditor.hidden = true;
+  dom.approvalMainButtons.hidden = false;
   dom.approvalModal.hidden = false;
   dom.input.disabled = true;
   dom.sendBtn.disabled = true;
@@ -223,6 +248,8 @@ function showApprovalModal(msg) {
 function hideApprovalModal() {
   state.awaitingApproval = null;
   dom.approvalModal.hidden = true;
+  dom.alwaysAllowEditor.hidden = true;
+  dom.approvalMainButtons.hidden = false;
   dom.input.disabled = false;
   setBusy(state.busy);
 }
@@ -266,7 +293,13 @@ document.addEventListener('DOMContentLoaded', () => {
     approvalTool:   document.getElementById('approval-tool'),
     approvalParams: document.getElementById('approval-params'),
     approvalAllow:  document.getElementById('approval-allow'),
-    approvalDeny:   document.getElementById('approval-deny'),
+    approvalDeny:        document.getElementById('approval-deny'),
+    approvalAlwaysAllow: document.getElementById('approval-always-allow'),
+    alwaysAllowEditor:   document.getElementById('always-allow-editor'),
+    alwaysAllowPattern:  document.getElementById('always-allow-pattern'),
+    alwaysAllowConfirm:  document.getElementById('always-allow-confirm'),
+    alwaysAllowCancel:   document.getElementById('always-allow-cancel'),
+    approvalMainButtons: document.getElementById('approval-main-buttons'),
   };
 
   document.getElementById('input-form').addEventListener('submit', (e) => {
@@ -332,6 +365,33 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!state.awaitingApproval) return;
     send({ type: 'tool_response', request_id: state.awaitingApproval.request_id, approved: false });
     hideApprovalModal();
+  });
+
+  dom.approvalAlwaysAllow.addEventListener('click', () => {
+    const a = state.awaitingApproval;
+    if (!a) return;
+    if (a.tool === 'shell') {
+      dom.alwaysAllowPattern.value = suggestPattern(a.params.command || '');
+      dom.alwaysAllowEditor.hidden = false;
+      dom.approvalMainButtons.hidden = true;
+    } else {
+      send({ type: 'always_allow', request_id: a.request_id, tool: a.tool });
+      hideApprovalModal();
+    }
+  });
+
+  dom.alwaysAllowConfirm.addEventListener('click', () => {
+    const a = state.awaitingApproval;
+    if (!a) return;
+    const pattern = dom.alwaysAllowPattern.value.trim();
+    if (!pattern) return;
+    send({ type: 'always_allow', request_id: a.request_id, tool: a.tool, command_pattern: pattern });
+    hideApprovalModal();
+  });
+
+  dom.alwaysAllowCancel.addEventListener('click', () => {
+    dom.alwaysAllowEditor.hidden = true;
+    dom.approvalMainButtons.hidden = false;
   });
 
   connect();
