@@ -265,6 +265,7 @@ function showApprovalModal(msg) {
   dom.input.disabled = true;
   dom.sendBtn.disabled = true;
   dom.approvalAllow.focus();
+  document.removeEventListener('keydown', handleApprovalKeys);
   document.addEventListener('keydown', handleApprovalKeys);
 }
 
