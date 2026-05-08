@@ -1,13 +1,13 @@
 .PHONY: build run clean test
 
 build:
-	go build -o agent-chat ./cmd/agent
+	go build -o gohome ./cmd/agent
 
 run: build
-	./agent-chat
+	./gohome
 
 test:
 	go test ./...
 
 clean:
-	rm -f agent-chat
+	rm -f gohome
