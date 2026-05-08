@@ -1,8 +1,6 @@
-1. Tool calls missing outputs on frontend. Frontend clicking should expand/hide it.
-2. "Always allow" type of setting on frontend and backend logic.
-3. Show thinking, with toggle on frontend by clicking on it. 
-4. Steering and stopping current conversation midway.
-5. Stop button on frontend which should stop current session.
-6. Automatic session naming.
-7. Dark mode toggle.
-8. Remove npm - consider using vue.js or alpine.jsor htmx?
+1. Show thinking, with toggle on frontend by clicking on it. 
+2. Dark mode toggle.
+3. Context window tracker / token count and usage
+4. Tool call and thinking dropdown - possible to "preview" up to 5 lines of output?
+5. Tool call reject and provide input - to link with steering.
+6. Subagents
