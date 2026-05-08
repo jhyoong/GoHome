@@ -289,6 +289,13 @@ body {
   border: none; border-radius: 6px; cursor: pointer; font-weight: 600;
 }
 
+.btn-allow:focus,
+.btn-deny:focus,
+.btn-always-allow:focus {
+  outline: 3px solid #1e1e2e;
+  outline-offset: 2px;
+}
+
 .pattern-label {
   display: block;
   font-size: 12px;
