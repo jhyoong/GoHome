@@ -269,7 +269,30 @@ func (wc *wsConn) dispatcher(ctx context.Context) {
 				wc.steerCh = steerCh
 				wc.runCancel = cancel
 				wc.mu.Unlock()
-				go wc.runAgent(runCtx, msg.SessionID, msg.Content, steerCh)
+
+				sessionID := msg.SessionID
+				isNew := false
+				if sessionID == "" {
+					sess, err := wc.store.CreateSession(ctx)
+					if err != nil {
+						wc.send(outMsg{Type: "error", Message: err.Error()})
+						wc.mu.Lock()
+						wc.running = false
+						wc.runCancel = nil
+						wc.steerCh = nil
+						wc.mu.Unlock()
+						continue
+					}
+					sessionID = sess.ID
+					isNew = true
+					sessions, _ := wc.store.ListSessions(ctx)
+					if sessions == nil {
+						sessions = []session.Session{}
+					}
+					wc.send(outMsg{Type: "session_created", SessionID: sessionID})
+					wc.send(outMsg{Type: "sessions", Data: sessions})
+				}
+				go wc.runAgent(runCtx, sessionID, msg.Content, steerCh, isNew)
 
 			case "stop":
 				wc.mu.Lock()
@@ -290,6 +313,13 @@ func (wc *wsConn) dispatcher(ctx context.Context) {
 				wc.broker.AddWhitelistEntry(entry)
 				wc.server.persistWhitelistEntry(entry)
 				wc.broker.Respond(msg.RequestID, true)
+
+			case "list_sessions":
+				sessions, _ := wc.store.ListSessions(ctx)
+				if sessions == nil {
+					sessions = []session.Session{}
+				}
+				wc.send(outMsg{Type: "sessions", Data: sessions})
 
 			case "new_session":
 				sess, err := wc.store.CreateSession(ctx)
@@ -330,7 +360,7 @@ func (wc *wsConn) dispatcher(ctx context.Context) {
 	}
 }
 
-func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string, steerCh chan string) {
+func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string, steerCh chan string, isNew bool) {
 	defer func() {
 		wc.mu.Lock()
 		wc.running = false
@@ -364,6 +394,26 @@ func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string, steer
 		return
 	}
 	wc.send(outMsg{Type: "done", MessageID: ""})
+	if isNew && wc.loop != nil {
+		go func() {
+			tCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			title, err := wc.loop.GenerateTitle(tCtx, content)
+			if err != nil {
+				log.Printf("GenerateTitle: %v", err)
+				return
+			}
+			if err := wc.store.UpdateSessionTitle(tCtx, sessionID, title); err != nil {
+				log.Printf("UpdateSessionTitle: %v", err)
+				return
+			}
+			sessions, _ := wc.store.ListSessions(tCtx)
+			if sessions == nil {
+				sessions = []session.Session{}
+			}
+			wc.send(outMsg{Type: "sessions", Data: sessions})
+		}()
+	}
 	sessions, _ := wc.store.ListSessions(ctx)
 	wc.send(outMsg{Type: "sessions", Data: sessions})
 }
