@@ -229,6 +229,27 @@ function showError(text) {
   setBusy(false);
 }
 
+function handleApprovalKeys(e) {
+  // When the pattern editor is open, don't intercept arrow keys
+  if (!dom.alwaysAllowEditor.hidden) return;
+
+  const buttons = [dom.approvalAllow, dom.approvalDeny, dom.approvalAlwaysAllow]
+    .filter(btn => !btn.hidden);
+
+  const idx = buttons.indexOf(document.activeElement);
+
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+    e.preventDefault();
+    buttons[(idx + 1) % buttons.length].focus();
+  } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    buttons[(idx - 1 + buttons.length) % buttons.length].focus();
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    dom.approvalDeny.click();
+  }
+}
+
 function showApprovalModal(msg) {
   const params = msg.params || {};
   const shellCmd = msg.tool === 'shell' ? (params.command || '') : '';
@@ -244,9 +265,11 @@ function showApprovalModal(msg) {
   dom.input.disabled = true;
   dom.sendBtn.disabled = true;
   dom.approvalAllow.focus();
+  document.addEventListener('keydown', handleApprovalKeys);
 }
 
 function hideApprovalModal() {
+  document.removeEventListener('keydown', handleApprovalKeys);
   state.awaitingApproval = null;
   dom.approvalModal.hidden = true;
   dom.alwaysAllowEditor.hidden = true;
