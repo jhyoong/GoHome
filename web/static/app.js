@@ -48,7 +48,7 @@ function connect() {
     if (activeSessionId) {
       send({ type: 'load_session', session_id: activeSessionId });
     } else {
-      send({ type: 'new_session' });
+      send({ type: 'list_sessions' });
     }
   };
 
@@ -58,6 +58,10 @@ function connect() {
       case 'token':         appendToken(msg.data); break;
       case 'sessions':      renderSessions(msg.data); break;
       case 'history':       onHistory(msg); break;
+      case 'session_created':
+          activeSessionId = msg.session_id;
+          renderSessions(state.sessions);
+          break;
       case 'tool_approval': showApprovalModal(msg); break;
       case 'tool_result':   addToolResult(msg); break;
       case 'done':          finalizeStream(msg.message_id); break;
@@ -358,7 +362,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   dom.stopBtn.addEventListener('click', () => send({ type: 'stop' }));
 
-  dom.newChatBtn.addEventListener('click', () => send({ type: 'new_session' }));
+  dom.newChatBtn.addEventListener('click', () => {
+    activeSessionId = null;
+    state.messages = [];
+    dom.messages.innerHTML = '';
+    setBusy(false);
+    renderSessions(state.sessions);
+  });
 
   // Session list — event delegation
   dom.sessionList.addEventListener('click', (e) => {
