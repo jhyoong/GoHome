@@ -86,3 +86,94 @@ func TestApprovalUserDecision(t *testing.T) {
 		t.Errorf("expected user approval; got approved=%v err=%v", approved, err)
 	}
 }
+
+func TestShellAutoApproveWithPattern(t *testing.T) {
+	cfg := config.ApprovalConfig{
+		Whitelist: []config.WhitelistEntry{
+			{Tool: "shell", Allow: "always", CommandPattern: "ls *"},
+		},
+	}
+	broker := approval.NewBroker(cfg, nil)
+	approved, err := broker.Request(context.Background(), "r10", "shell", []byte(`{"command":"ls -la /tmp"}`))
+	if err != nil || !approved {
+		t.Errorf("expected auto-approve; got approved=%v err=%v", approved, err)
+	}
+}
+
+func TestShellPatternNoMatchFallsThrough(t *testing.T) {
+	cfg := config.ApprovalConfig{
+		DefaultTimeout: 1,
+		Whitelist: []config.WhitelistEntry{
+			{Tool: "shell", Allow: "always", CommandPattern: "ls *"},
+		},
+	}
+	send := make(chan approval.Request, 1)
+	broker := approval.NewBroker(cfg, send)
+	// "cat" does not match "ls *" — should reach approval (timeout)
+	_, err := broker.Request(context.Background(), "r11", "shell", []byte(`{"command":"cat /etc/passwd"}`))
+	if err == nil {
+		t.Error("expected timeout (approval required); got nil error")
+	}
+}
+
+func TestShellChainedAlwaysPatternFallsThrough(t *testing.T) {
+	cfg := config.ApprovalConfig{
+		DefaultTimeout: 1,
+		Whitelist: []config.WhitelistEntry{
+			{Tool: "shell", Allow: "always", CommandPattern: "ls *"},
+		},
+	}
+	send := make(chan approval.Request, 1)
+	broker := approval.NewBroker(cfg, send)
+	// Chained command matching the pattern must NOT be auto-approved
+	_, err := broker.Request(context.Background(), "r12", "shell", []byte(`{"command":"ls /tmp && rm -rf /"}`))
+	if err == nil {
+		t.Error("expected timeout (chained command must reach approval); got nil error")
+	}
+}
+
+func TestShellNeverWithPattern(t *testing.T) {
+	cfg := config.ApprovalConfig{
+		Whitelist: []config.WhitelistEntry{
+			{Tool: "shell", Allow: "never", CommandPattern: "rm *"},
+		},
+	}
+	broker := approval.NewBroker(cfg, nil)
+	approved, err := broker.Request(context.Background(), "r13", "shell", []byte(`{"command":"rm -rf /tmp/foo"}`))
+	if err != nil || approved {
+		t.Errorf("expected auto-deny; got approved=%v err=%v", approved, err)
+	}
+}
+
+func TestShellNeverChainedStillDenies(t *testing.T) {
+	cfg := config.ApprovalConfig{
+		Whitelist: []config.WhitelistEntry{
+			{Tool: "shell", Allow: "never", CommandPattern: "rm *"},
+		},
+	}
+	broker := approval.NewBroker(cfg, nil)
+	// "never" entries apply even to chained commands
+	approved, err := broker.Request(context.Background(), "r14", "shell", []byte(`{"command":"rm -rf / && echo done"}`))
+	if err != nil || approved {
+		t.Errorf("expected auto-deny for chained never; got approved=%v err=%v", approved, err)
+	}
+}
+
+func TestAddWhitelistEntryRuntimeUpdate(t *testing.T) {
+	cfg := config.ApprovalConfig{DefaultTimeout: 1}
+	broker := approval.NewBroker(cfg, nil)
+
+	// Before adding: should timeout
+	_, err := broker.Request(context.Background(), "r15", "file_read", []byte(`{}`))
+	if err == nil {
+		t.Error("expected timeout before adding entry")
+	}
+
+	broker.AddWhitelistEntry(config.WhitelistEntry{Tool: "file_read", Allow: "always"})
+
+	// After adding: should auto-approve
+	approved, err := broker.Request(context.Background(), "r16", "file_read", []byte(`{}`))
+	if err != nil || !approved {
+		t.Errorf("expected auto-approve after AddWhitelistEntry; got approved=%v err=%v", approved, err)
+	}
+}
