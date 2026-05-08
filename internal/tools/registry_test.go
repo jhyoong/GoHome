@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/JiaHui/gohome/internal/tools"
+	"github.com/jhyoong/gohome/internal/tools"
 )
 
 type mockTool struct{ name string }

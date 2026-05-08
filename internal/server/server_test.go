@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JiaHui/gohome/internal/config"
-	"github.com/JiaHui/gohome/internal/server"
-	"github.com/JiaHui/gohome/internal/session"
+	"github.com/jhyoong/gohome/internal/config"
+	"github.com/jhyoong/gohome/internal/server"
+	"github.com/jhyoong/gohome/internal/session"
 )
 
 func TestListSessions(t *testing.T) {

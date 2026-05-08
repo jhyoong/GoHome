@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/JiaHui/gohome/internal/config"
+	"github.com/jhyoong/gohome/internal/config"
 )
 
 var ErrApprovalTimeout = errors.New("approval timed out")

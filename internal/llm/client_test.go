@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/JiaHui/gohome/internal/config"
-	"github.com/JiaHui/gohome/internal/llm"
+	"github.com/jhyoong/gohome/internal/config"
+	"github.com/jhyoong/gohome/internal/llm"
 )
 
 func TestNonStreamingComplete(t *testing.T) {

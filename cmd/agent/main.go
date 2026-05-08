@@ -15,14 +15,14 @@ import (
 	"syscall"
 	"time"
 
-	gohome "github.com/JiaHui/gohome"
-	"github.com/JiaHui/gohome/internal/agent"
-	"github.com/JiaHui/gohome/internal/config"
-	"github.com/JiaHui/gohome/internal/llm"
-	"github.com/JiaHui/gohome/internal/mcp"
-	"github.com/JiaHui/gohome/internal/server"
-	"github.com/JiaHui/gohome/internal/session"
-	"github.com/JiaHui/gohome/internal/tools"
+	gohome "github.com/jhyoong/gohome"
+	"github.com/jhyoong/gohome/internal/agent"
+	"github.com/jhyoong/gohome/internal/config"
+	"github.com/jhyoong/gohome/internal/llm"
+	"github.com/jhyoong/gohome/internal/mcp"
+	"github.com/jhyoong/gohome/internal/server"
+	"github.com/jhyoong/gohome/internal/session"
+	"github.com/jhyoong/gohome/internal/tools"
 )
 
 var version = "dev"

@@ -8,10 +8,10 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/JiaHui/gohome/internal/approval"
-	"github.com/JiaHui/gohome/internal/llm"
-	"github.com/JiaHui/gohome/internal/session"
-	"github.com/JiaHui/gohome/internal/tools"
+	"github.com/jhyoong/gohome/internal/approval"
+	"github.com/jhyoong/gohome/internal/llm"
+	"github.com/jhyoong/gohome/internal/session"
+	"github.com/jhyoong/gohome/internal/tools"
 )
 
 type Loop struct {

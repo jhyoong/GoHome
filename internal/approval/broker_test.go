@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JiaHui/gohome/internal/approval"
-	"github.com/JiaHui/gohome/internal/config"
+	"github.com/jhyoong/gohome/internal/approval"
+	"github.com/jhyoong/gohome/internal/config"
 )
 
 func TestAutoApproveWhitelist(t *testing.T) {

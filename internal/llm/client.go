@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/JiaHui/gohome/internal/config"
+	"github.com/jhyoong/gohome/internal/config"
 )
 
 type Message struct {

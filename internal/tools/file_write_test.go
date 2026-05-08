@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/JiaHui/gohome/internal/tools"
+	"github.com/jhyoong/gohome/internal/tools"
 )
 
 func TestFileWriteTool(t *testing.T) {

@@ -26,10 +26,10 @@
 **Step 1: Initialize Go module**
 
 ```bash
-go mod init github.com/JiaHui/gohome
+go mod init github.com/jhyoong/gohome
 ```
 
-Expected: `go.mod` created with `module github.com/JiaHui/gohome` and `go 1.22`
+Expected: `go.mod` created with `module github.com/jhyoong/gohome` and `go 1.22`
 
 **Step 2: Add Go dependencies**
 
@@ -165,7 +165,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/JiaHui/gohome/internal/config"
+	"github.com/jhyoong/gohome/internal/config"
 )
 
 func TestParseConfig(t *testing.T) {
@@ -362,7 +362,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/JiaHui/gohome/internal/session"
+	"github.com/jhyoong/gohome/internal/session"
 )
 
 func TestOpenAndMigrate(t *testing.T) {
@@ -754,7 +754,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/JiaHui/gohome/internal/tools"
+	"github.com/jhyoong/gohome/internal/tools"
 )
 
 type mockTool struct{ name string }
@@ -939,7 +939,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/JiaHui/gohome/internal/tools"
+	"github.com/jhyoong/gohome/internal/tools"
 )
 
 func TestShellTool(t *testing.T) {
@@ -965,7 +965,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/JiaHui/gohome/internal/tools"
+	"github.com/jhyoong/gohome/internal/tools"
 )
 
 func TestFileReadTool(t *testing.T) {
@@ -997,7 +997,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/JiaHui/gohome/internal/tools"
+	"github.com/jhyoong/gohome/internal/tools"
 )
 
 func TestFileWriteTool(t *testing.T) {
@@ -1185,8 +1185,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JiaHui/gohome/internal/approval"
-	"github.com/JiaHui/gohome/internal/config"
+	"github.com/jhyoong/gohome/internal/approval"
+	"github.com/jhyoong/gohome/internal/config"
 )
 
 func TestAutoApproveWhitelist(t *testing.T) {
@@ -1289,7 +1289,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/JiaHui/gohome/internal/config"
+	"github.com/jhyoong/gohome/internal/config"
 )
 
 var ErrApprovalTimeout = errors.New("approval timed out")
@@ -1411,8 +1411,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/JiaHui/gohome/internal/config"
-	"github.com/JiaHui/gohome/internal/llm"
+	"github.com/jhyoong/gohome/internal/config"
+	"github.com/jhyoong/gohome/internal/llm"
 )
 
 func TestNonStreamingComplete(t *testing.T) {
@@ -1493,7 +1493,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/JiaHui/gohome/internal/config"
+	"github.com/jhyoong/gohome/internal/config"
 )
 
 type Message struct {
@@ -1727,8 +1727,8 @@ import (
 	"net/http"
 	"os/exec"
 
-	"github.com/JiaHui/gohome/internal/config"
-	"github.com/JiaHui/gohome/internal/tools"
+	"github.com/jhyoong/gohome/internal/config"
+	"github.com/jhyoong/gohome/internal/tools"
 )
 
 type Connection struct {
@@ -2001,12 +2001,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/JiaHui/gohome/internal/agent"
-	"github.com/JiaHui/gohome/internal/approval"
-	"github.com/JiaHui/gohome/internal/config"
-	"github.com/JiaHui/gohome/internal/llm"
-	"github.com/JiaHui/gohome/internal/session"
-	"github.com/JiaHui/gohome/internal/tools"
+	"github.com/jhyoong/gohome/internal/agent"
+	"github.com/jhyoong/gohome/internal/approval"
+	"github.com/jhyoong/gohome/internal/config"
+	"github.com/jhyoong/gohome/internal/llm"
+	"github.com/jhyoong/gohome/internal/session"
+	"github.com/jhyoong/gohome/internal/tools"
 )
 
 func TestSimpleMessageRoundtrip(t *testing.T) {
@@ -2073,10 +2073,10 @@ import (
 	"log"
 
 	"github.com/google/uuid"
-	"github.com/JiaHui/gohome/internal/approval"
-	"github.com/JiaHui/gohome/internal/llm"
-	"github.com/JiaHui/gohome/internal/session"
-	"github.com/JiaHui/gohome/internal/tools"
+	"github.com/jhyoong/gohome/internal/approval"
+	"github.com/jhyoong/gohome/internal/llm"
+	"github.com/jhyoong/gohome/internal/session"
+	"github.com/jhyoong/gohome/internal/tools"
 )
 
 type Loop struct {
@@ -2243,9 +2243,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JiaHui/gohome/internal/config"
-	"github.com/JiaHui/gohome/internal/server"
-	"github.com/JiaHui/gohome/internal/session"
+	"github.com/jhyoong/gohome/internal/config"
+	"github.com/jhyoong/gohome/internal/server"
+	"github.com/jhyoong/gohome/internal/session"
 )
 
 func TestListSessions(t *testing.T) {
@@ -2313,10 +2313,10 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/JiaHui/gohome/internal/agent"
-	"github.com/JiaHui/gohome/internal/approval"
-	"github.com/JiaHui/gohome/internal/config"
-	"github.com/JiaHui/gohome/internal/session"
+	"github.com/jhyoong/gohome/internal/agent"
+	"github.com/jhyoong/gohome/internal/approval"
+	"github.com/jhyoong/gohome/internal/config"
+	"github.com/jhyoong/gohome/internal/session"
 )
 
 const (
@@ -3199,13 +3199,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/JiaHui/gohome/internal/agent"
-	"github.com/JiaHui/gohome/internal/config"
-	"github.com/JiaHui/gohome/internal/llm"
-	"github.com/JiaHui/gohome/internal/mcp"
-	"github.com/JiaHui/gohome/internal/server"
-	"github.com/JiaHui/gohome/internal/session"
-	"github.com/JiaHui/gohome/internal/tools"
+	"github.com/jhyoong/gohome/internal/agent"
+	"github.com/jhyoong/gohome/internal/config"
+	"github.com/jhyoong/gohome/internal/llm"
+	"github.com/jhyoong/gohome/internal/mcp"
+	"github.com/jhyoong/gohome/internal/server"
+	"github.com/jhyoong/gohome/internal/session"
+	"github.com/jhyoong/gohome/internal/tools"
 )
 
 //go:embed ../../web/dist

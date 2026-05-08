@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/JiaHui/gohome/internal/tools"
+	"github.com/jhyoong/gohome/internal/tools"
 )
 
 func TestFileReadTool(t *testing.T) {

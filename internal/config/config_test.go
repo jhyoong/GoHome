@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/JiaHui/gohome/internal/config"
+	"github.com/jhyoong/gohome/internal/config"
 )
 
 func TestParseConfig(t *testing.T) {

@@ -17,7 +17,7 @@ All references to `agent-chat` are renamed to `gohome`:
 | Makefile | Binary target and references |
 | README | All references |
 
-The Go module path (`github.com/JiaHui/gohome`) already uses the correct name — no `go.mod` changes needed.
+The Go module path (`github.com/jhyoong/gohome`) already uses the correct name — no `go.mod` changes needed.
 
 ## 2. Version Injection
 

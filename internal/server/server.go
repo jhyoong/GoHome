@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/JiaHui/gohome/internal/agent"
-	"github.com/JiaHui/gohome/internal/approval"
-	"github.com/JiaHui/gohome/internal/config"
-	"github.com/JiaHui/gohome/internal/session"
+	"github.com/jhyoong/gohome/internal/agent"
+	"github.com/jhyoong/gohome/internal/approval"
+	"github.com/jhyoong/gohome/internal/config"
+	"github.com/jhyoong/gohome/internal/session"
 )
 
 const (

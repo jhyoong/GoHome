@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JiaHui/gohome/internal/session"
+	"github.com/jhyoong/gohome/internal/session"
 )
 
 func TestOpenAndMigrate(t *testing.T) {

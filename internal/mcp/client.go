@@ -11,8 +11,8 @@ import (
 	"net/http"
 	"os/exec"
 
-	"github.com/JiaHui/gohome/internal/config"
-	"github.com/JiaHui/gohome/internal/tools"
+	"github.com/jhyoong/gohome/internal/config"
+	"github.com/jhyoong/gohome/internal/tools"
 )
 
 type Connection struct {
