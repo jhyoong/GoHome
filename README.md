@@ -1,4 +1,4 @@
-# agent-chat
+# GoHome
 
 A single-binary Go server that runs a local AI chat interface in your browser. It connects to any OpenAI-compatible LLM endpoint, executes tools (shell, file read/write) with your approval, and persists sessions in SQLite.
 
@@ -10,18 +10,18 @@ A single-binary Go server that runs a local AI chat interface in your browser. I
 ## Quick Start
 
 ```bash
-# Build frontend and binary
+# Build binary
 make build
 
 # Run with defaults (connects to http://localhost:8080/v1)
-./agent-chat
+./gohome
 
 # Open http://localhost:3000 in your browser
 ```
 
 ## Configuration
 
-Create `~/.agent-chat/config.yaml`:
+Create `~/.gohome/config.yaml`:
 
 ```yaml
 endpoint:
@@ -35,7 +35,7 @@ server:
   port: 3000
 
 storage:
-  path: "~/.agent-chat/data.db"
+  path: "~/.gohome/data.db"
 
 system_prompt: "You are a helpful assistant."
 
@@ -58,7 +58,7 @@ All fields are optional — defaults are used if the config file is missing.
 ## CLI Flags
 
 ```
---config   Path to config file (default: ~/.agent-chat/config.yaml)
+--config   Path to config file (default: ~/.gohome/config.yaml)
 --port     Override server port
 --host     Override server host
 --db       Override database path
