@@ -177,17 +177,22 @@ func (l *Loop) buildHistory(msgs []session.Message, newUserMessage string) []llm
 }
 
 func (l *Loop) GenerateTitle(ctx context.Context, message string) (string, error) {
-	resp, err := l.llm.Complete(ctx, []llm.Message{
+	var sb strings.Builder
+	err := l.llm.Stream(ctx, []llm.Message{
 		{
 			Role:    "system",
 			Content: "Generate a short title of at most 10 words for a conversation starting with the following user message. Reply with only the title, no quotes or trailing punctuation.",
 		},
 		{Role: "user", Content: message},
-	}, nil)
+	}, nil,
+		func(token string) { sb.WriteString(token) },
+		func(_ []llm.ToolCall) {},
+		nil,
+	)
 	if err != nil {
 		return "", err
 	}
-	title := strings.TrimSpace(resp.Content)
+	title := strings.TrimSpace(sb.String())
 	if title == "" {
 		return "", fmt.Errorf("empty title from LLM")
 	}

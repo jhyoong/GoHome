@@ -169,12 +169,8 @@ func TestGenerateTitle(t *testing.T) {
 				t.Errorf("second message content: got %q", body.Messages[1].Content)
 			}
 		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"choices": []map[string]any{
-				{"message": map[string]any{"role": "assistant", "content": "  Find Files in Directory  "}},
-			},
-		})
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Write([]byte(sseText("  Find Files in Directory  ")))
 	}))
 	defer srv.Close()
 
@@ -197,12 +193,8 @@ func TestGenerateTitle(t *testing.T) {
 
 func TestGenerateTitleEmptyResponse(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"choices": []map[string]any{
-				{"message": map[string]any{"role": "assistant", "content": "   "}},
-			},
-		})
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Write([]byte(sseText("   ")))
 	}))
 	defer srv.Close()
 
