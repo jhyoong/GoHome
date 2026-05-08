@@ -3,6 +3,7 @@ package session_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/JiaHui/gohome/internal/session"
 )
@@ -81,6 +82,9 @@ func TestUpdateSessionTitle(t *testing.T) {
 	if s.Title != "New Session" {
 		t.Fatalf("unexpected default title: %q", s.Title)
 	}
+	createdAt := s.UpdatedAt
+
+	time.Sleep(time.Second)
 
 	if err := store.UpdateSessionTitle(ctx, s.ID, "My Custom Title"); err != nil {
 		t.Fatalf("UpdateSessionTitle: %v", err)
@@ -89,6 +93,9 @@ func TestUpdateSessionTitle(t *testing.T) {
 	sessions, _ := store.ListSessions(ctx)
 	if len(sessions) != 1 || sessions[0].Title != "My Custom Title" {
 		t.Errorf("title not updated: %+v", sessions)
+	}
+	if !sessions[0].UpdatedAt.After(createdAt) {
+		t.Errorf("updated_at not bumped: was %v, now %v", createdAt, sessions[0].UpdatedAt)
 	}
 }
 
