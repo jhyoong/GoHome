@@ -81,9 +81,8 @@ function onHistory(msg) {
 
 function msgHtml(msg) {
   const toolBlocks = (msg.tool_results || []).map(toolCallBlockHtml).join('');
-  const content = msg.content
-    ? `<div class="message-content">${escHtml(msg.content)}</div>`
-    : '';
+  const text = (msg.content || '').trim();
+  const content = text ? `<div class="message-content">${escHtml(text)}</div>` : '';
   return `
     <div class="message message-${escHtml(msg.role)}">
       <div class="message-role">${escHtml(msg.role)}</div>
@@ -128,17 +127,21 @@ function appendToken(text) {
 
 function finalizeStream(messageId) {
   if (streamingEl) {
-    const content = streamingEl.querySelector('.message-content').textContent;
-    const msg = {
-      id: messageId || crypto.randomUUID(),
-      role: 'assistant',
-      content,
-      created_at: new Date().toISOString(),
-    };
-    state.messages.push(msg);
-    const wrapper = document.createElement('div');
-    wrapper.innerHTML = msgHtml(msg);
-    streamingEl.replaceWith(wrapper.firstElementChild);
+    const content = streamingEl.querySelector('.message-content').textContent.trim();
+    if (content) {
+      const msg = {
+        id: messageId || crypto.randomUUID(),
+        role: 'assistant',
+        content,
+        created_at: new Date().toISOString(),
+      };
+      state.messages.push(msg);
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = msgHtml(msg);
+      streamingEl.replaceWith(wrapper.firstElementChild);
+    } else {
+      streamingEl.remove();
+    }
     streamingEl = null;
   }
   setBusy(false);
@@ -157,6 +160,21 @@ function clearStreamEl() {
 }
 
 function addToolResult(msg) {
+  // Flush any streaming content before the tool result so order is: [preamble] → [tool] → [response]
+  if (streamingEl) {
+    const preamble = streamingEl.querySelector('.message-content').textContent.trim();
+    if (preamble) {
+      const prevMsg = { id: crypto.randomUUID(), role: 'assistant', content: preamble, created_at: new Date().toISOString() };
+      state.messages.push(prevMsg);
+      const w = document.createElement('div');
+      w.innerHTML = msgHtml(prevMsg);
+      streamingEl.replaceWith(w.firstElementChild);
+    } else {
+      streamingEl.remove();
+    }
+    streamingEl = null;
+  }
+
   const tr = {
     id: crypto.randomUUID(),
     tool_name: msg.tool,
