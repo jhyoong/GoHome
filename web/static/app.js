@@ -243,6 +243,7 @@ function showApprovalModal(msg) {
   dom.approvalModal.hidden = false;
   dom.input.disabled = true;
   dom.sendBtn.disabled = true;
+  dom.approvalAllow.focus();
 }
 
 function hideApprovalModal() {
