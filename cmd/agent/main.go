@@ -29,7 +29,7 @@ var version = "dev"
 
 func main() {
 	var (
-		configPath = flag.String("config", "~/.agent-chat/config.yaml", "Path to config file")
+		configPath = flag.String("config", "~/.gohome/config.yaml", "Path to config file")
 		port       = flag.Int("port", 0, "Override server port")
 		host       = flag.String("host", "", "Override server host")
 		dbPath     = flag.String("db", "", "Override database path")
@@ -39,7 +39,7 @@ func main() {
 	flag.Parse()
 
 	if *showVer {
-		fmt.Println("agent-chat", version)
+		fmt.Println("gohome", version)
 		os.Exit(0)
 	}
 
@@ -66,7 +66,7 @@ func main() {
 	}
 	if cfg.Storage.Path == "" {
 		home, _ := os.UserHomeDir()
-		cfg.Storage.Path = filepath.Join(home, ".agent-chat", "data.db")
+		cfg.Storage.Path = filepath.Join(home, ".gohome", "data.db")
 	}
 	if cfg.Endpoint.URL == "" {
 		cfg.Endpoint.URL = "http://localhost:8080/v1"
@@ -145,7 +145,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("listen: %v", err)
 	}
-	log.Printf("agent-chat listening on http://%s", httpSrv.Addr)
+	log.Printf("GoHome listening on http://%s", httpSrv.Addr)
 	if err := httpSrv.Serve(ln); err != nil && err != http.ErrServerClosed {
 		log.Printf("server error: %v", err)
 	}
