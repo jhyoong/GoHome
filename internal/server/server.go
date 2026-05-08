@@ -26,7 +26,7 @@ type Config struct {
 	Store      *session.Store
 	Loop       *agent.Loop
 	Approval   config.ApprovalConfig
-	FullConfig *config.Config // nil if no config file on disk
+	FullConfig *config.Config // pointer to full config for persisting whitelist; set to nil to disable disk writes
 	ConfigPath string         // original path for saving, e.g. "~/.agent-chat/config.yaml"
 }
 
