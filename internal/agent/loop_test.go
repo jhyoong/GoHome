@@ -144,6 +144,59 @@ func TestOnToolResultCallback(t *testing.T) {
 	}
 }
 
+func TestGenerateTitle(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]any{"role": "assistant", "content": "  Find Files in Directory  "}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	store, _ := session.Open(t.TempDir() + "/test.db")
+	defer store.Close()
+
+	loop := agent.NewLoop(
+		llm.NewClient(config.EndpointConfig{URL: srv.URL, Model: "test"}),
+		tools.NewRegistry(), store, "",
+	)
+
+	title, err := loop.GenerateTitle(context.Background(), "find all files in the current directory")
+	if err != nil {
+		t.Fatalf("GenerateTitle: %v", err)
+	}
+	if title != "Find Files in Directory" {
+		t.Errorf("got %q, want %q", title, "Find Files in Directory")
+	}
+}
+
+func TestGenerateTitleEmptyResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]any{"role": "assistant", "content": "   "}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	store, _ := session.Open(t.TempDir() + "/test.db")
+	defer store.Close()
+
+	loop := agent.NewLoop(
+		llm.NewClient(config.EndpointConfig{URL: srv.URL, Model: "test"}),
+		tools.NewRegistry(), store, "",
+	)
+
+	_, err := loop.GenerateTitle(context.Background(), "hello")
+	if err == nil {
+		t.Fatal("expected error for empty LLM response")
+	}
+}
+
 func TestSteeringMessageInjected(t *testing.T) {
 	var callCount int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

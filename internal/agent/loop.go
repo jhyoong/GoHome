@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/JiaHui/gohome/internal/approval"
@@ -173,6 +174,24 @@ func (l *Loop) buildHistory(msgs []session.Message, newUserMessage string) []llm
 	}
 	history = append(history, llm.Message{Role: "user", Content: newUserMessage})
 	return history
+}
+
+func (l *Loop) GenerateTitle(ctx context.Context, message string) (string, error) {
+	resp, err := l.llm.Complete(ctx, []llm.Message{
+		{
+			Role:    "system",
+			Content: "Generate a short title of at most 10 words for a conversation starting with the following user message. Reply with only the title, no quotes or trailing punctuation.",
+		},
+		{Role: "user", Content: message},
+	}, nil)
+	if err != nil {
+		return "", err
+	}
+	title := strings.TrimSpace(resp.Content)
+	if title == "" {
+		return "", fmt.Errorf("empty title from LLM")
+	}
+	return title, nil
 }
 
 func toAnySlice(in []map[string]any) []interface{} {
