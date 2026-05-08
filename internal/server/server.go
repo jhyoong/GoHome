@@ -23,13 +23,16 @@ const (
 )
 
 type Config struct {
-	Store    *session.Store
-	Loop     *agent.Loop
-	Approval config.ApprovalConfig
+	Store      *session.Store
+	Loop       *agent.Loop
+	Approval   config.ApprovalConfig
+	FullConfig *config.Config // nil if no config file on disk
+	ConfigPath string         // original path for saving, e.g. "~/.agent-chat/config.yaml"
 }
 
 type Server struct {
-	cfg Config
+	cfg        Config
+	approvalMu sync.RWMutex // protects cfg.Approval.Whitelist across connections
 }
 
 func New(cfg Config) *Server {
@@ -78,12 +81,27 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// persistWhitelistEntry appends to the server's shared whitelist and saves to disk.
+func (s *Server) persistWhitelistEntry(entry config.WhitelistEntry) {
+	s.approvalMu.Lock()
+	defer s.approvalMu.Unlock()
+	s.cfg.Approval.Whitelist = append(s.cfg.Approval.Whitelist, entry)
+	if s.cfg.FullConfig != nil {
+		s.cfg.FullConfig.Approval.Whitelist = s.cfg.Approval.Whitelist
+		if err := config.Save(s.cfg.ConfigPath, s.cfg.FullConfig); err != nil {
+			log.Printf("always_allow: failed to save config: %v", err)
+		}
+	}
+}
+
 type inMsg struct {
-	Type      string `json:"type"`
-	SessionID string `json:"session_id,omitempty"`
-	Content   string `json:"content,omitempty"`
-	RequestID string `json:"request_id,omitempty"`
-	Approved  bool   `json:"approved,omitempty"`
+	Type           string `json:"type"`
+	SessionID      string `json:"session_id,omitempty"`
+	Content        string `json:"content,omitempty"`
+	RequestID      string `json:"request_id,omitempty"`
+	Approved       bool   `json:"approved,omitempty"`
+	Tool           string `json:"tool,omitempty"`
+	CommandPattern string `json:"command_pattern,omitempty"`
 }
 
 type outMsg struct {
@@ -110,6 +128,7 @@ type wsConn struct {
 	broker    *approval.Broker
 	store     *session.Store
 	loop      *agent.Loop
+	server    *Server
 
 	mu        sync.Mutex
 	running   bool
@@ -144,7 +163,10 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	approvalCh := make(chan approval.Request, 8)
-	broker := approval.NewBroker(s.cfg.Approval, approvalCh)
+	s.approvalMu.RLock()
+	approvalCfg := s.cfg.Approval
+	s.approvalMu.RUnlock()
+	broker := approval.NewBroker(approvalCfg, approvalCh)
 
 	ws := &wsConn{
 		conn:      conn,
@@ -155,6 +177,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		broker:    broker,
 		store:     s.cfg.Store,
 		loop:      s.cfg.Loop,
+		server:    s,
 	}
 
 	ctx, cancel := context.WithCancel(r.Context())
@@ -257,6 +280,16 @@ func (wc *wsConn) dispatcher(ctx context.Context) {
 
 			case "tool_response":
 				wc.broker.Respond(msg.RequestID, msg.Approved)
+
+			case "always_allow":
+				entry := config.WhitelistEntry{
+					Tool:           msg.Tool,
+					Allow:          "always",
+					CommandPattern: msg.CommandPattern,
+				}
+				wc.broker.AddWhitelistEntry(entry)
+				wc.server.persistWhitelistEntry(entry)
+				wc.broker.Respond(msg.RequestID, true)
 
 			case "new_session":
 				sess, err := wc.store.CreateSession(ctx)
