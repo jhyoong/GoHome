@@ -1,0 +1,85 @@
+version: 2
+
+project_name: gohome
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: gohome
+    main: ./cmd/agent
+    binary: gohome
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - id: gohome
+    builds: [gohome]
+    name_template: "gohome_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: "SHA256SUMS"
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  use: github
+  groups:
+    - title: "New Features"
+      regexp: '^feat'
+      order: 0
+    - title: "Bug Fixes"
+      regexp: '^fix'
+      order: 1
+    - title: "Other Changes"
+      order: 999
+  filters:
+    exclude:
+      - '^chore'
+      - '^docs'
+
+release:
+  draft: true
+  replace_existing_draft: true
+
+dockers:
+  - image_templates:
+      - "ghcr.io/jiahui/gohome:{{ .Tag }}-amd64"
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+    goos: linux
+    goarch: amd64
+    dockerfile: Dockerfile
+
+  - image_templates:
+      - "ghcr.io/jiahui/gohome:{{ .Tag }}-arm64"
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+    goos: linux
+    goarch: arm64
+    dockerfile: Dockerfile
+
+docker_manifests:
+  - name_template: "ghcr.io/jiahui/gohome:{{ .Tag }}"
+    image_templates:
+      - "ghcr.io/jiahui/gohome:{{ .Tag }}-amd64"
+      - "ghcr.io/jiahui/gohome:{{ .Tag }}-arm64"
+  - name_template: "ghcr.io/jiahui/gohome:latest"
+    image_templates:
+      - "ghcr.io/jiahui/gohome:{{ .Tag }}-amd64"
+      - "ghcr.io/jiahui/gohome:{{ .Tag }}-arm64"
