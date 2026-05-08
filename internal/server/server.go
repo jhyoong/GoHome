@@ -326,16 +326,6 @@ func (wc *wsConn) dispatcher(ctx context.Context) {
 				}
 				wc.send(outMsg{Type: "sessions", Data: sessions})
 
-			case "new_session":
-				sess, err := wc.store.CreateSession(ctx)
-				if err != nil {
-					wc.send(outMsg{Type: "error", Message: err.Error()})
-					continue
-				}
-				sessions, _ := wc.store.ListSessions(ctx)
-				wc.send(outMsg{Type: "sessions", Data: sessions})
-				wc.send(outMsg{Type: "history", SessionID: sess.ID, Messages: []session.Message{}})
-
 			case "load_session":
 				msgs, err := wc.store.GetMessagesWithResults(ctx, msg.SessionID)
 				if err != nil {
@@ -346,6 +336,11 @@ func (wc *wsConn) dispatcher(ctx context.Context) {
 					msgs = []session.Message{}
 				}
 				wc.send(outMsg{Type: "history", SessionID: msg.SessionID, Messages: msgs})
+				sessions, _ := wc.store.ListSessions(ctx)
+				if sessions == nil {
+					sessions = []session.Session{}
+				}
+				wc.send(outMsg{Type: "sessions", Data: sessions})
 
 			case "delete_session":
 				wc.store.DeleteSession(ctx, msg.SessionID)
@@ -419,8 +414,10 @@ func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string, steer
 			wc.send(outMsg{Type: "sessions", Data: sessions})
 		}()
 	}
-	sessions, _ := wc.store.ListSessions(ctx)
-	wc.send(outMsg{Type: "sessions", Data: sessions})
+	if !isNew {
+		sessions, _ := wc.store.ListSessions(ctx)
+		wc.send(outMsg{Type: "sessions", Data: sessions})
+	}
 }
 
 func (wc *wsConn) send(msg outMsg) {
