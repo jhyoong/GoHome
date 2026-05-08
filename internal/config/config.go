@@ -27,8 +27,9 @@ type StorageConfig struct {
 }
 
 type WhitelistEntry struct {
-	Tool  string `yaml:"tool"`
-	Allow string `yaml:"allow"` // "always", "never", "ask"
+	Tool           string `yaml:"tool"`
+	Allow          string `yaml:"allow"`
+	CommandPattern string `yaml:"command_pattern,omitempty"`
 }
 
 type ApprovalConfig struct {
@@ -84,6 +85,25 @@ func Load(path string) (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+func Save(path string, cfg *Config) error {
+	var err error
+	path, err = expandHome(path)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("creating config dir: %w", err)
+	}
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("writing config: %w", err)
+	}
+	return nil
 }
 
 func expandHome(path string) (string, error) {

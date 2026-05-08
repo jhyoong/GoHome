@@ -55,3 +55,29 @@ system_prompt: "You are helpful."
 		t.Errorf("unexpected whitelist: %+v", cfg.Approval.Whitelist)
 	}
 }
+
+func TestSaveAndReload(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	cfg := &config.Config{}
+	cfg.Approval.Whitelist = []config.WhitelistEntry{
+		{Tool: "file_read", Allow: "always"},
+		{Tool: "shell", Allow: "always", CommandPattern: "ls *"},
+	}
+
+	if err := config.Save(path, cfg); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	loaded, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if len(loaded.Approval.Whitelist) != 2 {
+		t.Fatalf("got %d entries, want 2", len(loaded.Approval.Whitelist))
+	}
+	if loaded.Approval.Whitelist[1].CommandPattern != "ls *" {
+		t.Errorf("got pattern %q, want %q", loaded.Approval.Whitelist[1].CommandPattern, "ls *")
+	}
+}
