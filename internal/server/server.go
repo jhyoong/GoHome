@@ -385,18 +385,21 @@ func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string, steer
 		},
 		steerCh,
 	)
-	if err != nil || ctx.Err() != nil {
-		if err != nil && ctx.Err() == nil {
+	if err != nil {
+		if ctx.Err() == nil {
 			wc.send(outMsg{Type: "error", Message: err.Error()})
 		} else {
 			wc.send(outMsg{Type: "stopped"})
 		}
 		return
 	}
+	if ctx.Err() != nil {
+		wc.send(outMsg{Type: "stopped"})
+	}
 	wc.send(outMsg{Type: "done", MessageID: ""})
 	if isNew && wc.loop != nil {
 		go func() {
-			tCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			tCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 			defer cancel()
 			title, err := wc.loop.GenerateTitle(tCtx, content)
 			if err != nil {
