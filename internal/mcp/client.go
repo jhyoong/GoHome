@@ -105,7 +105,7 @@ func (c *Connection) initialize() error {
 	_, err := c.send("initialize", map[string]any{
 		"protocolVersion": "2024-11-05",
 		"capabilities":    map[string]any{},
-		"clientInfo":      map[string]any{"name": "agent-chat", "version": "1.0"},
+		"clientInfo":      map[string]any{"name": "gohome", "version": "1.0"},
 	})
 	return err
 }

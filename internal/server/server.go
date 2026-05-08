@@ -27,7 +27,7 @@ type Config struct {
 	Loop       *agent.Loop
 	Approval   config.ApprovalConfig
 	FullConfig *config.Config // pointer to full config for persisting whitelist; set to nil to disable disk writes
-	ConfigPath string         // original path for saving, e.g. "~/.agent-chat/config.yaml"
+	ConfigPath string         // original path for saving, e.g. "~/.gohome/config.yaml"
 }
 
 type Server struct {

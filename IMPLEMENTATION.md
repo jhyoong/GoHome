@@ -1,4 +1,4 @@
-# Agent Chat — Implementation Specification
+# GoHome — Implementation Specification
 
 ## Overview
 
@@ -117,14 +117,14 @@ A minimal, self-hosted AI agent chat interface built in Go. It connects to a loc
 - No auto-reconnect in v1.
 
 **Session Store** (`internal/session/`)
-- SQLite database, single file at a configurable path (default: `~/.agent-chat/data.db`, resolved to an absolute path at config parse time).
+- SQLite database, single file at a configurable path (default: `~/.gohome/data.db`, resolved to an absolute path at config parse time).
 - Schema auto-migrated on startup via embedded SQL.
 - Three tables: `sessions`, `messages`, `tool_results`.
 - All writes happen through a single `*sql.DB` instance. No ORM.
 - On open: sets `journal_mode=WAL`, `busy_timeout=5000`, `synchronous=NORMAL`, and `foreign_keys=ON`.
 
 **Config** (`internal/config/`)
-- Single YAML file, path specified via `--config` flag or default `~/.agent-chat/config.yaml`.
+- Single YAML file, path specified via `--config` flag or default `~/.gohome/config.yaml`.
 - Parsed once at startup into a Go struct. No hot-reloading.
 - All paths containing `~` are resolved to absolute paths at parse time using `os.UserHomeDir()`. No other code needs to handle tilde expansion.
 
@@ -550,7 +550,7 @@ for {
 Full example:
 
 ```yaml
-# ~/.agent-chat/config.yaml
+# ~/.gohome/config.yaml
 
 endpoint:
   url: "http://localhost:8080/v1"
@@ -563,7 +563,7 @@ server:
   port: 3000
 
 storage:
-  path: "~/.agent-chat/data.db"
+  path: "~/.gohome/data.db"
 
 approval:
   default_timeout: 300
@@ -614,10 +614,10 @@ Any device on your network can access this agent and execute tools.
 ## CLI Interface
 
 ```
-Usage: agent-chat [flags]
+Usage: gohome [flags]
 
 Flags:
-  --config string   Path to config file (default "~/.agent-chat/config.yaml")
+  --config string   Path to config file (default "~/.gohome/config.yaml")
   --port int        Override server port
   --host string     Override server host
   --db string       Override database path
@@ -676,10 +676,10 @@ cd web && npm install
 cd web && npx esbuild src/app.tsx --bundle --outdir=dist --minify
 
 # Build Go binary (embeds frontend)
-go build -o agent-chat ./cmd/agent
+go build -o gohome ./cmd/agent
 
 # Run
-./agent-chat --config ./config.yaml
+./gohome --config ./config.yaml
 ```
 
 ### Makefile Targets
@@ -691,13 +691,13 @@ frontend:
 	cd web && npx esbuild src/app.tsx --bundle --outdir=dist --minify --loader:.css=css
 
 build: frontend
-	go build -o agent-chat ./cmd/agent
+	go build -o gohome ./cmd/agent
 
 run: build
-	./agent-chat
+	./gohome
 
 clean:
-	rm -rf agent-chat web/dist web/node_modules
+	rm -rf gohome web/dist web/node_modules
 ```
 
 ---

@@ -19,7 +19,7 @@ server:
   host: "127.0.0.1"
   port: 3000
 storage:
-  path: "~/.agent-chat/data.db"
+  path: "~/.gohome/data.db"
 approval:
   default_timeout: 300
   auto_approve_all: false
@@ -47,7 +47,7 @@ system_prompt: "You are helpful."
 		t.Errorf("got port %d", cfg.Server.Port)
 	}
 	home, _ := os.UserHomeDir()
-	wantPath := filepath.Join(home, ".agent-chat/data.db")
+	wantPath := filepath.Join(home, ".gohome/data.db")
 	if cfg.Storage.Path != wantPath {
 		t.Errorf("got path %q, want %q", cfg.Storage.Path, wantPath)
 	}
