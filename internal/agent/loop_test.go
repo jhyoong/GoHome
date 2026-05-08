@@ -146,6 +146,29 @@ func TestOnToolResultCallback(t *testing.T) {
 
 func TestGenerateTitle(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode request body: %v", err)
+		}
+		if len(body.Messages) != 2 {
+			t.Errorf("want 2 messages, got %d", len(body.Messages))
+		}
+		if len(body.Messages) >= 1 && body.Messages[0].Role != "system" {
+			t.Errorf("first message role: got %q, want %q", body.Messages[0].Role, "system")
+		}
+		if len(body.Messages) >= 2 {
+			if body.Messages[1].Role != "user" {
+				t.Errorf("second message role: got %q, want %q", body.Messages[1].Role, "user")
+			}
+			if body.Messages[1].Content != "find all files in the current directory" {
+				t.Errorf("second message content: got %q", body.Messages[1].Content)
+			}
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"choices": []map[string]any{
@@ -194,6 +217,26 @@ func TestGenerateTitleEmptyResponse(t *testing.T) {
 	_, err := loop.GenerateTitle(context.Background(), "hello")
 	if err == nil {
 		t.Fatal("expected error for empty LLM response")
+	}
+}
+
+func TestGenerateTitleLLMError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	store, _ := session.Open(t.TempDir() + "/test.db")
+	defer store.Close()
+
+	loop := agent.NewLoop(
+		llm.NewClient(config.EndpointConfig{URL: srv.URL, Model: "test"}),
+		tools.NewRegistry(), store, "",
+	)
+
+	_, err := loop.GenerateTitle(context.Background(), "hello")
+	if err == nil {
+		t.Fatal("expected error when LLM returns non-200")
 	}
 }
 
