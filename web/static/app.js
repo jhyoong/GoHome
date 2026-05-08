@@ -230,11 +230,12 @@ function showError(text) {
 }
 
 function handleApprovalKeys(e) {
-  // When the pattern editor is open, don't intercept arrow keys
-  if (!dom.alwaysAllowEditor.hidden) return;
+  // Only suspend when the pattern text input itself has focus (user is typing)
+  if (document.activeElement === dom.alwaysAllowPattern) return;
 
-  const buttons = [dom.approvalAllow, dom.approvalDeny, dom.approvalAlwaysAllow]
-    .filter(btn => !btn.hidden);
+  const buttons = dom.alwaysAllowEditor.hidden
+    ? [dom.approvalAllow, dom.approvalDeny, dom.approvalAlwaysAllow].filter(btn => !btn.hidden)
+    : [dom.alwaysAllowConfirm, dom.alwaysAllowCancel];
 
   const idx = buttons.indexOf(document.activeElement);
 
@@ -246,7 +247,11 @@ function handleApprovalKeys(e) {
     buttons[(idx - 1 + buttons.length) % buttons.length].focus();
   } else if (e.key === 'Escape') {
     e.preventDefault();
-    dom.approvalDeny.click();
+    if (!dom.alwaysAllowEditor.hidden) {
+      dom.alwaysAllowCancel.click();
+    } else {
+      dom.approvalDeny.click();
+    }
   }
 }
 
@@ -399,6 +404,7 @@ document.addEventListener('DOMContentLoaded', () => {
       dom.alwaysAllowPattern.value = suggestPattern(a.params.command || '');
       dom.alwaysAllowEditor.hidden = false;
       dom.approvalMainButtons.hidden = true;
+      requestAnimationFrame(() => dom.alwaysAllowConfirm.focus());
     } else {
       send({ type: 'always_allow', request_id: a.request_id, tool: a.tool });
       hideApprovalModal();
