@@ -72,6 +72,26 @@ func TestMessageCRUD(t *testing.T) {
 	}
 }
 
+func TestUpdateSessionTitle(t *testing.T) {
+	store, _ := session.Open(t.TempDir() + "/test.db")
+	defer store.Close()
+	ctx := context.Background()
+
+	s, _ := store.CreateSession(ctx)
+	if s.Title != "New Session" {
+		t.Fatalf("unexpected default title: %q", s.Title)
+	}
+
+	if err := store.UpdateSessionTitle(ctx, s.ID, "My Custom Title"); err != nil {
+		t.Fatalf("UpdateSessionTitle: %v", err)
+	}
+
+	sessions, _ := store.ListSessions(ctx)
+	if len(sessions) != 1 || sessions[0].Title != "My Custom Title" {
+		t.Errorf("title not updated: %+v", sessions)
+	}
+}
+
 func TestToolResultCRUD(t *testing.T) {
 	store, _ := session.Open(t.TempDir() + "/test.db")
 	defer store.Close()

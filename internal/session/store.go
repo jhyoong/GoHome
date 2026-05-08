@@ -195,6 +195,12 @@ func (s *Store) GetToolResults(ctx context.Context, messageID string) ([]ToolRes
 	return results, rows.Err()
 }
 
+func (s *Store) UpdateSessionTitle(ctx context.Context, id, title string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE sessions SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, title, id)
+	return err
+}
+
 // GetMessagesWithResults loads messages for a session with their tool results pre-joined.
 func (s *Store) GetMessagesWithResults(ctx context.Context, sessionID string) ([]Message, error) {
 	msgs, err := s.GetMessages(ctx, sessionID)
