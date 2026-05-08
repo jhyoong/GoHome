@@ -59,9 +59,8 @@ function connect() {
       case 'sessions':      renderSessions(msg.data); break;
       case 'history':       onHistory(msg); break;
       case 'session_created':
-          activeSessionId = msg.session_id;
-          renderSessions(state.sessions);
-          break;
+        activeSessionId = msg.session_id;
+        break;
       case 'tool_approval': showApprovalModal(msg); break;
       case 'tool_result':   addToolResult(msg); break;
       case 'done':          finalizeStream(msg.message_id); break;
@@ -223,6 +222,7 @@ function addToolResult(msg) {
 function setBusy(busy) {
   state.busy = busy;
   dom.stopBtn.hidden = !busy;
+  dom.newChatBtn.disabled = busy;
   dom.sendBtn.disabled = busy || !dom.input.value.trim() || !!state.awaitingApproval;
   dom.input.placeholder = busy ? 'Agent running — type to steer...' : 'Type a message...';
 }
@@ -366,7 +366,6 @@ document.addEventListener('DOMContentLoaded', () => {
     activeSessionId = null;
     state.messages = [];
     dom.messages.innerHTML = '';
-    setBusy(false);
     renderSessions(state.sessions);
   });
 
