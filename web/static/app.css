@@ -1,6 +1,10 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 [hidden] { display: none !important; }
 
+:root {
+  --input-bar-height: 57px; /* input (33px) + top/bottom padding (24px) */
+}
+
 body {
   font-family: system-ui, -apple-system, sans-serif;
   font-size: 14px;
@@ -174,7 +178,7 @@ body {
 
 .approval-modal {
   position: absolute;
-  bottom: 57px;
+  bottom: var(--input-bar-height);
   left: 16px;
   right: 16px;
   z-index: 10;
@@ -185,7 +189,7 @@ body {
   border-radius: 10px;
   padding: 24px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.2);
-  max-height: calc(100vh - 57px - 24px);
+  max-height: calc(100vh - var(--input-bar-height) - 24px); /* 24px: breathing room at top */
   overflow-y: auto;
 }
 
@@ -300,6 +304,5 @@ body {
   border-radius: 6px;
   font-family: monospace;
   font-size: 13px;
-  box-sizing: border-box;
   margin-bottom: 4px;
 }
