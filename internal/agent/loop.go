@@ -190,7 +190,7 @@ func (l *Loop) GenerateTitle(ctx context.Context, message string) (string, error
 		func(token string) { sb.WriteString(token) },
 		func(_ []llm.ToolCall) {},
 		nil,
-		nil, // onUsage: not yet wired (Task 3)
+		nil, // onUsage: intentionally nil, title generation does not need token accounting
 	)
 	if err != nil {
 		return "", err
