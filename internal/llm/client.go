@@ -38,6 +38,25 @@ type Response struct {
 	ToolCalls []ToolCall
 }
 
+// Delta represents a streaming response delta with content, tool calls, and predictions
+type Delta struct {
+	Content   string `json:"content"`
+	ToolCalls []struct {
+		Index     int    `json:"index"`
+		ID        string `json:"id"`
+		Type      string `json:"type"`
+		Function  struct {
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
+		} `json:"function"`
+	} `json:"tool_calls"`
+	Predictions []struct {
+		Type         string `json:"type"`
+		Content      string `json:"content"`
+		ContentIndex int    `json:"content_index"`
+	} `json:"predictions"`
+}
+
 type Client struct {
 	cfg  config.EndpointConfig
 	http *http.Client
@@ -111,10 +130,19 @@ func (c *Client) Complete(ctx context.Context, messages []Message, tools []inter
 	}, nil
 }
 
+// Stream streams LLM responses, calling callbacks for each event.
+// Additional callbacks can be passed as optional trailing arguments:
+// - StreamCallbacks{OnPredictions: func(string)} receives predictions/thinking content
 func (c *Client) Stream(ctx context.Context, messages []Message, tools []interface{},
 	onToken func(string), onToolCalls func([]ToolCall), onDone func(),
 	onUsage func(promptTokens, completionTokens, totalTokens int),
+	onPredictionsAndMore ...func(string),
 ) error {
+	// Extract onPredictions from optional trailing arguments
+	var onPredictions func(string)
+	if len(onPredictionsAndMore) > 0 && onPredictionsAndMore[0] != nil {
+		onPredictions = onPredictionsAndMore[0]
+	}
 
 	body := reqBody{
 		Model: c.cfg.Model, Messages: messages, Tools: tools,
@@ -168,6 +196,11 @@ func (c *Client) Stream(ctx context.Context, messages []Message, tools []interfa
 							Arguments string `json:"arguments"`
 						} `json:"function"`
 					} `json:"tool_calls"`
+					Predictions []struct {
+						Type         string `json:"type"`
+						Content      string `json:"content"`
+						ContentIndex int    `json:"content_index"`
+					} `json:"predictions"`
 				} `json:"delta"`
 				FinishReason *string `json:"finish_reason"`
 			} `json:"choices"`
@@ -204,6 +237,12 @@ func (c *Client) Stream(ctx context.Context, messages []Message, tools []interfa
 			}
 			if tc.Function.Name != "" {
 				buf.Function.Name = tc.Function.Name
+			}
+		}
+
+		for _, pred := range choice.Delta.Predictions {
+			if onPredictions != nil && pred.Content != "" {
+				onPredictions(pred.Content)
 			}
 		}
 

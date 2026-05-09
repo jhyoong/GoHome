@@ -26,6 +26,7 @@ type Message struct {
 	SessionID   string       `json:"session_id"`
 	Role        string       `json:"role"`
 	Content     string       `json:"content"`
+	Thinking    string       `json:"thinking"`
 	ToolCalls   string       `json:"tool_calls,omitempty"`
 	ToolCallID  string       `json:"tool_call_id,omitempty"`
 	ToolResults []ToolResult `json:"tool_results,omitempty"`
@@ -124,9 +125,9 @@ func (s *Store) AddMessage(ctx context.Context, msg Message) (*Message, error) {
 		msg.ID = uuid.New().String()
 	}
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO messages (id, session_id, role, content, tool_calls, tool_call_id)
-		 VALUES (?, ?, ?, ?, NULLIF(?,  ''), NULLIF(?, ''))`,
-		msg.ID, msg.SessionID, msg.Role, msg.Content, msg.ToolCalls, msg.ToolCallID)
+		`INSERT INTO messages (id, session_id, role, content, thinking, tool_calls, tool_call_id)
+		 VALUES (?, ?, ?, ?, NULLIF(?,  ''), NULLIF(?,  ''), NULLIF(?, ''))`,
+		msg.ID, msg.SessionID, msg.Role, msg.Content, msg.Thinking, msg.ToolCalls, msg.ToolCallID)
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +142,7 @@ func (s *Store) AddMessage(ctx context.Context, msg Message) (*Message, error) {
 func (s *Store) GetMessages(ctx context.Context, sessionID string) ([]Message, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, session_id, role, content,
-		        COALESCE(tool_calls,''), COALESCE(tool_call_id,''), created_at
+		        COALESCE(thinking,''), COALESCE(tool_calls,''), COALESCE(tool_call_id,''), created_at
 		 FROM messages WHERE session_id = ? ORDER BY created_at ASC`, sessionID)
 	if err != nil {
 		return nil, err
@@ -152,7 +153,7 @@ func (s *Store) GetMessages(ctx context.Context, sessionID string) ([]Message, e
 	for rows.Next() {
 		var m Message
 		if err := rows.Scan(&m.ID, &m.SessionID, &m.Role, &m.Content,
-			&m.ToolCalls, &m.ToolCallID, &m.CreatedAt); err != nil {
+			&m.Thinking, &m.ToolCalls, &m.ToolCallID, &m.CreatedAt); err != nil {
 			return nil, err
 		}
 		msgs = append(msgs, m)

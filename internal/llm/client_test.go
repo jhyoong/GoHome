@@ -109,3 +109,36 @@ func TestStreamingUsage(t *testing.T) {
 		t.Errorf("usage: got (%d, %d, %d), want (10, 5, 15)", gotPrompt, gotCompletion, gotTotal)
 	}
 }
+
+func TestDeltaPredictionsField(t *testing.T) {
+	// Verify llm.Delta has Predictions field
+	var delta llm.Delta
+	// This should compile after Delta type exists with Predictions field
+	_ = delta.Predictions
+}
+
+func TestStreamingPredictions(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Write([]byte("data: {\"choices\":[{\"delta\":{\"predictions\":[{\"type\":\"content\",\"content\":\"thinking here\",\"content_index\":0}]}}]}\n\n"))
+		w.Write([]byte("data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"))
+		w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer srv.Close()
+
+	client := llm.NewClient(config.EndpointConfig{URL: srv.URL, Model: "test"})
+	var predictions []string
+	err := client.Stream(context.Background(), []llm.Message{{Role: "user", Content: "hello"}}, nil,
+		func(token string) {},
+		func(_ []llm.ToolCall) {},
+		func() {},
+		nil,
+		func(pred string) { predictions = append(predictions, pred) },
+	)
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+	if len(predictions) != 1 || predictions[0] != "thinking here" {
+		t.Errorf("predictions: got %v, want [thinking here]", predictions)
+	}
+}
