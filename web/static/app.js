@@ -6,6 +6,14 @@ const state = {
   awaitingApproval: null,
 };
 
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem('theme', theme);
+  if (dom.themeToggle) {
+    dom.themeToggle.textContent = theme === 'dark' ? 'Light' : 'Dark';
+  }
+}
+
 function isChainedShellCommand(cmd) {
   let inSingle = false, inDouble = false;
   for (let i = 0; i < cmd.length; i++) {
@@ -348,6 +356,7 @@ document.addEventListener('DOMContentLoaded', () => {
     approvalMainButtons: document.getElementById('approval-main-buttons'),
     contextUsage:     document.getElementById('context-usage'),
     contextUsageText: document.getElementById('context-usage-text'),
+    themeToggle:      document.getElementById('theme-toggle'),
   };
 
   document.getElementById('input-form').addEventListener('submit', (e) => {
@@ -448,6 +457,14 @@ document.addEventListener('DOMContentLoaded', () => {
   dom.alwaysAllowCancel.addEventListener('click', () => {
     dom.alwaysAllowEditor.hidden = true;
     dom.approvalMainButtons.hidden = false;
+  });
+
+  const savedTheme = localStorage.getItem('theme') ?? 'dark';
+  applyTheme(savedTheme);
+
+  dom.themeToggle.addEventListener('click', () => {
+    const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    applyTheme(next);
   });
 
   connect();
