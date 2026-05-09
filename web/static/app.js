@@ -14,6 +14,7 @@ function applyTheme(theme) {
 
 function resizeTextarea() {
   const el = dom.input;
+  if (!el) return;
   const style = window.getComputedStyle(el);
   const lineHeight = parseFloat(style.lineHeight);
   const paddingTop = parseFloat(style.paddingTop);
@@ -395,7 +396,7 @@ document.addEventListener('DOMContentLoaded', () => {
     dom.input.value = '';
     dom.input.style.height = '';
     dom.input.style.overflowY = 'hidden';
-    document.documentElement.style.setProperty('--input-bar-height', '57px');
+    resizeTextarea();
     setBusy(true);
     send({ type: 'message', session_id: activeSessionId, content });
   });
