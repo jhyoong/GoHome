@@ -75,7 +75,7 @@ func TestLoopUsageForwarded(t *testing.T) {
 	loop := agent.NewLoop(llm.NewClient(config.EndpointConfig{URL: srv.URL, Model: "test"}), tools.NewRegistry(), store, "")
 	broker := approval.NewBroker(config.ApprovalConfig{}, nil)
 
-	var gotPrompt, gotTotal int
+	var gotPrompt, gotCompletion, gotTotal int
 	err := loop.Run(ctx, sess.ID, "tab-1", "hello", broker,
 		func(tok string) {},
 		func(msg string) {},
@@ -83,14 +83,15 @@ func TestLoopUsageForwarded(t *testing.T) {
 		nil, // steerCh
 		func(prompt, completion, total int) {
 			gotPrompt = prompt
+			gotCompletion = completion
 			gotTotal = total
 		},
 	)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if gotPrompt != 20 || gotTotal != 23 {
-		t.Errorf("usage: got prompt=%d total=%d, want prompt=20 total=23", gotPrompt, gotTotal)
+	if gotPrompt != 20 || gotCompletion != 3 || gotTotal != 23 {
+		t.Errorf("usage: got prompt=%d completion=%d total=%d, want 20 3 23", gotPrompt, gotCompletion, gotTotal)
 	}
 }
 
@@ -309,7 +310,7 @@ func TestSteeringMessageInjected(t *testing.T) {
 	err := loop.Run(ctx, sess.ID, "tab-1", "hello", broker,
 		func(tok string) {},
 		func(msg string) {},
-		nil,
+		nil, // onToolResult
 		steerCh,
 		nil, // onUsage
 	)
