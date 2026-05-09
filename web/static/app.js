@@ -237,6 +237,7 @@ function showError(text) {
 }
 
 function updateContextUsage(msg) {
+  if (!msg.context_window) return;
   const used = Math.round(msg.prompt_tokens / 1000);
   const max = Math.round(msg.context_window / 1000);
   const pct = Math.round((msg.prompt_tokens / msg.context_window) * 100);
