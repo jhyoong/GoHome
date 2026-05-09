@@ -81,3 +81,50 @@ func TestSaveAndReload(t *testing.T) {
 		t.Errorf("got pattern %q, want %q", loaded.Approval.Whitelist[1].CommandPattern, "ls *")
 	}
 }
+
+func TestContextWindowDefault(t *testing.T) {
+	yaml := `
+endpoint:
+  url: "http://localhost:8080/v1"
+  model: "my-model"
+`
+	f, err := os.CreateTemp("", "config*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+	f.WriteString(yaml)
+	f.Close()
+
+	cfg, err := config.Load(f.Name())
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Endpoint.ContextWindow != 131072 {
+		t.Errorf("got ContextWindow %d, want 131072", cfg.Endpoint.ContextWindow)
+	}
+}
+
+func TestContextWindowExplicit(t *testing.T) {
+	yaml := `
+endpoint:
+  url: "http://localhost:8080/v1"
+  model: "my-model"
+  context_window: 65536
+`
+	f, err := os.CreateTemp("", "config*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+	f.WriteString(yaml)
+	f.Close()
+
+	cfg, err := config.Load(f.Name())
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Endpoint.ContextWindow != 65536 {
+		t.Errorf("got ContextWindow %d, want 65536", cfg.Endpoint.ContextWindow)
+	}
+}
