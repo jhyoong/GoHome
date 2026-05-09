@@ -74,7 +74,9 @@ func TestStreamingUsage(t *testing.T) {
 				IncludeUsage bool `json:"include_usage"`
 			} `json:"stream_options"`
 		}
-		json.NewDecoder(r.Body).Decode(&body)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
 		if body.StreamOptions == nil || !body.StreamOptions.IncludeUsage {
 			t.Error("stream_options.include_usage not set in request")
 		}
