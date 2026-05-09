@@ -9,9 +9,7 @@ const state = {
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
   localStorage.setItem('theme', theme);
-  if (dom.themeToggle) {
-    dom.themeToggle.textContent = theme === 'dark' ? 'Light' : 'Dark';
-  }
+  dom.themeToggle.textContent = theme === 'dark' ? 'Light' : 'Dark';
 }
 
 function isChainedShellCommand(cmd) {
