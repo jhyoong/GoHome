@@ -1,0 +1,6 @@
+1. Show thinking, with toggle on frontend by clicking on it. 
+2. Dark mode toggle.
+3. Context window tracker / token count and usage
+4. Tool call and thinking dropdown - possible to "preview" up to 5 lines of output?
+5. Tool call reject and provide input - to link with steering.
+6. Subagents
