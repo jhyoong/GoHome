@@ -272,8 +272,9 @@ function updateContextUsage(msg) {
 }
 
 function handleApprovalKeys(e) {
-  // Only suspend when the pattern text input itself has focus (user is typing)
+  // Suspend when typing in any text field (pattern input or main textarea)
   if (document.activeElement === dom.alwaysAllowPattern) return;
+  if (document.activeElement === dom.input) return;
 
   const buttons = dom.alwaysAllowEditor.hidden
     ? [dom.approvalAllow, dom.approvalDeny, dom.approvalAlwaysAllow].filter(btn => !btn.hidden)
@@ -309,6 +310,7 @@ function showApprovalModal(msg) {
   dom.alwaysAllowEditor.hidden = true;
   dom.approvalMainButtons.hidden = false;
   dom.approvalModal.hidden = false;
+  dom.input.blur();
   dom.input.disabled = true;
   dom.sendBtn.disabled = true;
   document.removeEventListener('keydown', handleApprovalKeys);
@@ -497,5 +499,6 @@ document.addEventListener('DOMContentLoaded', () => {
     applyTheme(next);
   });
 
+  resizeTextarea();
   connect();
 });
