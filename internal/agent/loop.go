@@ -31,6 +31,7 @@ func (l *Loop) Run(ctx context.Context, sessionID, tabID, userMessage string,
 	onError func(string),
 	onToolResult func(tool, params, result string, approved bool),
 	steerCh <-chan string,
+	onUsage func(prompt, completion, total int),
 ) error {
 
 	msgs, err := l.store.GetMessages(ctx, sessionID)
@@ -81,7 +82,7 @@ func (l *Loop) Run(ctx context.Context, sessionID, tabID, userMessage string,
 			tokenCollector,
 			func(tcs []llm.ToolCall) { toolCalls = tcs; gotToolCalls = true },
 			nil,
-			nil, // onUsage: not yet wired (Task 3)
+			onUsage,
 		)
 		if err != nil {
 			return fmt.Errorf("LLM stream: %w", err)
