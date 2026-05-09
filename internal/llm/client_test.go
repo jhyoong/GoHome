@@ -49,6 +49,7 @@ func TestStreamingTokens(t *testing.T) {
 		func(token string) { tokens = append(tokens, token) },
 		func(_ []llm.ToolCall) {},
 		func() { doneCalled = true },
+		nil, // onUsage
 	)
 	if err != nil {
 		t.Fatalf("Stream: %v", err)
@@ -62,5 +63,49 @@ func TestStreamingTokens(t *testing.T) {
 	}
 	if !doneCalled {
 		t.Error("onDone not called")
+	}
+}
+
+func TestStreamingUsage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify stream_options was sent
+		var body struct {
+			StreamOptions *struct {
+				IncludeUsage bool `json:"include_usage"`
+			} `json:"stream_options"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if body.StreamOptions == nil || !body.StreamOptions.IncludeUsage {
+			t.Error("stream_options.include_usage not set in request")
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"hi\"},\"finish_reason\":null}]}\n\n"))
+		w.Write([]byte("data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"))
+		// Usage chunk: empty choices, usage field present
+		w.Write([]byte("data: {\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5,\"total_tokens\":15}}\n\n"))
+		w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer srv.Close()
+
+	client := llm.NewClient(config.EndpointConfig{URL: srv.URL, Model: "test"})
+	var gotPrompt, gotCompletion, gotTotal int
+	err := client.Stream(context.Background(), []llm.Message{{Role: "user", Content: "hello"}}, nil,
+		func(token string) {},
+		func(_ []llm.ToolCall) {},
+		func() {},
+		func(prompt, completion, total int) {
+			gotPrompt = prompt
+			gotCompletion = completion
+			gotTotal = total
+		},
+	)
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+	if gotPrompt != 10 || gotCompletion != 5 || gotTotal != 15 {
+		t.Errorf("usage: got (%d, %d, %d), want (10, 5, 15)", gotPrompt, gotCompletion, gotTotal)
 	}
 }

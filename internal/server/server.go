@@ -23,11 +23,12 @@ const (
 )
 
 type Config struct {
-	Store      *session.Store
-	Loop       *agent.Loop
-	Approval   config.ApprovalConfig
-	FullConfig *config.Config // pointer to full config for persisting whitelist; set to nil to disable disk writes
-	ConfigPath string         // original path for saving, e.g. "~/.gohome/config.yaml"
+	Store         *session.Store
+	Loop          *agent.Loop
+	Approval      config.ApprovalConfig
+	FullConfig    *config.Config // pointer to full config for persisting whitelist; set to nil to disable disk writes
+	ConfigPath    string         // original path for saving, e.g. "~/.gohome/config.yaml"
+	ContextWindow int            // max context window in tokens
 }
 
 type Server struct {
@@ -105,18 +106,21 @@ type inMsg struct {
 }
 
 type outMsg struct {
-	Type      string          `json:"type"`
-	Data      any             `json:"data,omitempty"`
-	RequestID string          `json:"request_id,omitempty"`
-	Tool      string          `json:"tool,omitempty"`
-	Params    json.RawMessage `json:"params,omitempty"`
-	Result    string          `json:"result,omitempty"`
-	Approved  bool            `json:"approved,omitempty"`
-	Message   string          `json:"message,omitempty"`
-	MessageID string          `json:"message_id,omitempty"`
-	SessionID string          `json:"session_id,omitempty"`
-	Messages  any             `json:"messages,omitempty"`
-	ping      bool
+	Type             string          `json:"type"`
+	Data             any             `json:"data,omitempty"`
+	RequestID        string          `json:"request_id,omitempty"`
+	Tool             string          `json:"tool,omitempty"`
+	Params           json.RawMessage `json:"params,omitempty"`
+	Result           string          `json:"result,omitempty"`
+	Approved         bool            `json:"approved,omitempty"`
+	Message          string          `json:"message,omitempty"`
+	MessageID        string          `json:"message_id,omitempty"`
+	SessionID        string          `json:"session_id,omitempty"`
+	Messages         any             `json:"messages,omitempty"`
+	PromptTokens     int             `json:"prompt_tokens,omitempty"`
+	CompletionTokens int             `json:"completion_tokens,omitempty"`
+	ContextWindow    int             `json:"context_window,omitempty"`
+	ping             bool
 }
 
 type wsConn struct {
@@ -361,6 +365,7 @@ func (wc *wsConn) dispatcher(ctx context.Context) {
 }
 
 func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string, steerCh chan string, isNew bool) {
+	contextWindow := wc.server.cfg.ContextWindow
 	defer func() {
 		wc.mu.Lock()
 		wc.running = false
@@ -384,6 +389,14 @@ func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string, steer
 			})
 		},
 		steerCh,
+		func(prompt, completion, total int) {
+			wc.send(outMsg{
+				Type:             "usage",
+				PromptTokens:     prompt,
+				CompletionTokens: completion,
+				ContextWindow:    contextWindow,
+			})
+		},
 	)
 	if err != nil {
 		if ctx.Err() == nil {

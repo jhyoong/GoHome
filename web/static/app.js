@@ -6,6 +6,32 @@ const state = {
   awaitingApproval: null,
 };
 
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem('theme', theme);
+  dom.themeToggle.textContent = theme === 'dark' ? 'Light' : 'Dark';
+}
+
+function resizeTextarea() {
+  const el = dom.input;
+  if (!el) return;
+  const style = window.getComputedStyle(el);
+  const lineHeight = parseFloat(style.lineHeight);
+  const paddingTop = parseFloat(style.paddingTop);
+  const paddingBottom = parseFloat(style.paddingBottom);
+  const maxHeight = lineHeight * 5 + paddingTop + paddingBottom;
+
+  el.style.height = 'auto';
+  const next = Math.min(el.scrollHeight, maxHeight);
+  el.style.height = next + 'px';
+  el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden';
+
+  document.documentElement.style.setProperty(
+    '--input-bar-height',
+    dom.inputForm.offsetHeight + 'px'
+  );
+}
+
 function isChainedShellCommand(cmd) {
   let inSingle = false, inDouble = false;
   for (let i = 0; i < cmd.length; i++) {
@@ -66,6 +92,7 @@ function connect() {
       case 'done':          finalizeStream(msg.message_id); break;
       case 'stopped':       clearStream(); break;
       case 'error':         showError(msg.message); break;
+      case 'usage':         updateContextUsage(msg); break;
     }
   };
 
@@ -98,6 +125,8 @@ function onHistory(msg) {
   dom.messages.innerHTML = state.messages.map(msgHtml).join('');
   scrollToBottom();
   renderSessions(state.sessions);
+  dom.contextUsage.hidden = true;
+  dom.contextUsageText.textContent = '';
 }
 
 function msgHtml(msg) {
@@ -233,22 +262,40 @@ function showError(text) {
   setBusy(false);
 }
 
+function updateContextUsage(msg) {
+  if (!msg.context_window) return;
+  const used = Math.round(msg.prompt_tokens / 1000);
+  const max = Math.round(msg.context_window / 1000);
+  const pct = Math.round((msg.prompt_tokens / msg.context_window) * 100);
+  dom.contextUsageText.textContent = `${used}k / ${max}k (${pct}%)`;
+  dom.contextUsage.hidden = false;
+}
+
 function handleApprovalKeys(e) {
-  // Only suspend when the pattern text input itself has focus (user is typing)
+  // Suspend when typing in any text field (pattern input or main textarea)
   if (document.activeElement === dom.alwaysAllowPattern) return;
+  if (document.activeElement === dom.input) return;
 
   const buttons = dom.alwaysAllowEditor.hidden
-    ? [dom.approvalAllow, dom.approvalDeny, dom.approvalAlwaysAllow].filter(btn => !btn.hidden)
+    ? [dom.approvalAllow, dom.approvalAlwaysAllow, dom.approvalDeny].filter(btn => !btn.hidden)
     : [dom.alwaysAllowConfirm, dom.alwaysAllowCancel];
 
   const idx = buttons.indexOf(document.activeElement);
 
   if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-    e.preventDefault();
-    buttons[(idx + 1) % buttons.length].focus();
+    // Don't wrap - stop at the last button
+    const nextIdx = idx === -1 ? 0 : idx + 1;
+    if (nextIdx < buttons.length) {
+      e.preventDefault();
+      buttons[nextIdx].focus();
+    }
   } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-    e.preventDefault();
-    buttons[(idx - 1 + buttons.length) % buttons.length].focus();
+    // Don't wrap - stop at the first button
+    const nextIdx = idx - 1;
+    if (nextIdx >= 0) {
+      e.preventDefault();
+      buttons[nextIdx].focus();
+    }
   } else if (e.key === 'Escape') {
     e.preventDefault();
     if (!dom.alwaysAllowEditor.hidden) {
@@ -271,6 +318,7 @@ function showApprovalModal(msg) {
   dom.alwaysAllowEditor.hidden = true;
   dom.approvalMainButtons.hidden = false;
   dom.approvalModal.hidden = false;
+  dom.input.blur();
   dom.input.disabled = true;
   dom.sendBtn.disabled = true;
   document.removeEventListener('keydown', handleApprovalKeys);
@@ -334,6 +382,10 @@ document.addEventListener('DOMContentLoaded', () => {
     alwaysAllowConfirm:  document.getElementById('always-allow-confirm'),
     alwaysAllowCancel:   document.getElementById('always-allow-cancel'),
     approvalMainButtons: document.getElementById('approval-main-buttons'),
+    contextUsage:     document.getElementById('context-usage'),
+    contextUsageText: document.getElementById('context-usage-text'),
+    themeToggle:      document.getElementById('theme-toggle'),
+    inputForm:        document.getElementById('input-form'),
   };
 
   document.getElementById('input-form').addEventListener('submit', (e) => {
@@ -352,12 +404,23 @@ document.addEventListener('DOMContentLoaded', () => {
     dom.messages.appendChild(wrapper.firstElementChild);
     scrollToBottom();
     dom.input.value = '';
+    dom.input.style.height = '';
+    dom.input.style.overflowY = 'hidden';
+    resizeTextarea();
     setBusy(true);
     send({ type: 'message', session_id: activeSessionId, content });
   });
 
   dom.input.addEventListener('input', () => {
     dom.sendBtn.disabled = state.busy || !dom.input.value.trim() || !!state.awaitingApproval;
+    resizeTextarea();
+  });
+
+  dom.input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      dom.inputForm.requestSubmit();
+    }
   });
 
   dom.stopBtn.addEventListener('click', () => send({ type: 'stop' }));
@@ -366,6 +429,8 @@ document.addEventListener('DOMContentLoaded', () => {
     activeSessionId = null;
     state.messages = [];
     dom.messages.innerHTML = '';
+    dom.contextUsage.hidden = true;
+    dom.contextUsageText.textContent = '';
     renderSessions(state.sessions);
   });
 
@@ -434,5 +499,14 @@ document.addEventListener('DOMContentLoaded', () => {
     dom.approvalMainButtons.hidden = false;
   });
 
+  const savedTheme = localStorage.getItem('theme') ?? 'dark';
+  applyTheme(savedTheme);
+
+  dom.themeToggle.addEventListener('click', () => {
+    const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    applyTheme(next);
+  });
+
+  resizeTextarea();
   connect();
 });

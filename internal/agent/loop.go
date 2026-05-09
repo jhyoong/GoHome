@@ -31,6 +31,7 @@ func (l *Loop) Run(ctx context.Context, sessionID, tabID, userMessage string,
 	onError func(string),
 	onToolResult func(tool, params, result string, approved bool),
 	steerCh <-chan string,
+	onUsage func(prompt, completion, total int),
 ) error {
 
 	msgs, err := l.store.GetMessages(ctx, sessionID)
@@ -81,6 +82,7 @@ func (l *Loop) Run(ctx context.Context, sessionID, tabID, userMessage string,
 			tokenCollector,
 			func(tcs []llm.ToolCall) { toolCalls = tcs; gotToolCalls = true },
 			nil,
+			onUsage,
 		)
 		if err != nil {
 			return fmt.Errorf("LLM stream: %w", err)
@@ -188,6 +190,7 @@ func (l *Loop) GenerateTitle(ctx context.Context, message string) (string, error
 		func(token string) { sb.WriteString(token) },
 		func(_ []llm.ToolCall) {},
 		nil,
+		nil, // onUsage: intentionally nil, title generation does not need token accounting
 	)
 	if err != nil {
 		return "", err
