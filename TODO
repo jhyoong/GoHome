@@ -1,6 +1,13 @@
 1. Show thinking, with toggle on frontend by clicking on it. 
-2. Dark mode toggle.
-3. Context window tracker / token count and usage
+~~2. Dark mode toggle.~~
+~~3. Context window tracker / token count and usage~~
 4. Tool call and thinking dropdown - possible to "preview" up to 5 lines of output?
 5. Tool call reject and provide input - to link with steering.
 6. Subagents
+~~7. Shift+Enter to create newline in text input.~~
+8. Copy button on assistant response?
+9. Docker package instructions, and update README with main goal/reason of this project.
+10. Multiple model configs and frontend changes to select model 
+11. YOLO mode
+12. General vs software dev mode ( after subagents )
+13. Markdown rendering
