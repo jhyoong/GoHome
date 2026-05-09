@@ -12,6 +12,25 @@ function applyTheme(theme) {
   dom.themeToggle.textContent = theme === 'dark' ? 'Light' : 'Dark';
 }
 
+function resizeTextarea() {
+  const el = dom.input;
+  const style = window.getComputedStyle(el);
+  const lineHeight = parseFloat(style.lineHeight);
+  const paddingTop = parseFloat(style.paddingTop);
+  const paddingBottom = parseFloat(style.paddingBottom);
+  const maxHeight = lineHeight * 5 + paddingTop + paddingBottom;
+
+  el.style.height = 'auto';
+  const next = Math.min(el.scrollHeight, maxHeight);
+  el.style.height = next + 'px';
+  el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden';
+
+  document.documentElement.style.setProperty(
+    '--input-bar-height',
+    dom.inputForm.offsetHeight + 'px'
+  );
+}
+
 function isChainedShellCommand(cmd) {
   let inSingle = false, inDouble = false;
   for (let i = 0; i < cmd.length; i++) {
@@ -355,6 +374,7 @@ document.addEventListener('DOMContentLoaded', () => {
     contextUsage:     document.getElementById('context-usage'),
     contextUsageText: document.getElementById('context-usage-text'),
     themeToggle:      document.getElementById('theme-toggle'),
+    inputForm:        document.getElementById('input-form'),
   };
 
   document.getElementById('input-form').addEventListener('submit', (e) => {
@@ -373,12 +393,23 @@ document.addEventListener('DOMContentLoaded', () => {
     dom.messages.appendChild(wrapper.firstElementChild);
     scrollToBottom();
     dom.input.value = '';
+    dom.input.style.height = '';
+    dom.input.style.overflowY = 'hidden';
+    document.documentElement.style.setProperty('--input-bar-height', '57px');
     setBusy(true);
     send({ type: 'message', session_id: activeSessionId, content });
   });
 
   dom.input.addEventListener('input', () => {
     dom.sendBtn.disabled = state.busy || !dom.input.value.trim() || !!state.awaitingApproval;
+    resizeTextarea();
+  });
+
+  dom.input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      dom.inputForm.requestSubmit();
+    }
   });
 
   dom.stopBtn.addEventListener('click', () => send({ type: 'stop' }));
