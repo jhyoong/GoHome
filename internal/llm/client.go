@@ -53,13 +53,18 @@ func (c *Client) setAuth(req *http.Request) {
 	}
 }
 
+type streamOptions struct {
+	IncludeUsage bool `json:"include_usage"`
+}
+
 type reqBody struct {
-	Model       string        `json:"model"`
-	Messages    []Message     `json:"messages"`
-	Tools       []interface{} `json:"tools,omitempty"`
-	Stream      bool          `json:"stream"`
-	MaxTokens   int           `json:"max_tokens,omitempty"`
-	Temperature float64       `json:"temperature,omitempty"`
+	Model         string         `json:"model"`
+	Messages      []Message      `json:"messages"`
+	Tools         []interface{}  `json:"tools,omitempty"`
+	Stream        bool           `json:"stream"`
+	MaxTokens     int            `json:"max_tokens,omitempty"`
+	Temperature   float64        `json:"temperature,omitempty"`
+	StreamOptions *streamOptions `json:"stream_options,omitempty"`
 }
 
 func (c *Client) Complete(ctx context.Context, messages []Message, tools []interface{}) (*Response, error) {
@@ -107,11 +112,14 @@ func (c *Client) Complete(ctx context.Context, messages []Message, tools []inter
 }
 
 func (c *Client) Stream(ctx context.Context, messages []Message, tools []interface{},
-	onToken func(string), onToolCalls func([]ToolCall), onDone func()) error {
+	onToken func(string), onToolCalls func([]ToolCall), onDone func(),
+	onUsage func(promptTokens, completionTokens, totalTokens int),
+) error {
 
 	body := reqBody{
 		Model: c.cfg.Model, Messages: messages, Tools: tools,
 		Stream: true, MaxTokens: c.cfg.MaxTokens, Temperature: c.cfg.Temperature,
+		StreamOptions: &streamOptions{IncludeUsage: true},
 	}
 	data, _ := json.Marshal(body)
 	req, err := http.NewRequestWithContext(ctx, "POST", c.cfg.URL+"/chat/completions", bytes.NewReader(data))
@@ -163,8 +171,17 @@ func (c *Client) Stream(ctx context.Context, messages []Message, tools []interfa
 				} `json:"delta"`
 				FinishReason *string `json:"finish_reason"`
 			} `json:"choices"`
+			Usage *struct {
+				PromptTokens     int `json:"prompt_tokens"`
+				CompletionTokens int `json:"completion_tokens"`
+				TotalTokens      int `json:"total_tokens"`
+			} `json:"usage"`
 		}
 		if err := json.Unmarshal([]byte(payload), &chunk); err != nil {
+			continue
+		}
+		if len(chunk.Choices) == 0 && chunk.Usage != nil && onUsage != nil {
+			onUsage(chunk.Usage.PromptTokens, chunk.Usage.CompletionTokens, chunk.Usage.TotalTokens)
 			continue
 		}
 		if len(chunk.Choices) == 0 {

@@ -81,6 +81,7 @@ func (l *Loop) Run(ctx context.Context, sessionID, tabID, userMessage string,
 			tokenCollector,
 			func(tcs []llm.ToolCall) { toolCalls = tcs; gotToolCalls = true },
 			nil,
+			nil, // onUsage: not yet wired (Task 3)
 		)
 		if err != nil {
 			return fmt.Errorf("LLM stream: %w", err)
@@ -188,6 +189,7 @@ func (l *Loop) GenerateTitle(ctx context.Context, message string) (string, error
 		func(token string) { sb.WriteString(token) },
 		func(_ []llm.ToolCall) {},
 		nil,
+		nil, // onUsage: not yet wired (Task 3)
 	)
 	if err != nil {
 		return "", err
