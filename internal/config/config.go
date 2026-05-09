@@ -10,11 +10,12 @@ import (
 )
 
 type EndpointConfig struct {
-	URL         string  `yaml:"url"`
-	APIKey      string  `yaml:"api_key"`
-	Model       string  `yaml:"model"`
-	MaxTokens   int     `yaml:"max_tokens"`
-	Temperature float64 `yaml:"temperature"`
+	URL           string  `yaml:"url"`
+	APIKey        string  `yaml:"api_key"`
+	Model         string  `yaml:"model"`
+	MaxTokens     int     `yaml:"max_tokens"`
+	Temperature   float64 `yaml:"temperature"`
+	ContextWindow int     `yaml:"context_window"`
 }
 
 type ServerConfig struct {
@@ -82,6 +83,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Server.Port == 0 {
 		cfg.Server.Port = 3000
+	}
+	if cfg.Endpoint.ContextWindow == 0 {
+		cfg.Endpoint.ContextWindow = 131072
 	}
 
 	return &cfg, nil
