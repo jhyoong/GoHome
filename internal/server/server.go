@@ -365,6 +365,7 @@ func (wc *wsConn) dispatcher(ctx context.Context) {
 }
 
 func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string, steerCh chan string, isNew bool) {
+	contextWindow := wc.server.cfg.ContextWindow
 	defer func() {
 		wc.mu.Lock()
 		wc.running = false
@@ -393,7 +394,7 @@ func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string, steer
 				Type:             "usage",
 				PromptTokens:     prompt,
 				CompletionTokens: completion,
-				ContextWindow:    wc.server.cfg.ContextWindow,
+				ContextWindow:    contextWindow,
 			})
 		},
 	)
