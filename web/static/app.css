@@ -353,6 +353,8 @@ body {
   font-family: monospace;
   font-size: 13px;
   margin-bottom: 4px;
+  background: var(--color-surface);
+  color: var(--color-fg);
 }
 
 .btn-theme {
