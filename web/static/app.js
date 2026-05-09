@@ -277,17 +277,25 @@ function handleApprovalKeys(e) {
   if (document.activeElement === dom.input) return;
 
   const buttons = dom.alwaysAllowEditor.hidden
-    ? [dom.approvalAllow, dom.approvalDeny, dom.approvalAlwaysAllow].filter(btn => !btn.hidden)
+    ? [dom.approvalAllow, dom.approvalAlwaysAllow, dom.approvalDeny].filter(btn => !btn.hidden)
     : [dom.alwaysAllowConfirm, dom.alwaysAllowCancel];
 
   const idx = buttons.indexOf(document.activeElement);
 
   if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-    e.preventDefault();
-    buttons[(idx + 1) % buttons.length].focus();
+    // Don't wrap - stop at the last button
+    const nextIdx = idx === -1 ? 0 : idx + 1;
+    if (nextIdx < buttons.length) {
+      e.preventDefault();
+      buttons[nextIdx].focus();
+    }
   } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-    e.preventDefault();
-    buttons[(idx - 1 + buttons.length) % buttons.length].focus();
+    // Don't wrap - stop at the first button
+    const nextIdx = idx - 1;
+    if (nextIdx >= 0) {
+      e.preventDefault();
+      buttons[nextIdx].focus();
+    }
   } else if (e.key === 'Escape') {
     e.preventDefault();
     if (!dom.alwaysAllowEditor.hidden) {

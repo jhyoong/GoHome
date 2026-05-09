@@ -333,7 +333,7 @@ body {
 .btn-allow:focus,
 .btn-deny:focus,
 .btn-always-allow:focus {
-  outline: 3px solid #1e1e2e;
+  outline: 3px solid #89b4fa;
   outline-offset: 2px;
 }
 
