@@ -313,3 +313,11 @@ body {
   font-size: 13px;
   margin-bottom: 4px;
 }
+
+.context-usage {
+  text-align: right;
+  padding: 2px 8px 4px;
+  font-size: 0.72rem;
+  color: #888;
+  user-select: none;
+}

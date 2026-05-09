@@ -66,6 +66,7 @@ function connect() {
       case 'done':          finalizeStream(msg.message_id); break;
       case 'stopped':       clearStream(); break;
       case 'error':         showError(msg.message); break;
+      case 'usage':         updateContextUsage(msg); break;
     }
   };
 
@@ -98,6 +99,8 @@ function onHistory(msg) {
   dom.messages.innerHTML = state.messages.map(msgHtml).join('');
   scrollToBottom();
   renderSessions(state.sessions);
+  dom.contextUsage.hidden = true;
+  dom.contextUsageText.textContent = '';
 }
 
 function msgHtml(msg) {
@@ -233,6 +236,14 @@ function showError(text) {
   setBusy(false);
 }
 
+function updateContextUsage(msg) {
+  const used = Math.round(msg.prompt_tokens / 1000);
+  const max = Math.round(msg.context_window / 1000);
+  const pct = Math.round((msg.prompt_tokens / msg.context_window) * 100);
+  dom.contextUsageText.textContent = `${used}k / ${max}k (${pct}%)`;
+  dom.contextUsage.hidden = false;
+}
+
 function handleApprovalKeys(e) {
   // Only suspend when the pattern text input itself has focus (user is typing)
   if (document.activeElement === dom.alwaysAllowPattern) return;
@@ -334,6 +345,8 @@ document.addEventListener('DOMContentLoaded', () => {
     alwaysAllowConfirm:  document.getElementById('always-allow-confirm'),
     alwaysAllowCancel:   document.getElementById('always-allow-cancel'),
     approvalMainButtons: document.getElementById('approval-main-buttons'),
+    contextUsage:     document.getElementById('context-usage'),
+    contextUsageText: document.getElementById('context-usage-text'),
   };
 
   document.getElementById('input-form').addEventListener('submit', (e) => {
@@ -366,6 +379,8 @@ document.addEventListener('DOMContentLoaded', () => {
     activeSessionId = null;
     state.messages = [];
     dom.messages.innerHTML = '';
+    dom.contextUsage.hidden = true;
+    dom.contextUsageText.textContent = '';
     renderSessions(state.sessions);
   });
 
