@@ -106,11 +106,12 @@ func main() {
 	loop := agent.NewLoop(llmClient, reg, store, cfg.SystemPrompt)
 
 	srv := server.New(server.Config{
-		Store:      store,
-		Loop:       loop,
-		Approval:   cfg.Approval,
-		FullConfig: cfg,
-		ConfigPath: *configPath,
+		Store:         store,
+		Loop:          loop,
+		Approval:      cfg.Approval,
+		FullConfig:    cfg,
+		ConfigPath:    *configPath,
+		ContextWindow: cfg.Endpoint.ContextWindow,
 	})
 
 	staticFS, err := fs.Sub(gohome.WebStatic, "web/static")
