@@ -3,6 +3,7 @@ package agent_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -48,6 +49,51 @@ func sseText(content string) string {
 	}, "\n\n")
 }
 
+func sseTextWithUsage(content string, prompt, completion, total int) string {
+	usageJSON := fmt.Sprintf(`{"prompt_tokens":%d,"completion_tokens":%d,"total_tokens":%d}`, prompt, completion, total)
+	return strings.Join([]string{
+		`data: {"choices":[{"delta":{"content":"` + content + `"},"finish_reason":null}]}`,
+		`data: {"choices":[{"delta":{},"finish_reason":"stop"}]}`,
+		`data: {"choices":[],"usage":` + usageJSON + `}`,
+		`data: [DONE]`,
+		"",
+	}, "\n\n")
+}
+
+func TestLoopUsageForwarded(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Write([]byte(sseTextWithUsage("hello", 20, 3, 23)))
+	}))
+	defer srv.Close()
+
+	store, _ := session.Open(t.TempDir() + "/test.db")
+	defer store.Close()
+	ctx := context.Background()
+	sess, _ := store.CreateSession(ctx)
+
+	loop := agent.NewLoop(llm.NewClient(config.EndpointConfig{URL: srv.URL, Model: "test"}), tools.NewRegistry(), store, "")
+	broker := approval.NewBroker(config.ApprovalConfig{}, nil)
+
+	var gotPrompt, gotTotal int
+	err := loop.Run(ctx, sess.ID, "tab-1", "hello", broker,
+		func(tok string) {},
+		func(msg string) {},
+		nil, // onToolResult
+		nil, // steerCh
+		func(prompt, completion, total int) {
+			gotPrompt = prompt
+			gotTotal = total
+		},
+	)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if gotPrompt != 20 || gotTotal != 23 {
+		t.Errorf("usage: got prompt=%d total=%d, want prompt=20 total=23", gotPrompt, gotTotal)
+	}
+}
+
 func TestSimpleMessageRoundtrip(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -71,6 +117,7 @@ func TestSimpleMessageRoundtrip(t *testing.T) {
 		func(msg string) {},
 		nil, // onToolResult
 		nil, // steerCh
+		nil, // onUsage
 	)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -122,7 +169,8 @@ func TestOnToolResultCallback(t *testing.T) {
 			gotResult = result
 			gotApproved = approved
 		},
-		nil,
+		nil, // steerCh
+		nil, // onUsage
 	)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -263,6 +311,7 @@ func TestSteeringMessageInjected(t *testing.T) {
 		func(msg string) {},
 		nil,
 		steerCh,
+		nil, // onUsage
 	)
 	if err != nil {
 		t.Fatalf("Run: %v", err)

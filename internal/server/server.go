@@ -384,6 +384,7 @@ func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string, steer
 			})
 		},
 		steerCh,
+		nil, // onUsage: wired in Task 4
 	)
 	if err != nil {
 		if ctx.Err() == nil {
