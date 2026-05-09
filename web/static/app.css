@@ -188,16 +188,22 @@ body {
   background: var(--color-surface);
 }
 
-.input-bar input {
+.input-bar textarea {
   flex: 1;
   padding: 8px 12px;
   border: 1px solid var(--color-input-border);
   border-radius: 6px;
   font-size: 14px;
+  font-family: inherit;
+  line-height: 1.4;
   outline: none;
+  resize: none;
+  overflow-y: hidden;
+  background: transparent;
+  color: inherit;
 }
 
-.input-bar input:focus { border-color: #89b4fa; }
+.input-bar textarea:focus { border-color: #89b4fa; }
 
 .input-bar button {
   padding: 8px 16px;
