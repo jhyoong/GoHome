@@ -376,6 +376,10 @@ func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string, steer
 	if wc.loop == nil {
 		return
 	}
+	onThinking := func(token string) {
+		wc.send(outMsg{Type: "thinking_token", Data: token})
+	}
+
 	err := wc.loop.Run(ctx, sessionID, wc.tabID, content, wc.broker,
 		func(token string) { wc.send(outMsg{Type: "token", Data: token}) },
 		func(errMsg string) { wc.send(outMsg{Type: "error", Message: errMsg}) },
@@ -397,6 +401,7 @@ func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string, steer
 				ContextWindow:    contextWindow,
 			})
 		},
+		onThinking,
 	)
 	if err != nil {
 		if ctx.Err() == nil {

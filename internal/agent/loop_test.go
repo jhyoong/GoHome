@@ -86,6 +86,7 @@ func TestLoopUsageForwarded(t *testing.T) {
 			gotCompletion = completion
 			gotTotal = total
 		},
+		nil, // onThinking
 	)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -119,6 +120,7 @@ func TestSimpleMessageRoundtrip(t *testing.T) {
 		nil, // onToolResult
 		nil, // steerCh
 		nil, // onUsage
+		nil, // onThinking
 	)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -172,6 +174,7 @@ func TestOnToolResultCallback(t *testing.T) {
 		},
 		nil, // steerCh
 		nil, // onUsage
+		nil, // onThinking
 	)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -313,6 +316,7 @@ func TestSteeringMessageInjected(t *testing.T) {
 		nil, // onToolResult
 		steerCh,
 		nil, // onUsage
+		nil, // onThinking
 	)
 	if err != nil {
 		t.Fatalf("Run: %v", err)

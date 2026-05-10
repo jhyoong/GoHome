@@ -4,6 +4,7 @@ const state = {
   messages: [],
   busy: false,
   awaitingApproval: null,
+  thinkingVisible: false,
 };
 
 function applyTheme(theme) {
@@ -53,11 +54,12 @@ function suggestPattern(cmd) {
 let activeSessionId = null;
 let ws = null;
 let streamingEl = null;
+let streamingThinkingEl = null;
 const tabID = crypto.randomUUID();
 let retryDelay = 1000;
 
-// DOM refs — populated after DOMContentLoaded
-let dom = {};
+// DOM refs — populated after DOMContentLoaded (use global to allow test setup)
+var dom = {};
 
 // ---- WebSocket ----
 
@@ -82,6 +84,7 @@ function connect() {
     const msg = JSON.parse(e.data);
     switch (msg.type) {
       case 'token':         appendToken(msg.data); break;
+      case 'thinking_token': handleThinkingToken(msg.data); break;
       case 'sessions':      renderSessions(msg.data); break;
       case 'history':       onHistory(msg); break;
       case 'session_created':
@@ -131,12 +134,14 @@ function onHistory(msg) {
 
 function msgHtml(msg) {
   const toolBlocks = (msg.tool_results || []).map(toolCallBlockHtml).join('');
+  const thinkingItems = Array.isArray(msg.thinking) ? msg.thinking : (msg.thinking ? [msg.thinking] : []);
+  const thinkingBlocks = thinkingItems.map(thinkingBlockHtml).join('');
   const text = (msg.content || '').trim();
   const content = text ? `<div class="message-content">${escHtml(text)}</div>` : '';
   return `
     <div class="message message-${escHtml(msg.role)}">
       <div class="message-role">${escHtml(msg.role)}</div>
-      ${content}${toolBlocks}
+      ${content}${thinkingBlocks}${toolBlocks}
     </div>
   `;
 }
@@ -161,6 +166,55 @@ function toolCallBlockHtml(tr) {
   `;
 }
 
+function thinkingBlockHtml(thinking) {
+  return `
+    <div class="thinking-block">
+      <button class="thinking-header" data-thinking-toggle onclick="var body=this.parentElement.querySelector('.thinking-body');var toggle=this.querySelector('.thinking-toggle');if(body&&toggle){var nowExpanded=body.hidden;body.hidden=!nowExpanded;toggle.textContent=nowExpanded?'▲':'▼'}">
+        <span class="thinking-label">Thinking</span>
+        <span class="thinking-toggle">▼</span>
+      </button>
+      <div class="thinking-body" hidden>${escHtml(thinking)}</div>
+    </div>
+  `;
+}
+
+function handleThinkingToken(text) {
+  // Find or create message element and thinking div
+  let messageEl = null;
+  let thinkingEl = dom.messages.querySelector('.message-thinking');
+
+  if (thinkingEl) {
+    // Found existing thinking div - check if parent has .message class
+    const parentEl = thinkingEl.parentElement;
+    if (parentEl && parentEl.classList.contains('message')) {
+      // Parent has .message class - reuse it
+      messageEl = parentEl;
+    } else {
+      // Parent doesn't have .message class - use thinking element itself as message
+      messageEl = parentEl;
+    }
+  }
+
+  if (!messageEl) {
+    // No existing message - create new one
+    messageEl = document.createElement('div');
+    messageEl.className = 'message message-assistant';
+    messageEl.innerHTML = '<div class="message-role">assistant</div><div class="message-content"></div>';
+    dom.messages.appendChild(messageEl);
+  }
+
+  if (!thinkingEl) {
+    thinkingEl = document.createElement('div');
+    thinkingEl.className = 'message-thinking';
+    messageEl.appendChild(thinkingEl);
+  }
+
+  streamingEl = messageEl;
+  streamingThinkingEl = thinkingEl;
+  streamingThinkingEl.textContent += text;
+  scrollToBottom();
+}
+
 // ---- Streaming ----
 
 function appendToken(text) {
@@ -178,13 +232,17 @@ function appendToken(text) {
 function finalizeStream(messageId) {
   if (streamingEl) {
     const content = streamingEl.querySelector('.message-content').textContent.trim();
-    if (content) {
+    const thinkingContent = streamingThinkingEl ? streamingThinkingEl.textContent.trim() : '';
+    if (content || thinkingContent) {
       const msg = {
         id: messageId || crypto.randomUUID(),
         role: 'assistant',
         content,
         created_at: new Date().toISOString(),
       };
+      if (thinkingContent) {
+        msg.thinking = [thinkingContent];
+      }
       state.messages.push(msg);
       const wrapper = document.createElement('div');
       wrapper.innerHTML = msgHtml(msg);
@@ -193,6 +251,8 @@ function finalizeStream(messageId) {
       streamingEl.remove();
     }
     streamingEl = null;
+    streamingThinkingEl = null;
+    state.thinkingVisible = false;
   }
   setBusy(false);
 }
@@ -206,6 +266,8 @@ function clearStreamEl() {
   if (streamingEl) {
     streamingEl.remove();
     streamingEl = null;
+    streamingThinkingEl = null;
+    state.thinkingVisible = false;
   }
 }
 
@@ -360,7 +422,8 @@ function scrollToBottom() {
 
 // ---- Boot ----
 
-document.addEventListener('DOMContentLoaded', () => {
+// Extract init code into a function so it can be called immediately if document is ready
+function initApp() {
   dom = {
     sessionList:    document.getElementById('session-list'),
     messages:       document.getElementById('messages'),
@@ -448,13 +511,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Tool call expand/collapse — event delegation
   dom.messages.addEventListener('click', (e) => {
-    const header = e.target.closest('[data-tool-toggle]');
-    if (!header) return;
-    const body = header.closest('.tool-call-block').querySelector('.tool-call-body');
-    const toggle = header.querySelector('.tool-call-toggle');
-    const nowExpanded = body.hidden;
-    body.hidden = !nowExpanded;
-    toggle.textContent = nowExpanded ? '▲' : '▼';
+    const toolHeader = e.target.closest('[data-tool-toggle]');
+    if (toolHeader) {
+      const toolBlock = toolHeader.closest('.tool-call-block');
+      if (!toolBlock) return;
+      const body = toolBlock.querySelector('.tool-call-body');
+      const toggle = toolHeader.querySelector('.tool-call-toggle');
+      if (!body || !toggle) return;
+      const nowExpanded = body.hidden;
+      body.hidden = !nowExpanded;
+      toggle.textContent = nowExpanded ? '▲' : '▼';
+    }
+
+    const thinkingHeader = e.target.closest('[data-thinking-toggle]');
+    if (thinkingHeader) {
+      const thinkingBlock = thinkingHeader.closest('.thinking-block');
+      if (!thinkingBlock) return;
+      const body = thinkingBlock.querySelector('.thinking-body');
+      const toggle = thinkingHeader.querySelector('.thinking-toggle');
+      if (!body || !toggle) return;
+      const nowExpanded = body.hidden;
+      body.hidden = !nowExpanded;
+      toggle.textContent = nowExpanded ? '▲' : '▼';
+    }
   });
 
   dom.errorClose.addEventListener('click', () => { dom.errorBanner.hidden = true; });
@@ -509,4 +588,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   resizeTextarea();
   connect();
-});
+}
+
+// Call initApp from DOMContentLoaded or immediately if document is ready
+document.addEventListener('DOMContentLoaded', initApp);
+if (document.readyState !== 'loading') {
+  initApp();
+}
