@@ -2,10 +2,12 @@ package session_test
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"testing"
 	"time"
 
+	_ "modernc.org/sqlite"
 	"github.com/jhyoong/gohome/internal/session"
 )
 
@@ -231,5 +233,77 @@ func TestMessageThinkingEmpty(t *testing.T) {
 	_, ok := parsed["thinking"]
 	if !ok {
 		t.Error("Message JSON should contain 'thinking' field even when empty")
+	}
+}
+
+func TestMigrationAddsThinkingColumn(t *testing.T) {
+	// Test: Opening a database with the old schema (no thinking column) migrates successfully.
+	// This simulates the user's actual bug: existing database without the thinking column.
+	dbPath := t.TempDir() + "/migrate_test.db"
+
+	// Create database with old schema (pre-thinking column)
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	_, err = db.Exec(`
+		CREATE TABLE sessions (
+			id TEXT PRIMARY KEY,
+			title TEXT NOT NULL DEFAULT 'New Session',
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE messages (
+			id TEXT PRIMARY KEY,
+			session_id TEXT NOT NULL,
+			role TEXT NOT NULL,
+			content TEXT,
+			tool_calls TEXT,
+			tool_call_id TEXT,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE INDEX idx_messages_session ON messages(session_id, created_at);
+	`)
+	if err != nil {
+		db.Close()
+		t.Fatalf("CREATE TABLE: %v", err)
+	}
+	db.Close()
+
+	// Open with session.Store - this triggers the migration
+	store, err := session.Open(dbPath)
+	if err != nil {
+		t.Fatalf("session.Open after migration: %v", err)
+	}
+	defer store.Close()
+
+	// Verify the thinking column exists
+	ctx := context.Background()
+	s, err := store.CreateSession(ctx)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	// Add a message with thinking content
+	_, err = store.AddMessage(ctx, session.Message{
+		SessionID: s.ID,
+		Role:      "assistant",
+		Content:   "Hello",
+		Thinking:  "my thinking",
+	})
+	if err != nil {
+		t.Fatalf("AddMessage with thinking: %v", err)
+	}
+
+	// Verify it can be read back
+	msgs, err := store.GetMessages(ctx, s.ID)
+	if err != nil {
+		t.Fatalf("GetMessages: %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	if msgs[0].Thinking != "my thinking" {
+		t.Errorf("thinking: got %q, want %q", msgs[0].Thinking, "my thinking")
 	}
 }

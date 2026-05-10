@@ -71,6 +71,14 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("migrating schema: %w", err)
 	}
 
+	// Migrate existing tables: add thinking column if it doesn't exist
+	migrations := []string{
+		`ALTER TABLE messages ADD COLUMN thinking TEXT`,
+	}
+	for _, m := range migrations {
+		db.Exec(m) // Ignore errors - column may already exist
+	}
+
 	return &Store{db: db}, nil
 }
 
