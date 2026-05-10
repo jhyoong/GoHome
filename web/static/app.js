@@ -55,7 +55,20 @@ let activeSessionId = null;
 let ws = null;
 let streamingEl = null;
 let streamingThinkingEl = null;
-const tabID = crypto.randomUUID();
+
+function generateUUID() {
+  if (crypto && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Fallback for older browsers/safari
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+const tabID = generateUUID();
 let retryDelay = 1000;
 
 // DOM refs — populated after DOMContentLoaded (use global to allow test setup)
@@ -235,7 +248,7 @@ function finalizeStream(messageId) {
     const thinkingContent = streamingThinkingEl ? streamingThinkingEl.textContent.trim() : '';
     if (content || thinkingContent) {
       const msg = {
-        id: messageId || crypto.randomUUID(),
+        id: messageId || generateUUID(),
         role: 'assistant',
         content,
         created_at: new Date().toISOString(),
@@ -276,7 +289,7 @@ function addToolResult(msg) {
   if (streamingEl) {
     const preamble = streamingEl.querySelector('.message-content').textContent.trim();
     if (preamble) {
-      const prevMsg = { id: crypto.randomUUID(), role: 'assistant', content: preamble, created_at: new Date().toISOString() };
+      const prevMsg = { id: generateUUID(), role: 'assistant', content: preamble, created_at: new Date().toISOString() };
       state.messages.push(prevMsg);
       const w = document.createElement('div');
       w.innerHTML = msgHtml(prevMsg);
@@ -288,14 +301,14 @@ function addToolResult(msg) {
   }
 
   const tr = {
-    id: crypto.randomUUID(),
+    id: generateUUID(),
     tool_name: msg.tool,
     params: msg.params,
     result: msg.result,
     approved: msg.approved,
   };
   const syntheticMsg = {
-    id: crypto.randomUUID(),
+    id: generateUUID(),
     role: 'assistant',
     content: '',
     tool_results: [tr],
@@ -456,7 +469,7 @@ function initApp() {
     const content = dom.input.value.trim();
     if (!content || state.awaitingApproval) return;
     const userMsg = {
-      id: crypto.randomUUID(),
+id: generateUUID(),
       role: 'user',
       content,
       created_at: new Date().toISOString(),
