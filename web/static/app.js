@@ -182,11 +182,10 @@ function toolCallBlockHtml(tr) {
 function thinkingBlockHtml(thinking) {
   return `
     <div class="thinking-block">
-      <button class="thinking-header" data-thinking-toggle onclick="var body=this.parentElement.querySelector('.thinking-body');var toggle=this.querySelector('.thinking-toggle');if(body&&toggle){var nowExpanded=body.hidden;body.hidden=!nowExpanded;toggle.textContent=nowExpanded?'▲':'▼'}">
+      <div class="thinking-header">
         <span class="thinking-label">Thinking</span>
-        <span class="thinking-toggle">▼</span>
-      </button>
-      <div class="thinking-body" hidden>${escHtml(thinking)}</div>
+      </div>
+      <div class="thinking-body">${escHtml(thinking)}</div>
     </div>
   `;
 }
