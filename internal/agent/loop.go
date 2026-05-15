@@ -111,7 +111,7 @@ func (l *Loop) Run(ctx context.Context, sessionID, tabID, userMessage string,
 
 		tcJSON, _ := json.Marshal(toolCalls)
 		assistantMsg, err := l.store.AddMessage(ctx, session.Message{
-			SessionID: sessionID, Role: "assistant", ToolCalls: string(tcJSON),
+			SessionID: sessionID, Role: "assistant", ToolCalls: string(tcJSON), Thinking: thinkingText,
 		})
 		if err != nil {
 			return err
