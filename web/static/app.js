@@ -532,17 +532,6 @@ id: generateUUID(),
       toggle.textContent = nowExpanded ? '▲' : '▼';
     }
 
-    const thinkingHeader = e.target.closest('[data-thinking-toggle]');
-    if (thinkingHeader) {
-      const thinkingBlock = thinkingHeader.closest('.thinking-block');
-      if (!thinkingBlock) return;
-      const body = thinkingBlock.querySelector('.thinking-body');
-      const toggle = thinkingHeader.querySelector('.thinking-toggle');
-      if (!body || !toggle) return;
-      const nowExpanded = body.hidden;
-      body.hidden = !nowExpanded;
-      toggle.textContent = nowExpanded ? '▲' : '▼';
-    }
   });
 
   dom.errorClose.addEventListener('click', () => { dom.errorBanner.hidden = true; });
