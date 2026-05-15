@@ -254,19 +254,17 @@ describe('Thinking Block UI - Message Rendering (T005)', () => {
 });
 
 describe('Thinking Block UI - Finalize Stream (T005)', () => {
+  beforeEach(() => {
+    streamingEl = null;
+    streamingThinkingEl = null;
+    document.getElementById('messages').innerHTML = '';
+  });
+
   test('T005.16 finalizeStream preserves thinking content', () => {
     const messages = document.getElementById('messages');
-    messages.innerHTML = '';
 
-    // Create streaming element with both content and thinking
-    const streamingEl = document.createElement('div');
-    streamingEl.className = 'message message-assistant';
-    streamingEl.innerHTML = `
-      <div class="message-role">assistant</div>
-      <div class="message-content">Answer</div>
-      <div class="message-thinking">My reasoning</div>
-    `;
-    messages.appendChild(streamingEl);
+    // Use module-level handleThinkingToken to populate streamingEl and streamingThinkingEl
+    handleThinkingToken('My reasoning');
 
     finalizeStream('final-message-id');
 
@@ -274,7 +272,7 @@ describe('Thinking Block UI - Finalize Stream (T005)', () => {
     expect(finalMessage).not.toBeNull();
 
     const thinkingBlock = finalMessage.querySelector('.thinking-block');
-    expect(thinkingBlock !== null || finalMessage.innerHTML.includes('thinking')).toBeTruthy();
+    expect(thinkingBlock).not.toBeNull();
   });
 });
 
