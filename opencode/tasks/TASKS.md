@@ -1,264 +1,83 @@
-# Implementation Plan: Thinking Blocks
-
-## Index
+# Tasks: Fix Thinking Tokens Issues
 
 | ID   | Title | Status |
 |------|-------|--------|
-| T001 | Add thinking field to Message data model and SQLite schema | [x] |
-| T002 | Add thinking_tokens configuration to EndpointConfig | [x] |
-| T003 | Update LLM client to parse predictions/thinking from OpenAI API responses | [x] |
-| T004 | Add thinking token streaming support to WebSocket protocol | [ ] |
-| T005 | Update frontend to render thinking blocks with toggle UI | [ ] |
-| T006 | Add CSS styles for thinking blocks | [ ] |
+| T001 | Add ThinkingTokens to LLM request body | [x] |
+| T002 | Persist thinking content to SQLite via agent loop | [ ] |
 
 ---
 
-## T001: Add thinking field to Message data model and SQLite schema
+## T001: Add ThinkingTokens to LLM request body
 
 ### Objective
-Add a `Thinking` field to the `Message` struct in `internal/session/store.go` and update the SQLite schema to store thinking content separately from regular content.
-
-### Scope files
-- Allowed: `internal/session/store.go`
-- Avoid touching: `internal/llm/client.go`, `internal/server/server.go`, `web/static/`
-
-### Testing Strategy
-- Test file location: `internal/session/store_test.go` (create if not exists)
-- Test framework: Go test (standard `testing` package)
-- Behaviors to assert:
-  - `Message` struct given `Thinking: "some thinking content"` should serialize to JSON with `thinking` field
-  - `AddMessage` with `Thinking` populated should insert row with thinking column
-  - `GetMessages` should return messages with thinking content intact
-  - SQLite schema should include `thinking` column
-
-### Read hints
-- Grep queries: `type Message struct`, `AddMessage`, `GetMessages`, `create table messages`
-- Key entrypoints / symbols: `Message` struct, `ToolResult` struct, SQLite table creation
-
-### Details
-Update the `Message` struct to include:
-```go
-type Message struct {
-    // existing fields...
-    Thinking string `json:"thinking,omitempty"`
-}
-```
-Add the `thinking` column to SQLite schema in store.go. Ensure backward compatibility with existing messages (nullable column).
-
-### Acceptance checks
-- Behavioral checks: Message struct has Thinking field; SQLite has thinking column
-- Commands to run: `go test ./internal/session/...`
-
-### Context budget
-- Expected excerpts to read: Message struct, table creation SQL, insert/query SQL
-
----
-
-## T002: Add thinking_tokens configuration to EndpointConfig
-
-### Objective
-Add a `ThinkingTokens` field to `EndpointConfig` in `internal/config/config.go` so users can configure max thinking token output per model.
-
-### Scope files
-- Allowed: `internal/config/config.go`
-- Avoid touching: `internal/session/store.go`, `internal/llm/client.go`
-
-### Testing Strategy
-- Test file location: `internal/config/config_test.go` (create if not exists)
-- Test framework: Go test
-- Behaviors to assert:
-  - `EndpointConfig` struct given `ThinkingTokens: 1024` should serialize to YAML with `thinking_tokens` field
-  - Config loading should parse `thinking_tokens` from YAML
-  - Default value should be sensible (e.g., 0 or omitted means model default)
-
-### Read hints
-- Grep queries: `type EndpointConfig struct`, `yaml:", inline"`
-- Key entrypoints / symbols: `EndpointConfig` struct, config parsing
-
-### Details
-Add to `EndpointConfig`:
-```go
-type EndpointConfig struct {
-    // existing fields...
-    ThinkingTokens int `yaml:"thinking_tokens"`
-}
-```
-Update YAML tags and documentation if any.
-
-### Acceptance checks
-- Behavioral checks: Config struct has ThinkingTokens field; YAML parsing works
-- Commands to run: `go test ./internal/config/...`
-
-### Context budget
-- Expected excerpts to read: EndpointConfig struct, config parsing logic
-
----
-
-## T003: Update LLM client to parse predictions/thinking from OpenAI API responses
-
-### Objective
-Update `internal/llm/client.go` to parse `predictions` content blocks from OpenAI API streaming responses and handle them separately.
+Add the `ThinkingTokens` field to the LLM request body struct and set it when calling the API during streaming.
 
 ### Scope files
 - Allowed: `internal/llm/client.go`
-- Avoid touching: `internal/server/server.go`, `internal/session/store.go`
+- Avoid touching: `internal/agent/loop.go`, `internal/session/store.go`
 
 ### Testing Strategy
-- Test file location: `internal/llm/client_test.go` (create if not exists)
-- Test framework: Go test
-- Behaviors to assert:
-  - `StreamResponse` given SSE with `predictions` content block should call `handlePredictions` callback
-  - `Delta` struct needs `Predictions` field; parsing should handle `predictions` content block
-  - Prediction tokens should be streamed separately via new callback/field
+- Test file location: `internal/llm/client_test.go`
+- Test framework: `go test`
+- Behaviors to assert (be specific):
+  - `reqBody` struct given no fields set should have `ThinkingTokens` field serialized to JSON as `"thinking_tokens"`
+  - `Stream()` method given a client with `ThinkingTokens` configured should send `thinking_tokens` in the JSON body to the endpoint
+  - `Stream()` method given zero `ThinkingTokens` should send `"thinking_tokens": 0` in the JSON body
+- Mock/stub requirements: Use `httptest.NewServer` to capture and inspect the request body JSON
+- Must NOT test: Tool call handling, prediction callbacks, usage reporting
 
 ### Read hints
-- Grep queries: `Delta` struct, `StreamResponse`, `parseSSE`, `handleContent`
-- Key entrypoints / symbols: `reqBody` struct, `streamOptions`, SSE parsing loop
+- Grep queries: `ThinkingTokens`, `reqBody`, `Stream`
+- Key entrypoints / symbols: `llm.Client.Stream()`, `llm.reqBody`, `config.EndpointConfig`
 
 ### Details
-OpenAI API sends `predictions` content blocks for models that support thinking. Need to:
-1. Add `Predictions` field to `Delta` struct (or similar)
-2. Add parsing logic for `predictions` content block in SSE parsing
-3. Create callback or field to handle prediction tokens separately
-4. Pass prediction tokens through the agent loop
+1. Add `ThinkingTokens int` field to the `reqBody` struct (around line 87) with JSON tag `json:"thinking_tokens,omitempty"`
+2. In the `Stream()` method, set `ThinkingTokens: c.cfg.ThinkingTokens` when building the `reqBody` (around line 151)
+3. Ensure the field uses `omitempty` JSON tag so it only appears when non-zero (or always if that matches API requirements)
 
 ### Acceptance checks
-- Behavioral checks: LLM client parses predictions; streaming delivers prediction tokens
-- Commands to run: `go test ./internal/llm/...`
+- Behavioral checks: JSON body sent to API contains `thinking_tokens` field from config
+- Commands to run: `go test ./internal/llm -v`
 
 ### Context budget
-- Expected excerpts to read: Delta struct, SSE parsing logic, stream handling
+- Expected excerpts to read: `client.go` lines 79-87 and 147-151 only
+- Notes to keep context small: Only modify the request struct and Stream method body; do not change callback signatures
 
 ---
 
-## T004: Add thinking token streaming support to WebSocket protocol
+## T002: Persist thinking content to SQLite via agent loop
 
 ### Objective
-Update `internal/server/server.go` to add a new `thinking_token` message type for streaming thinking content to frontend via WebSocket.
+Accumulate thinking content during agent loop streaming and save it alongside assistant messages in SQLite.
 
 ### Scope files
-- Allowed: `internal/server/server.go`, `internal/server/dispatcher.go`
-- Avoid touching: `web/static/app.js`, `internal/llm/client.go`
+- Allowed: `internal/agent/loop.go`
+- Avoid touching: `internal/llm/client.go`, `internal/session/store.go`
 
 ### Testing Strategy
-- Test file location: `internal/server/server_test.go` (create if not exists)
-- Test framework: Go test
-- Behaviors to assert:
-  - `outMsg` struct supports `thinking_token` type with token data
-  - `dispatcher` sends `thinking_token` messages to WebSocket client
-  - Frontend can receive `thinking_token` messages and parse token data
+- Test file location: `internal/session/store_test.go` (existing tests cover persistence; this task verifies integration)
+- Test framework: `go test`
+- Behaviors to assert (be specific):
+  - `agent.Loop.Run()` given a callback that accumulates thinking should call `onThinking` with prediction content during streaming
+  - `agent.Loop.Run()` after streaming completes should save assistant message with `Thinking` field populated
+  - `agent.Loop.Run()` when no thinking content accumulated should save assistant message with empty `Thinking` field
+- Mock/stub requirements: Mock `llm.Client.Stream()` to return streaming deltas; mock `session.Store` to capture saved messages
+- Must NOT test: Tool execution, approval broker, steering channel handling
 
 ### Read hints
-- Grep queries: `type outMsg struct`, `outMsg` json tags, `dispatchMessage`, `wsOp`
-- Key entrypoints / symbols: `outMsg` struct, `wsOp` struct, dispatcher send logic
+- Grep queries: `onThinking`, `finalText`, `AddMessage`
+- Key entrypoints / symbols: `agent.Loop.Run()`, `session.Message`, `session.Store.AddMessage()`
 
 ### Details
-Add new message type to `outMsg`:
-```go
-type outMsg struct {
-    Type string `json:"type"`
-    Data any    `json:"data,omitempty"`
-    // existing types: token, tool_approval, tool_result, done, error, usage
-    // Add: thinking_token for streaming thinking content
-}
-```
-Update `wsOp` struct similarly. Update dispatcher to handle thinking token streaming.
+1. Add a `thinkingText` string variable to accumulate thinking content (around line 82, near `finalText`)
+2. Create a wrapper callback that accumulates prediction content into `thinkingText` and calls the original `onThinking`
+3. At line 163-168, include `Thinking: thinkingText` when calling `l.store.AddMessage()` for the assistant response
+4. Ensure empty thinking content is saved as empty string (not nil) to match schema expectations
 
 ### Acceptance checks
-- Behavioral checks: outMsg supports thinking_token type; dispatcher handles it
-- Commands to run: `go test ./internal/server/...`
+- Behavioral checks: Messages saved with non-empty Thinking are persisted correctly; empty Thinking is saved as empty string
+- Commands to run: `go test ./internal/session -v`
 
 ### Context budget
-- Expected excerpts to read: outMsg struct, wsOp struct, dispatcher logic
-
----
-
-## T005: Update frontend to render thinking blocks with toggle UI
-
-### Objective
-Update `web/static/app.js` to receive thinking tokens and render them as collapsible thinking blocks with a toggle button.
-
-### Scope files
-- Allowed: `web/static/app.js`
-- Avoid touching: `internal/server/server.go`, `internal/session/store.go`
-
-### Testing Strategy
-- Test file location: `web/static/test_thinking_test.js` (create if not exists)
-- Test framework: Jest (if available) or manual testing
-- Behaviors to assert:
-  - `handleThinkingToken` receives token and appends to thinking display
-  - Thinking blocks are collapsible with toggle behavior
-  - `appendToken` handles thinking tokens separately from content tokens
-  - Message rendering includes thinking blocks when present
-
-### Read hints
-- Grep queries: `appendToken`, `msgHtml`, `toolCallBlockHtml`, `handleMessage`
-- Key entrypoints / symbols: `appendToken()`, `msgHtml()`, message rendering functions
-
-### Details
-1. Add handler for `thinking_token` WebSocket messages
-2. Add state tracking for thinking content visibility
-3. Add toggle button mechanism to show/hide thinking blocks
-4. Update `appendToken()` to handle thinking tokens separately
-5. Update `msgHtml()` to include thinking blocks in rendered message
-
-### Acceptance checks
-- Behavioral checks: Thinking blocks render; toggle shows/hides thinking
-- Commands to run: (manual testing via browser)
-
-### Context budget
-- Expected excerpts to read: appendToken function, msgHtml function, event handlers
-
----
-
-## T006: Add CSS styles for thinking blocks
-
-### Objective
-Add CSS styling to `web/static/app.css` for thinking blocks so they are visually distinct and properly styled.
-
-### Scope files
-- Allowed: `web/static/app.css`
-- Avoid touching: `web/static/app.js`
-
-### Testing Strategy
-- Test file location: none (CSS testing is visual/manual)
-- Test framework: N/A
-- Behaviors to assert:
-  - CSS classes for thinking blocks (e.g., `.thinking-block`)
-  - Toggle button styling for show/hide
-  - Visual distinction from regular content blocks
-
-### Read hints
-- Grep queries: `.message-content`, `.tool-block`, CSS classes
-- Key entrypoints / symbols: Existing CSS patterns for message content, tool blocks
-
-### Details
-Add CSS for:
-- `.thinking-block` container
-- `.thinking-toggle` button (show/hide thinking)
-- `.thinking-content` inner container
-- Styling to make thinking blocks collapsible and visually distinct
-
-### Acceptance checks
-- Behavioral checks: CSS styles applied correctly; toggle button styled
-- Commands to run: (visual inspection in browser)
-
-### Context budget
-- Expected excerpts to read: Existing CSS patterns, message content styles, tool block styles
-
----
-
-## Execution Notes
-
-**TDD ordering applied:**
-1. T001 (data model) - foundational, no dependencies
-2. T002 (config) - independent of T001/003
-3. T003 (LLM parsing) - depends on T001 for storage
-4. T004 (WebSocket protocol) - depends on T003 agent loop
-5. T005 (frontend rendering) - depends on T004 streaming
-6. T006 (CSS) - independent but after T005
-
-**Cross-cutting concerns:**
-- Ensure thinking tokens are stored alongside messages (T001)
-- Ensure thinking config is passed to LLM client (T002 + T003)
-- Ensure frontend receives thinking tokens in real-time (T004 + T005)
+- Expected excerpts to read: `loop.go` lines 80-95 and 163-168 only
+- Notes to keep context small: Only add accumulation logic near existing `finalText` pattern; do not change API signatures

@@ -57,6 +57,7 @@ func (l *Loop) Run(ctx context.Context, sessionID, tabID, userMessage string,
 	llmTools := toAnySlice(l.registry.ToLLMTools())
 
 	var finalText string
+	var thinkingText string
 
 	for {
 		// Drain any steering messages before the next LLM call.
@@ -80,10 +81,17 @@ func (l *Loop) Run(ctx context.Context, sessionID, tabID, userMessage string,
 		var toolCalls []llm.ToolCall
 		var gotToolCalls bool
 		finalText = ""
+		thinkingText = ""
 
 		tokenCollector := func(token string) {
 			finalText += token
 			onToken(token)
+		}
+		thinkingCollector := func(token string) {
+			thinkingText += token
+			if onThinking != nil {
+				onThinking(token)
+			}
 		}
 
 		err = l.llm.Stream(ctx, history, llmTools,
@@ -91,10 +99,10 @@ func (l *Loop) Run(ctx context.Context, sessionID, tabID, userMessage string,
 			func(tcs []llm.ToolCall) { toolCalls = tcs; gotToolCalls = true },
 			nil,
 			onUsage,
-			onThinking,
+			thinkingCollector,
 		)
 		if err != nil {
-			return fmt.Errorf("LLM stream: %w", err)
+			return err
 		}
 
 		if !gotToolCalls {
@@ -162,7 +170,7 @@ func (l *Loop) Run(ctx context.Context, sessionID, tabID, userMessage string,
 
 	if finalText != "" {
 		if _, err := l.store.AddMessage(ctx, session.Message{
-			SessionID: sessionID, Role: "assistant", Content: finalText,
+			SessionID: sessionID, Role: "assistant", Content: finalText, Thinking: thinkingText,
 		}); err != nil {
 			return fmt.Errorf("saving assistant message: %w", err)
 		}

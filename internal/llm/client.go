@@ -38,23 +38,19 @@ type Response struct {
 	ToolCalls []ToolCall
 }
 
-// Delta represents a streaming response delta with content, tool calls, and predictions
+// Delta represents a streaming response delta with content, tool calls, and reasoning content.
 type Delta struct {
-	Content   string `json:"content"`
-	ToolCalls []struct {
-		Index     int    `json:"index"`
-		ID        string `json:"id"`
-		Type      string `json:"type"`
-		Function  struct {
+	Content          string `json:"content"`
+	ReasoningContent string `json:"reasoning_content"`
+	ToolCalls        []struct {
+		Index    int    `json:"index"`
+		ID       string `json:"id"`
+		Type     string `json:"type"`
+		Function struct {
 			Name      string `json:"name"`
 			Arguments string `json:"arguments"`
 		} `json:"function"`
 	} `json:"tool_calls"`
-	Predictions []struct {
-		Type         string `json:"type"`
-		Content      string `json:"content"`
-		ContentIndex int    `json:"content_index"`
-	} `json:"predictions"`
 }
 
 type Client struct {
@@ -83,6 +79,7 @@ type reqBody struct {
 	Stream        bool           `json:"stream"`
 	MaxTokens     int            `json:"max_tokens,omitempty"`
 	Temperature   float64        `json:"temperature,omitempty"`
+	ThinkingTokens int           `json:"thinking_tokens,omitempty"`
 	StreamOptions *streamOptions `json:"stream_options,omitempty"`
 }
 
@@ -147,6 +144,7 @@ func (c *Client) Stream(ctx context.Context, messages []Message, tools []interfa
 	body := reqBody{
 		Model: c.cfg.Model, Messages: messages, Tools: tools,
 		Stream: true, MaxTokens: c.cfg.MaxTokens, Temperature: c.cfg.Temperature,
+		ThinkingTokens: c.cfg.ThinkingTokens,
 		StreamOptions: &streamOptions{IncludeUsage: true},
 	}
 	data, _ := json.Marshal(body)
@@ -196,11 +194,7 @@ func (c *Client) Stream(ctx context.Context, messages []Message, tools []interfa
 							Arguments string `json:"arguments"`
 						} `json:"function"`
 					} `json:"tool_calls"`
-					Predictions []struct {
-						Type         string `json:"type"`
-						Content      string `json:"content"`
-						ContentIndex int    `json:"content_index"`
-					} `json:"predictions"`
+					ReasoningContent string `json:"reasoning_content"`
 				} `json:"delta"`
 				FinishReason *string `json:"finish_reason"`
 			} `json:"choices"`
@@ -240,10 +234,8 @@ func (c *Client) Stream(ctx context.Context, messages []Message, tools []interfa
 			}
 		}
 
-		for _, pred := range choice.Delta.Predictions {
-			if onPredictions != nil && pred.Content != "" {
-				onPredictions(pred.Content)
-			}
+		if choice.Delta.ReasoningContent != "" && onPredictions != nil {
+			onPredictions(choice.Delta.ReasoningContent)
 		}
 
 		if choice.FinishReason != nil {
