@@ -34,11 +34,6 @@ describe('Thinking Block UI - Core Functions (T005)', () => {
     expect(typeof thinkingBlockHtml).toBe('function');
   });
 
-  // T005.3: Test that state has thinking visibility tracking
-  test('T005.3 state has thinkingVisible property', () => {
-    expect(state.thinkingVisible !== undefined).toBeTruthy();
-  });
-
   // T005.4: Test that streamingThinkingEl variable exists
   test('T005.4 streamingThinkingEl variable is defined', () => {
     expect(typeof streamingThinkingEl !== 'undefined').toBeTruthy();

@@ -4,7 +4,6 @@ const state = {
   messages: [],
   busy: false,
   awaitingApproval: null,
-  thinkingVisible: false,
 };
 
 function applyTheme(theme) {
@@ -246,7 +245,6 @@ function finalizeStream(messageId) {
     }
     streamingEl = null;
     streamingThinkingEl = null;
-    state.thinkingVisible = false;
   }
   setBusy(false);
 }
@@ -261,7 +259,6 @@ function clearStreamEl() {
     streamingEl.remove();
     streamingEl = null;
     streamingThinkingEl = null;
-    state.thinkingVisible = false;
   }
 }
 
