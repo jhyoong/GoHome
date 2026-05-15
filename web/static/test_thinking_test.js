@@ -331,3 +331,46 @@ describe('Thinking Block UI - Multi-Iteration Isolation', () => {
     expect(secondEl.textContent).not.toContain('first thinking');
   });
 });
+
+describe('Thinking Block UI - addToolResult flushes thinking', () => {
+  beforeEach(() => {
+    streamingEl = null;
+    streamingThinkingEl = null;
+    document.getElementById('messages').innerHTML = '';
+  });
+
+  test('addToolResult finalizes thinking block before the tool block', () => {
+    const messages = document.getElementById('messages');
+
+    handleThinkingToken('pre-tool reasoning');
+
+    addToolResult({ tool: 'my_tool', params: '{}', result: 'result text', approved: true });
+
+    const children = Array.from(messages.children);
+    const thinkingBlock = messages.querySelector('.thinking-block');
+    const toolMsg = messages.querySelector('.tool-call-block');
+
+    expect(thinkingBlock).not.toBeNull();
+    expect(toolMsg).not.toBeNull();
+
+    const thinkingIdx = children.indexOf(thinkingBlock);
+    const toolParentIdx = children.indexOf(toolMsg.closest('.message'));
+    expect(thinkingIdx).toBeLessThan(toolParentIdx);
+  });
+
+  test('addToolResult resets streamingThinkingEl to null', () => {
+    handleThinkingToken('some thinking');
+    expect(streamingThinkingEl).not.toBeNull();
+
+    addToolResult({ tool: 'my_tool', params: '{}', result: 'done', approved: true });
+
+    expect(streamingThinkingEl).toBeNull();
+    expect(streamingEl).toBeNull();
+  });
+
+  test('addToolResult with no thinking does not crash', () => {
+    expect(() => {
+      addToolResult({ tool: 'my_tool', params: '{}', result: 'done', approved: true });
+    }).not.toThrow();
+  });
+});

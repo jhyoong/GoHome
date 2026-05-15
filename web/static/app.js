@@ -267,7 +267,22 @@ function clearStreamEl() {
 }
 
 function addToolResult(msg) {
-  // Flush any streaming content before the tool result so order is: [preamble] → [tool] → [response]
+  // Finalize any streaming thinking block before touching streamingEl
+  if (streamingThinkingEl) {
+    const thinkingContent = streamingThinkingEl.textContent.trim();
+    if (thinkingContent) {
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = thinkingBlockHtml(thinkingContent);
+      if (streamingEl) {
+        streamingEl.before(wrapper.firstElementChild);
+      } else {
+        dom.messages.appendChild(wrapper.firstElementChild);
+      }
+    }
+    streamingThinkingEl = null;
+  }
+
+  // Flush any streaming text preamble
   if (streamingEl) {
     const preamble = streamingEl.querySelector('.message-content').textContent.trim();
     if (preamble) {
