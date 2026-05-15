@@ -1,6 +1,6 @@
 /**
  * Unit tests for Task T005: Thinking Block UI
- * Tests the frontend functionality for rendering thinking blocks with toggle UI
+ * Tests the frontend functionality for rendering thinking blocks
  *
  * Note: These tests require the following functions to be implemented in app.js:
  * - handleThinkingToken(token) - handles thinking tokens from WebSocket
@@ -81,19 +81,23 @@ describe('Thinking Block UI - HTML Generation (T005)', () => {
     const thinking = 'I am thinking about the solution...';
     const html = thinkingBlockHtml(thinking);
 
-    expect(html).toContain('data-thinking-toggle');
-    expect(html).toContain('thinking');
+    expect(html).toContain('thinking-block');
+    expect(html).toContain('thinking-body');
     expect(html).toContain(escHtml(thinking));
+    expect(html).not.toContain('hidden');
   });
 
-  test('T005.8 thinkingBlockHtml includes toggle button', () => {
+  test('T005.8 thinkingBlockHtml thinking body is always visible', () => {
     const thinking = 'Test thinking';
     const html = thinkingBlockHtml(thinking);
-
-    expect(html).toMatch(/[▼▲]/);
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const body = doc.querySelector('.thinking-body');
+    expect(body).not.toBeNull();
+    expect(body.textContent.trim()).toBe(thinking);
   });
 
-  test('T005.9 thinkingBlockHtml wraps content in collapsible container', () => {
+  test('T005.9 thinkingBlockHtml wraps content in structured container', () => {
     const thinking = 'Hidden content';
     const html = thinkingBlockHtml(thinking);
 
@@ -103,109 +107,6 @@ describe('Thinking Block UI - HTML Generation (T005)', () => {
   });
 });
 
-describe('Thinking Block UI - Toggle Behavior (T005)', () => {
-  test('T005.10 toggle button shows/hides thinking block', () => {
-    const messages = document.getElementById('messages');
-    messages.innerHTML = '';
-
-    const messageEl = document.createElement('div');
-    messageEl.className = 'message message-assistant';
-    messageEl.innerHTML = `
-      <div class="message-role">assistant</div>
-      <div class="message-content">Response</div>
-      <div class="thinking-block">
-        <button class="thinking-header" data-thinking-toggle>
-          <span class="thinking-toggle">▼</span>
-        </button>
-        <div class="thinking-body" hidden>
-          <pre class="thinking-content">I am thinking...</pre>
-        </div>
-      </div>
-    `;
-    messages.appendChild(messageEl);
-
-    // Initially, thinking body should be hidden
-    const header = messageEl.querySelector('[data-thinking-toggle]');
-    expect(header).not.toBeNull();
-
-    const body = messageEl.querySelector('.thinking-body');
-    expect(body.hidden).toBe(true);
-
-    // Click the toggle button to show
-    header.click();
-
-    // Body should now be visible
-    expect(body.hidden).toBe(false);
-
-    // Toggle indicator should change
-    const toggle = header.querySelector('.thinking-toggle');
-    expect(toggle.textContent).toBe('▲');
-  });
-
-  test('T005.11 toggle button hides thinking block on second click', () => {
-    const messages = document.getElementById('messages');
-    messages.innerHTML = '';
-
-    const messageEl = document.createElement('div');
-    messageEl.className = 'message message-assistant';
-    messageEl.innerHTML = `
-      <div class="thinking-block">
-        <button class="thinking-header" data-thinking-toggle>
-          <span class="thinking-toggle">▼</span>
-        </button>
-        <div class="thinking-body" hidden>
-          <pre class="thinking-content">I am thinking...</pre>
-        </div>
-      </div>
-    `;
-    messages.appendChild(messageEl);
-
-    const header = messageEl.querySelector('[data-thinking-toggle]');
-    const body = messageEl.querySelector('.thinking-body');
-
-    // Show
-    header.click();
-    expect(body.hidden).toBe(false);
-
-    // Hide
-    header.click();
-    expect(body.hidden).toBe(true);
-  });
-
-  test('T005.12 event delegation handles thinking toggle clicks', () => {
-    const messages = document.getElementById('messages');
-    messages.innerHTML = '';
-    let toggleClicked = false;
-
-    messages.addEventListener('click', (e) => {
-      const header = e.target.closest('[data-thinking-toggle]');
-      if (header) {
-        toggleClicked = true;
-        const block = header.closest('.thinking-block');
-        if (block) {
-          const body = block.querySelector('.thinking-body');
-          if (body) {
-            body.hidden = !body.hidden;
-          }
-        }
-      }
-    });
-
-    const messageEl = document.createElement('div');
-    messageEl.innerHTML = `
-      <div class="thinking-block">
-        <button class="thinking-header" data-thinking-toggle>Toggle</button>
-        <div class="thinking-body"></div>
-      </div>
-    `;
-    messages.appendChild(messageEl);
-
-    const toggle = messageEl.querySelector('[data-thinking-toggle]');
-    toggle.click();
-
-    expect(toggleClicked).toBe(true);
-  });
-});
 
 describe('Thinking Block UI - Message Rendering (T005)', () => {
   test('T005.13 msgHtml includes thinking blocks when present', () => {
@@ -296,11 +197,13 @@ describe('Thinking Block UI - CSS Classes (T005)', () => {
     expect(html).toContain('thinking-body');
   });
 
-  test('T005.20 thinking toggle uses data attribute', () => {
+  test('T005.20 thinking block has no toggle mechanism', () => {
     const thinking = 'Test thinking';
     const html = thinkingBlockHtml(thinking);
 
-    expect(html).toContain('data-thinking-toggle');
+    expect(html).not.toContain('data-thinking-toggle');
+    expect(html).not.toContain('▼');
+    expect(html).not.toContain('▲');
   });
 });
 
