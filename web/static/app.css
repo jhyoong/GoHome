@@ -329,13 +329,6 @@ body {
   gap: 6px;
   padding: 6px 10px;
   background: var(--color-surface-alt);
-  border: none;
-  cursor: pointer;
-  text-align: left;
-}
-
-.thinking-header:hover {
-  background: var(--color-surface-hover);
 }
 
 .thinking-label {
@@ -346,16 +339,12 @@ body {
   color: var(--color-muted);
 }
 
-.thinking-toggle {
-  color: var(--color-muted-mid);
-  font-size: 10px;
-}
-
 .thinking-body {
   padding: 8px 10px;
   background: var(--color-surface-faint);
   white-space: pre-wrap;
   word-break: break-word;
+  font-style: italic;
 }
 
 .message-thinking {
