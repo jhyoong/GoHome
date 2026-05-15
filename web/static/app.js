@@ -154,7 +154,7 @@ function msgHtml(msg) {
   return `
     <div class="message message-${escHtml(msg.role)}">
       <div class="message-role">${escHtml(msg.role)}</div>
-      ${content}${thinkingBlocks}${toolBlocks}
+      ${thinkingBlocks}${content}${toolBlocks}
     </div>
   `;
 }
@@ -192,38 +192,20 @@ function thinkingBlockHtml(thinking) {
 }
 
 function handleThinkingToken(text) {
-  // Find or create message element and thinking div
-  let messageEl = null;
-  let thinkingEl = dom.messages.querySelector('.message-thinking');
-
-  if (thinkingEl) {
-    // Found existing thinking div - check if parent has .message class
-    const parentEl = thinkingEl.parentElement;
-    if (parentEl && parentEl.classList.contains('message')) {
-      // Parent has .message class - reuse it
-      messageEl = parentEl;
-    } else {
-      // Parent doesn't have .message class - use thinking element itself as message
-      messageEl = parentEl;
-    }
-  }
-
-  if (!messageEl) {
-    // No existing message - create new one
-    messageEl = document.createElement('div');
+  if (!streamingThinkingEl) {
+    const messageEl = document.createElement('div');
     messageEl.className = 'message message-assistant';
     messageEl.innerHTML = '<div class="message-role">assistant</div><div class="message-content"></div>';
     dom.messages.appendChild(messageEl);
-  }
 
-  if (!thinkingEl) {
-    thinkingEl = document.createElement('div');
+    const thinkingEl = document.createElement('div');
     thinkingEl.className = 'message-thinking';
-    messageEl.appendChild(thinkingEl);
+    messageEl.insertBefore(thinkingEl, messageEl.querySelector('.message-content'));
+
+    streamingEl = messageEl;
+    streamingThinkingEl = thinkingEl;
   }
 
-  streamingEl = messageEl;
-  streamingThinkingEl = thinkingEl;
   streamingThinkingEl.textContent += text;
   scrollToBottom();
 }

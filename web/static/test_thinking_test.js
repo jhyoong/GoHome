@@ -46,22 +46,15 @@ describe('Thinking Block UI - Core Functions (T005)', () => {
 });
 
 describe('Thinking Block UI - Token Handling (T005)', () => {
+  beforeEach(() => {
+    streamingEl = null;
+    streamingThinkingEl = null;
+    document.getElementById('messages').innerHTML = '';
+  });
+
   test('T005.5 handleThinkingToken appends content to thinking element', () => {
-    // Get the messages container
     const messages = document.getElementById('messages');
-    messages.innerHTML = '';
 
-    // Create a streaming message element with thinking section
-    const streamingEl = document.createElement('div');
-    streamingEl.className = 'message message-assistant';
-    streamingEl.innerHTML = `
-      <div class="message-role">assistant</div>
-      <div class="message-content"></div>
-      <div class="message-thinking"></div>
-    `;
-    messages.appendChild(streamingEl);
-
-    // handleThinkingToken should append content to .message-thinking
     handleThinkingToken('Let me think about this...');
 
     const thinkingEl = messages.querySelector('.message-thinking');
@@ -71,19 +64,7 @@ describe('Thinking Block UI - Token Handling (T005)', () => {
 
   test('T005.6 thinking tokens accumulate across multiple calls', () => {
     const messages = document.getElementById('messages');
-    messages.innerHTML = '';
 
-    // Create a streaming element with thinking
-    const streamingEl = document.createElement('div');
-    streamingEl.className = 'message message-assistant';
-    streamingEl.innerHTML = `
-      <div class="message-role">assistant</div>
-      <div class="message-content"></div>
-      <div class="message-thinking"></div>
-    `;
-    messages.appendChild(streamingEl);
-
-    // Multiple thinking tokens should accumulate
     handleThinkingToken('Step 1. ');
     handleThinkingToken('Step 2. ');
     handleThinkingToken('Step 3. ');
@@ -322,5 +303,33 @@ describe('Thinking Block UI - CSS Classes (T005)', () => {
     const html = thinkingBlockHtml(thinking);
 
     expect(html).toContain('data-thinking-toggle');
+  });
+});
+
+describe('Thinking Block UI - Multi-Iteration Isolation', () => {
+  beforeEach(() => {
+    streamingEl = null;
+    streamingThinkingEl = null;
+    document.getElementById('messages').innerHTML = '';
+  });
+
+  test('handleThinkingToken creates fresh block when streamingThinkingEl is null', () => {
+    const messages = document.getElementById('messages');
+
+    // First iteration thinking
+    handleThinkingToken('first thinking');
+    const firstEl = streamingThinkingEl;
+
+    // Simulate what addToolResult does: finalize and null out
+    streamingThinkingEl = null;
+    streamingEl = null;
+
+    // Second iteration thinking
+    handleThinkingToken('second thinking');
+    const secondEl = streamingThinkingEl;
+
+    expect(firstEl).not.toBe(secondEl);
+    expect(secondEl.textContent).toContain('second thinking');
+    expect(secondEl.textContent).not.toContain('first thinking');
   });
 });
