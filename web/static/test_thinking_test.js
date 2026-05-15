@@ -52,7 +52,7 @@ describe('Thinking Block UI - Token Handling (T005)', () => {
 
     handleThinkingToken('Let me think about this...');
 
-    const thinkingEl = messages.querySelector('.message-thinking');
+    const thinkingEl = messages.querySelector('.thinking-body');
     expect(thinkingEl).not.toBeNull();
     expect(thinkingEl.textContent).toContain('Let me think about this...');
   });
@@ -64,7 +64,7 @@ describe('Thinking Block UI - Token Handling (T005)', () => {
     handleThinkingToken('Step 2. ');
     handleThinkingToken('Step 3. ');
 
-    const thinkingEl = messages.querySelector('.message-thinking');
+    const thinkingEl = messages.querySelector('.thinking-body');
     expect(thinkingEl.textContent).toContain('Step 1.');
     expect(thinkingEl.textContent).toContain('Step 2.');
     expect(thinkingEl.textContent).toContain('Step 3.');

@@ -196,12 +196,13 @@ function handleThinkingToken(text) {
     messageEl.innerHTML = '<div class="message-role">assistant</div><div class="message-content"></div>';
     dom.messages.appendChild(messageEl);
 
-    const thinkingEl = document.createElement('div');
-    thinkingEl.className = 'message-thinking';
-    messageEl.insertBefore(thinkingEl, messageEl.querySelector('.message-content'));
+    const thinkingWrapper = document.createElement('div');
+    thinkingWrapper.innerHTML = thinkingBlockHtml('');
+    const thinkingBlock = thinkingWrapper.firstElementChild;
+    messageEl.insertBefore(thinkingBlock, messageEl.querySelector('.message-content'));
 
     streamingEl = messageEl;
-    streamingThinkingEl = thinkingEl;
+    streamingThinkingEl = thinkingBlock.querySelector('.thinking-body');
   }
 
   streamingThinkingEl.textContent += text;
