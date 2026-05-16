@@ -264,26 +264,15 @@ function clearStreamEl() {
 }
 
 function addToolResult(msg) {
-  // Finalize any streaming thinking block before touching streamingEl
-  if (streamingThinkingEl) {
-    const thinkingContent = streamingThinkingEl.textContent.trim();
-    if (thinkingContent) {
-      const wrapper = document.createElement('div');
-      wrapper.innerHTML = thinkingBlockHtml(thinkingContent);
-      if (streamingEl) {
-        streamingEl.before(wrapper.firstElementChild);
-      } else {
-        dom.messages.appendChild(wrapper.firstElementChild);
-      }
-    }
-    streamingThinkingEl = null;
-  }
-
-  // Flush any streaming text preamble
+  // Finalize any streaming assistant turn (thinking + text) before adding tool result
   if (streamingEl) {
-    const preamble = streamingEl.querySelector('.message-content').textContent.trim();
-    if (preamble) {
-      const prevMsg = { id: generateUUID(), role: 'assistant', content: preamble, created_at: new Date().toISOString() };
+    const content = streamingEl.querySelector('.message-content').textContent.trim();
+    const thinkingContent = streamingThinkingEl ? streamingThinkingEl.textContent.trim() : '';
+    if (content || thinkingContent) {
+      const prevMsg = { id: generateUUID(), role: 'assistant', content, created_at: new Date().toISOString() };
+      if (thinkingContent) {
+        prevMsg.thinking = [thinkingContent];
+      }
       state.messages.push(prevMsg);
       const w = document.createElement('div');
       w.innerHTML = msgHtml(prevMsg);
@@ -292,6 +281,7 @@ function addToolResult(msg) {
       streamingEl.remove();
     }
     streamingEl = null;
+    streamingThinkingEl = null;
   }
 
   const tr = {
@@ -586,8 +576,4 @@ id: generateUUID(),
   connect();
 }
 
-// Call initApp from DOMContentLoaded or immediately if document is ready
 document.addEventListener('DOMContentLoaded', initApp);
-if (document.readyState !== 'loading') {
-  initApp();
-}

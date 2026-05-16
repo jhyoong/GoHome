@@ -26,9 +26,12 @@ Create `~/.gohome/config.yaml`:
 ```yaml
 endpoint:
   url: "http://localhost:8080/v1"
+  api_key: ""              # optional API key
   model: "my-model"
   max_tokens: 4096
   temperature: 0.7
+  context_window: 131072   # context window size (default: 131072)
+  thinking_tokens: 0       # thinking tokens for o1 models (default: 0)
 
 server:
   host: "127.0.0.1"
@@ -45,12 +48,15 @@ approval:
   whitelist:
     - tool: "file_read"
       allow: "always"    # always | never | ask
+    - tool: "shell"
+      command_pattern: "ls*"  # optional command pattern for shell tools
 
 mcp_servers:
   - name: "my-server"
     transport: "stdio"   # stdio | sse
     command: "my-mcp-server"
     args: ["--flag"]
+    url: ""              # optional URL for SSE transport
 ```
 
 All fields are optional — defaults are used if the config file is missing.
