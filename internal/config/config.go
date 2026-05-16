@@ -49,13 +49,13 @@ type MCPServer struct {
 }
 
 type Config struct {
-	Endpoint     EndpointConfig `yaml:"endpoint"`
-	Server       ServerConfig   `yaml:"server"`
-	Storage      StorageConfig  `yaml:"storage"`
-	Approval     ApprovalConfig `yaml:"approval"`
-	MCPServers   []MCPServer    `yaml:"mcp_servers"`
-	SystemPrompt        string `yaml:"system_prompt"`
-	SubagentSystemPrompt string `yaml:"subagent_system_prompt"`
+	Endpoint             EndpointConfig `yaml:"endpoint"`
+	Server               ServerConfig   `yaml:"server"`
+	Storage              StorageConfig  `yaml:"storage"`
+	Approval             ApprovalConfig `yaml:"approval"`
+	MCPServers           []MCPServer    `yaml:"mcp_servers"`
+	SystemPrompt         string         `yaml:"system_prompt"`
+	SubagentSystemPrompt string         `yaml:"subagent_system_prompt"`
 }
 
 func Load(path string) (*Config, error) {
