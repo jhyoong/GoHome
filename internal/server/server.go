@@ -158,24 +158,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				strings.HasPrefix(origin, "http://127.0.0.1") ||
 				strings.HasPrefix(origin, "https://localhost") ||
 				strings.HasPrefix(origin, "https://127.0.0.1") ||
-				strings.HasPrefix(origin, "http://192.168.") ||
-				strings.HasPrefix(origin, "http://10.") ||
-				strings.HasPrefix(origin, "http://172.16.") ||
-				strings.HasPrefix(origin, "http://172.17.") ||
-				strings.HasPrefix(origin, "http://172.18.") ||
-				strings.HasPrefix(origin, "http://172.19.") ||
-				strings.HasPrefix(origin, "http://172.20.") ||
-				strings.HasPrefix(origin, "http://172.21.") ||
-				strings.HasPrefix(origin, "http://172.22.") ||
-				strings.HasPrefix(origin, "http://172.23.") ||
-				strings.HasPrefix(origin, "http://172.24.") ||
-				strings.HasPrefix(origin, "http://172.25.") ||
-				strings.HasPrefix(origin, "http://172.26.") ||
-				strings.HasPrefix(origin, "http://172.27.") ||
-				strings.HasPrefix(origin, "http://172.28.") ||
-				strings.HasPrefix(origin, "http://172.29.") ||
-				strings.HasPrefix(origin, "http://172.30.") ||
-				strings.HasPrefix(origin, "http://172.31.")
+				strings.HasPrefix(origin, "http://192.168.")
 		},
 	}
 
