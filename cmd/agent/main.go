@@ -16,7 +16,6 @@ import (
 	"time"
 
 	gohome "github.com/jhyoong/gohome"
-	"github.com/jhyoong/gohome/internal/agent"
 	"github.com/jhyoong/gohome/internal/config"
 	"github.com/jhyoong/gohome/internal/llm"
 	"github.com/jhyoong/gohome/internal/mcp"
@@ -104,15 +103,17 @@ func main() {
 	defer mcp.CloseAll(mcpConns)
 
 	llmClient := llm.NewClient(cfg.Endpoint)
-	loop := agent.NewLoop(llmClient, reg, store, cfg.SystemPrompt)
 
 	srv := server.New(server.Config{
-		Store:         store,
-		Loop:          loop,
-		Approval:      cfg.Approval,
-		FullConfig:    cfg,
-		ConfigPath:    *configPath,
-		ContextWindow: cfg.Endpoint.ContextWindow,
+		Store:                store,
+		LLMClient:            llmClient,
+		Registry:             reg,
+		SystemPrompt:         cfg.SystemPrompt,
+		SubagentSystemPrompt: cfg.SubagentSystemPrompt,
+		Approval:             cfg.Approval,
+		FullConfig:           cfg,
+		ConfigPath:           *configPath,
+		ContextWindow:        cfg.Endpoint.ContextWindow,
 	})
 
 	staticFS, err := fs.Sub(gohome.WebStatic, "web/static")
