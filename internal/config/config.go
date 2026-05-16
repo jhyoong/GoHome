@@ -54,7 +54,8 @@ type Config struct {
 	Storage      StorageConfig  `yaml:"storage"`
 	Approval     ApprovalConfig `yaml:"approval"`
 	MCPServers   []MCPServer    `yaml:"mcp_servers"`
-	SystemPrompt string         `yaml:"system_prompt"`
+	SystemPrompt        string `yaml:"system_prompt"`
+	SubagentSystemPrompt string `yaml:"subagent_system_prompt"`
 }
 
 func Load(path string) (*Config, error) {
