@@ -39,6 +39,17 @@ func sseToolCall() string {
 	}, "\n\n")
 }
 
+// sseToolCallWithThinking returns SSE bytes for a tool call response preceded by thinking.
+func sseToolCallWithThinking(reasoning string) string {
+	return strings.Join([]string{
+		`data: {"choices":[{"delta":{"reasoning_content":"` + reasoning + `"},"finish_reason":null}]}`,
+		`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"tc1","type":"function","function":{"name":"test_tool","arguments":"{}"}}]},"finish_reason":null}]}`,
+		`data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}`,
+		`data: [DONE]`,
+		"",
+	}, "\n\n")
+}
+
 // sseText returns SSE bytes for a simple text response.
 func sseText(content string) string {
 	return strings.Join([]string{
@@ -86,6 +97,7 @@ func TestLoopUsageForwarded(t *testing.T) {
 			gotCompletion = completion
 			gotTotal = total
 		},
+		nil, // onThinking
 	)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -119,6 +131,7 @@ func TestSimpleMessageRoundtrip(t *testing.T) {
 		nil, // onToolResult
 		nil, // steerCh
 		nil, // onUsage
+		nil, // onThinking
 	)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -172,6 +185,7 @@ func TestOnToolResultCallback(t *testing.T) {
 		},
 		nil, // steerCh
 		nil, // onUsage
+		nil, // onThinking
 	)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -313,6 +327,7 @@ func TestSteeringMessageInjected(t *testing.T) {
 		nil, // onToolResult
 		steerCh,
 		nil, // onUsage
+		nil, // onThinking
 	)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -328,5 +343,225 @@ func TestSteeringMessageInjected(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("steering message not saved to DB; got messages: %+v", msgs)
+	}
+}
+
+// sseTextWithPredictions returns SSE bytes simulating a response with reasoning_content followed by content.
+func sseTextWithPredictions(content, reasoning string) string {
+	return strings.Join([]string{
+		`data: {"choices":[{"delta":{"reasoning_content":"` + reasoning + `"},"finish_reason":null}]}`,
+		`data: {"choices":[{"delta":{"content":"` + content + `"},"finish_reason":null}]}`,
+		`data: {"choices":[{"delta":{},"finish_reason":"stop"}]}`,
+		`data: [DONE]`,
+		"",
+	}, "\n\n")
+}
+
+// TestThinkingCallbackCalled verifies that onThinking is called with prediction content during streaming.
+func TestThinkingCallbackCalled(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Write([]byte(sseTextWithPredictions("hello world", "I need to think about this")))
+	}))
+	defer srv.Close()
+
+	store, _ := session.Open(t.TempDir() + "/test.db")
+	defer store.Close()
+	ctx := context.Background()
+	sess, _ := store.CreateSession(ctx)
+
+	loop := agent.NewLoop(llm.NewClient(config.EndpointConfig{URL: srv.URL, Model: "test"}), tools.NewRegistry(), store, "")
+	broker := approval.NewBroker(config.ApprovalConfig{}, nil)
+
+	var thinkingContent []string
+	err := loop.Run(ctx, sess.ID, "tab-1", "hello", broker,
+		func(tok string) {},
+		func(msg string) {},
+		nil, // onToolResult
+		nil, // steerCh
+		nil, // onUsage
+		func(prediction string) {
+			thinkingContent = append(thinkingContent, prediction)
+		},
+	)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(thinkingContent) == 0 {
+		t.Error("onThinking callback was not called - expected prediction content to be received")
+	}
+	if len(thinkingContent) > 0 && thinkingContent[0] != "I need to think about this" {
+		t.Errorf("onThinking content: got %q, want %q", thinkingContent[0], "I need to think about this")
+	}
+}
+
+// TestAssistantMessageWithThinkingSaved verifies that assistant message is saved with Thinking field populated.
+func TestAssistantMessageWithThinkingSaved(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Write([]byte(sseTextWithPredictions("This is my response", "my internal reasoning")))
+	}))
+	defer srv.Close()
+
+	store, _ := session.Open(t.TempDir() + "/test.db")
+	defer store.Close()
+	ctx := context.Background()
+	sess, _ := store.CreateSession(ctx)
+
+	loop := agent.NewLoop(llm.NewClient(config.EndpointConfig{URL: srv.URL, Model: "test"}), tools.NewRegistry(), store, "")
+	broker := approval.NewBroker(config.ApprovalConfig{}, nil)
+
+	var thinkingContent string
+	err := loop.Run(ctx, sess.ID, "tab-1", "hello", broker,
+		func(tok string) {},
+		func(msg string) {},
+		nil, // onToolResult
+		nil, // steerCh
+		nil, // onUsage
+		func(prediction string) {
+			thinkingContent = prediction
+		},
+	)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	// Verify assistant message was saved with Thinking field populated
+	msgs, err := store.GetMessages(ctx, sess.ID)
+	if err != nil {
+		t.Fatalf("GetMessages: %v", err)
+	}
+
+	var assistantWithThinking bool
+	for _, m := range msgs {
+		if m.Role == "assistant" && m.Content == "This is my response" {
+			if m.Thinking == "" {
+				t.Errorf("Thinking field is empty - expected Thinking=%q", thinkingContent)
+			} else if m.Thinking != thinkingContent {
+				t.Errorf("Thinking field: got %q, want %q", m.Thinking, thinkingContent)
+			} else {
+				assistantWithThinking = true
+			}
+		}
+	}
+	if !assistantWithThinking {
+		t.Error("assistant message with thinking content not saved correctly")
+	}
+}
+
+func TestThinkingPersistedOnToolCallMessage(t *testing.T) {
+	var callCount int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		n := atomic.AddInt32(&callCount, 1)
+		if n == 1 {
+			w.Write([]byte(sseToolCallWithThinking("reasoning before tool")))
+		} else {
+			w.Write([]byte(sseTextWithPredictions("final answer", "reasoning after tool")))
+		}
+	}))
+	defer srv.Close()
+
+	store, _ := session.Open(t.TempDir() + "/test.db")
+	defer store.Close()
+	ctx := context.Background()
+	sess, _ := store.CreateSession(ctx)
+
+	reg := tools.NewRegistry()
+	reg.Register(&mockTool{})
+	broker := approval.NewBroker(config.ApprovalConfig{AutoApproveAll: true}, nil)
+	loop := agent.NewLoop(llm.NewClient(config.EndpointConfig{URL: srv.URL, Model: "test"}), reg, store, "")
+
+	err := loop.Run(ctx, sess.ID, "tab-1", "do something", broker,
+		func(tok string) {},
+		func(msg string) {},
+		nil, nil, nil, nil,
+	)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	msgs, err := store.GetMessages(ctx, sess.ID)
+	if err != nil {
+		t.Fatalf("GetMessages: %v", err)
+	}
+
+	var toolCallMsg, finalMsg *session.Message
+	for i := range msgs {
+		if msgs[i].ToolCalls != "" {
+			toolCallMsg = &msgs[i]
+		}
+		if msgs[i].Content == "final answer" {
+			finalMsg = &msgs[i]
+		}
+	}
+
+	if toolCallMsg == nil {
+		t.Fatal("no tool-call message found in DB")
+	}
+	if toolCallMsg.Thinking != "reasoning before tool" {
+		t.Errorf("tool-call message Thinking: got %q, want %q", toolCallMsg.Thinking, "reasoning before tool")
+	}
+	if finalMsg == nil {
+		t.Fatal("no final text message found in DB")
+	}
+	if finalMsg.Thinking != "reasoning after tool" {
+		t.Errorf("final message Thinking: got %q, want %q", finalMsg.Thinking, "reasoning after tool")
+	}
+}
+
+// TestAssistantMessageWithEmptyThinkingSaved verifies that assistant message is saved with empty Thinking field.
+func TestAssistantMessageWithEmptyThinkingSaved(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		// SSE with no predictions - simulating response without thinking content
+		w.Write([]byte(strings.Join([]string{
+			`data: {"choices":[{"delta":{"content":"simple response"},"finish_reason":null}]}`,
+			`data: {"choices":[{"delta":{},"finish_reason":"stop"}]}`,
+			`data: [DONE]`,
+			"",
+		}, "\n\n")))
+	}))
+	defer srv.Close()
+
+	store, _ := session.Open(t.TempDir() + "/test.db")
+	defer store.Close()
+	ctx := context.Background()
+	sess, _ := store.CreateSession(ctx)
+
+	loop := agent.NewLoop(llm.NewClient(config.EndpointConfig{URL: srv.URL, Model: "test"}), tools.NewRegistry(), store, "")
+	broker := approval.NewBroker(config.ApprovalConfig{}, nil)
+
+	err := loop.Run(ctx, sess.ID, "tab-1", "hello", broker,
+		func(tok string) {},
+		func(msg string) {},
+		nil, // onToolResult
+		nil, // steerCh
+		nil, // onUsage
+		nil, // onThinking - no predictions callback
+	)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	// Verify assistant message was saved with empty Thinking field
+	msgs, err := store.GetMessages(ctx, sess.ID)
+	if err != nil {
+		t.Fatalf("GetMessages: %v", err)
+	}
+
+	var found bool
+	for _, m := range msgs {
+		if m.Role == "assistant" && m.Content == "simple response" {
+			// Verify Thinking field is empty string (not nil/omitted)
+			if m.Thinking != "" {
+				t.Errorf("Thinking field should be empty string when no thinking content, got: %q", m.Thinking)
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("assistant message not saved correctly")
 	}
 }

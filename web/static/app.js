@@ -53,11 +53,25 @@ function suggestPattern(cmd) {
 let activeSessionId = null;
 let ws = null;
 let streamingEl = null;
-const tabID = crypto.randomUUID();
+let streamingThinkingEl = null;
+
+function generateUUID() {
+  if (crypto && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Fallback for older browsers/safari
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+const tabID = generateUUID();
 let retryDelay = 1000;
 
-// DOM refs — populated after DOMContentLoaded
-let dom = {};
+// DOM refs — populated after DOMContentLoaded (use global to allow test setup)
+var dom = {};
 
 // ---- WebSocket ----
 
@@ -82,6 +96,7 @@ function connect() {
     const msg = JSON.parse(e.data);
     switch (msg.type) {
       case 'token':         appendToken(msg.data); break;
+      case 'thinking_token': handleThinkingToken(msg.data); break;
       case 'sessions':      renderSessions(msg.data); break;
       case 'history':       onHistory(msg); break;
       case 'session_created':
@@ -131,12 +146,14 @@ function onHistory(msg) {
 
 function msgHtml(msg) {
   const toolBlocks = (msg.tool_results || []).map(toolCallBlockHtml).join('');
+  const thinkingItems = Array.isArray(msg.thinking) ? msg.thinking : (msg.thinking ? [msg.thinking] : []);
+  const thinkingBlocks = thinkingItems.map(thinkingBlockHtml).join('');
   const text = (msg.content || '').trim();
   const content = text ? `<div class="message-content">${escHtml(text)}</div>` : '';
   return `
     <div class="message message-${escHtml(msg.role)}">
       <div class="message-role">${escHtml(msg.role)}</div>
-      ${content}${toolBlocks}
+      ${thinkingBlocks}${content}${toolBlocks}
     </div>
   `;
 }
@@ -161,6 +178,37 @@ function toolCallBlockHtml(tr) {
   `;
 }
 
+function thinkingBlockHtml(thinking) {
+  return `
+    <div class="thinking-block">
+      <div class="thinking-header">
+        <span class="thinking-label">Thinking</span>
+      </div>
+      <div class="thinking-body">${escHtml(thinking)}</div>
+    </div>
+  `;
+}
+
+function handleThinkingToken(text) {
+  if (!streamingThinkingEl) {
+    const messageEl = document.createElement('div');
+    messageEl.className = 'message message-assistant';
+    messageEl.innerHTML = '<div class="message-role">assistant</div><div class="message-content"></div>';
+    dom.messages.appendChild(messageEl);
+
+    const thinkingWrapper = document.createElement('div');
+    thinkingWrapper.innerHTML = thinkingBlockHtml('');
+    const thinkingBlock = thinkingWrapper.firstElementChild;
+    messageEl.insertBefore(thinkingBlock, messageEl.querySelector('.message-content'));
+
+    streamingEl = messageEl;
+    streamingThinkingEl = thinkingBlock.querySelector('.thinking-body');
+  }
+
+  streamingThinkingEl.textContent += text;
+  scrollToBottom();
+}
+
 // ---- Streaming ----
 
 function appendToken(text) {
@@ -178,13 +226,17 @@ function appendToken(text) {
 function finalizeStream(messageId) {
   if (streamingEl) {
     const content = streamingEl.querySelector('.message-content').textContent.trim();
-    if (content) {
+    const thinkingContent = streamingThinkingEl ? streamingThinkingEl.textContent.trim() : '';
+    if (content || thinkingContent) {
       const msg = {
-        id: messageId || crypto.randomUUID(),
+        id: messageId || generateUUID(),
         role: 'assistant',
         content,
         created_at: new Date().toISOString(),
       };
+      if (thinkingContent) {
+        msg.thinking = [thinkingContent];
+      }
       state.messages.push(msg);
       const wrapper = document.createElement('div');
       wrapper.innerHTML = msgHtml(msg);
@@ -193,6 +245,7 @@ function finalizeStream(messageId) {
       streamingEl.remove();
     }
     streamingEl = null;
+    streamingThinkingEl = null;
   }
   setBusy(false);
 }
@@ -206,15 +259,20 @@ function clearStreamEl() {
   if (streamingEl) {
     streamingEl.remove();
     streamingEl = null;
+    streamingThinkingEl = null;
   }
 }
 
 function addToolResult(msg) {
-  // Flush any streaming content before the tool result so order is: [preamble] → [tool] → [response]
+  // Finalize any streaming assistant turn (thinking + text) before adding tool result
   if (streamingEl) {
-    const preamble = streamingEl.querySelector('.message-content').textContent.trim();
-    if (preamble) {
-      const prevMsg = { id: crypto.randomUUID(), role: 'assistant', content: preamble, created_at: new Date().toISOString() };
+    const content = streamingEl.querySelector('.message-content').textContent.trim();
+    const thinkingContent = streamingThinkingEl ? streamingThinkingEl.textContent.trim() : '';
+    if (content || thinkingContent) {
+      const prevMsg = { id: generateUUID(), role: 'assistant', content, created_at: new Date().toISOString() };
+      if (thinkingContent) {
+        prevMsg.thinking = [thinkingContent];
+      }
       state.messages.push(prevMsg);
       const w = document.createElement('div');
       w.innerHTML = msgHtml(prevMsg);
@@ -223,17 +281,18 @@ function addToolResult(msg) {
       streamingEl.remove();
     }
     streamingEl = null;
+    streamingThinkingEl = null;
   }
 
   const tr = {
-    id: crypto.randomUUID(),
+    id: generateUUID(),
     tool_name: msg.tool,
     params: msg.params,
     result: msg.result,
     approved: msg.approved,
   };
   const syntheticMsg = {
-    id: crypto.randomUUID(),
+    id: generateUUID(),
     role: 'assistant',
     content: '',
     tool_results: [tr],
@@ -360,7 +419,8 @@ function scrollToBottom() {
 
 // ---- Boot ----
 
-document.addEventListener('DOMContentLoaded', () => {
+// Extract init code into a function so it can be called immediately if document is ready
+function initApp() {
   dom = {
     sessionList:    document.getElementById('session-list'),
     messages:       document.getElementById('messages'),
@@ -393,7 +453,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const content = dom.input.value.trim();
     if (!content || state.awaitingApproval) return;
     const userMsg = {
-      id: crypto.randomUUID(),
+id: generateUUID(),
       role: 'user',
       content,
       created_at: new Date().toISOString(),
@@ -448,13 +508,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Tool call expand/collapse — event delegation
   dom.messages.addEventListener('click', (e) => {
-    const header = e.target.closest('[data-tool-toggle]');
-    if (!header) return;
-    const body = header.closest('.tool-call-block').querySelector('.tool-call-body');
-    const toggle = header.querySelector('.tool-call-toggle');
-    const nowExpanded = body.hidden;
-    body.hidden = !nowExpanded;
-    toggle.textContent = nowExpanded ? '▲' : '▼';
+    const toolHeader = e.target.closest('[data-tool-toggle]');
+    if (toolHeader) {
+      const toolBlock = toolHeader.closest('.tool-call-block');
+      if (!toolBlock) return;
+      const body = toolBlock.querySelector('.tool-call-body');
+      const toggle = toolHeader.querySelector('.tool-call-toggle');
+      if (!body || !toggle) return;
+      const nowExpanded = body.hidden;
+      body.hidden = !nowExpanded;
+      toggle.textContent = nowExpanded ? '▲' : '▼';
+    }
+
   });
 
   dom.errorClose.addEventListener('click', () => { dom.errorBanner.hidden = true; });
@@ -509,4 +574,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   resizeTextarea();
   connect();
-});
+}
+
+document.addEventListener('DOMContentLoaded', initApp);

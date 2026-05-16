@@ -109,3 +109,112 @@ func TestStreamingUsage(t *testing.T) {
 		t.Errorf("usage: got (%d, %d, %d), want (10, 5, 15)", gotPrompt, gotCompletion, gotTotal)
 	}
 }
+
+func TestDeltaReasoningContentField(t *testing.T) {
+	var delta llm.Delta
+	_ = delta.ReasoningContent
+}
+
+func TestStreamingReasoningContent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Write([]byte("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"thinking here\"}}]}\n\n"))
+		w.Write([]byte("data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"))
+		w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer srv.Close()
+
+	client := llm.NewClient(config.EndpointConfig{URL: srv.URL, Model: "test"})
+	var reasoning []string
+	err := client.Stream(context.Background(), []llm.Message{{Role: "user", Content: "hello"}}, nil,
+		func(token string) {},
+		func(_ []llm.ToolCall) {},
+		func() {},
+		nil,
+		func(r string) { reasoning = append(reasoning, r) },
+	)
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+	if len(reasoning) != 1 || reasoning[0] != "thinking here" {
+		t.Errorf("reasoning: got %v, want [thinking here]", reasoning)
+	}
+}
+
+// TestStreamingThinkingTokens tests that Stream() sends thinking_tokens in JSON body
+// when client is configured with ThinkingTokens. This tests acceptance criterion T001-2.
+func TestStreamingThinkingTokens(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			ThinkingTokens int `json:"thinking_tokens"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if body.ThinkingTokens != 512 {
+			t.Errorf("thinking_tokens: got %d, want 512", body.ThinkingTokens)
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"hi\"},\"finish_reason\":null}]}\n\n"))
+		w.Write([]byte("data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"))
+		w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer srv.Close()
+
+	client := llm.NewClient(config.EndpointConfig{
+		URL:           srv.URL,
+		Model:         "test",
+		ThinkingTokens: 512,
+	})
+	var tokens []string
+	err := client.Stream(context.Background(), []llm.Message{{Role: "user", Content: "hello"}}, nil,
+		func(token string) { tokens = append(tokens, token) },
+		func(_ []llm.ToolCall) {},
+		func() {},
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+	if len(tokens) == 0 {
+		t.Error("no tokens received")
+	}
+}
+
+// TestStreamingZeroThinkingTokens tests that Stream() sends thinking_tokens: 0 when
+// ThinkingTokens is zero. This tests acceptance criterion T001-3.
+func TestStreamingZeroThinkingTokens(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			ThinkingTokens int `json:"thinking_tokens"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if body.ThinkingTokens != 0 {
+			t.Errorf("thinking_tokens: got %d, want 0", body.ThinkingTokens)
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"hi\"},\"finish_reason\":null}]}\n\n"))
+		w.Write([]byte("data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"))
+		w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer srv.Close()
+
+	client := llm.NewClient(config.EndpointConfig{
+		URL:           srv.URL,
+		Model:         "test",
+		ThinkingTokens: 0,
+	})
+	err := client.Stream(context.Background(), []llm.Message{{Role: "user", Content: "hello"}}, nil,
+		func(token string) {},
+		func(_ []llm.ToolCall) {},
+		func() {},
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+}

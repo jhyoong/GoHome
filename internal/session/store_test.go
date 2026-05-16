@@ -2,9 +2,12 @@ package session_test
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 	"testing"
 	"time"
 
+	_ "modernc.org/sqlite"
 	"github.com/jhyoong/gohome/internal/session"
 )
 
@@ -122,5 +125,185 @@ func TestToolResultCRUD(t *testing.T) {
 	}
 	if len(results) != 1 || results[0].ID != tr.ID {
 		t.Errorf("unexpected tool results: %+v", results)
+	}
+}
+
+func TestMessageThinkingField(t *testing.T) {
+	// Test: Message struct with Thinking field serializes to JSON with "thinking" key
+	msg := session.Message{
+		SessionID: "test-session",
+		Role:      "assistant",
+		Content:   "Hello",
+		Thinking:  "some thinking content",
+	}
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+
+	// Parse the JSON back to check for "thinking" field
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+
+	thinkingVal, ok := parsed["thinking"]
+	if !ok {
+		t.Error("Message JSON does not contain 'thinking' field")
+	}
+	if thinkingVal != "some thinking content" {
+		t.Errorf("thinking field value: got %v, want %v", thinkingVal, "some thinking content")
+	}
+}
+
+func TestAddMessageWithThinking(t *testing.T) {
+	// Test: AddMessage stores thinking content in the database
+	store, _ := session.Open(t.TempDir() + "/test.db")
+	defer store.Close()
+	ctx := context.Background()
+
+	s, _ := store.CreateSession(ctx)
+	thinkingContent := "I need to think about this carefully"
+
+	msg, err := store.AddMessage(ctx, session.Message{
+		SessionID: s.ID,
+		Role:      "assistant",
+		Content:   "Let me think...",
+		Thinking:  thinkingContent,
+	})
+	if err != nil {
+		t.Fatalf("AddMessage: %v", err)
+	}
+	if msg.Thinking != thinkingContent {
+		t.Errorf("thinking: got %q, want %q", msg.Thinking, thinkingContent)
+	}
+}
+
+func TestGetMessagesWithThinking(t *testing.T) {
+	// Test: GetMessages returns messages with thinking content intact
+	store, _ := session.Open(t.TempDir() + "/test.db")
+	defer store.Close()
+	ctx := context.Background()
+
+	s, _ := store.CreateSession(ctx)
+	thinkingContent := "my internal reasoning"
+
+	_, err := store.AddMessage(ctx, session.Message{
+		SessionID: s.ID,
+		Role:      "assistant",
+		Content:   "Answer",
+		Thinking:   thinkingContent,
+	})
+	if err != nil {
+		t.Fatalf("AddMessage: %v", err)
+	}
+
+	msgs, err := store.GetMessages(ctx, s.ID)
+	if err != nil {
+		t.Fatalf("GetMessages: %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	if msgs[0].Thinking != thinkingContent {
+		t.Errorf("Thinking: got %q, want %q", msgs[0].Thinking, thinkingContent)
+	}
+}
+
+func TestMessageThinkingEmpty(t *testing.T) {
+	// Test: Message without Thinking field has empty string (not omitted from JSON)
+	msg := session.Message{
+		SessionID: "test-session",
+		Role:      "user",
+		Content:   "Hello",
+	}
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+
+	// thinking field should be present (empty string), not omitted
+	_, ok := parsed["thinking"]
+	if !ok {
+		t.Error("Message JSON should contain 'thinking' field even when empty")
+	}
+}
+
+func TestMigrationAddsThinkingColumn(t *testing.T) {
+	// Test: Opening a database with the old schema (no thinking column) migrates successfully.
+	// This simulates the user's actual bug: existing database without the thinking column.
+	dbPath := t.TempDir() + "/migrate_test.db"
+
+	// Create database with old schema (pre-thinking column)
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	_, err = db.Exec(`
+		CREATE TABLE sessions (
+			id TEXT PRIMARY KEY,
+			title TEXT NOT NULL DEFAULT 'New Session',
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE messages (
+			id TEXT PRIMARY KEY,
+			session_id TEXT NOT NULL,
+			role TEXT NOT NULL,
+			content TEXT,
+			tool_calls TEXT,
+			tool_call_id TEXT,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE INDEX idx_messages_session ON messages(session_id, created_at);
+	`)
+	if err != nil {
+		db.Close()
+		t.Fatalf("CREATE TABLE: %v", err)
+	}
+	db.Close()
+
+	// Open with session.Store - this triggers the migration
+	store, err := session.Open(dbPath)
+	if err != nil {
+		t.Fatalf("session.Open after migration: %v", err)
+	}
+	defer store.Close()
+
+	// Verify the thinking column exists
+	ctx := context.Background()
+	s, err := store.CreateSession(ctx)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	// Add a message with thinking content
+	_, err = store.AddMessage(ctx, session.Message{
+		SessionID: s.ID,
+		Role:      "assistant",
+		Content:   "Hello",
+		Thinking:  "my thinking",
+	})
+	if err != nil {
+		t.Fatalf("AddMessage with thinking: %v", err)
+	}
+
+	// Verify it can be read back
+	msgs, err := store.GetMessages(ctx, s.ID)
+	if err != nil {
+		t.Fatalf("GetMessages: %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	if msgs[0].Thinking != "my thinking" {
+		t.Errorf("thinking: got %q, want %q", msgs[0].Thinking, "my thinking")
 	}
 }

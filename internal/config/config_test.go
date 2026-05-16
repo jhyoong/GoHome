@@ -128,3 +128,100 @@ endpoint:
 		t.Errorf("got ContextWindow %d, want 65536", cfg.Endpoint.ContextWindow)
 	}
 }
+
+func TestThinkingTokensExplicit(t *testing.T) {
+	yaml := `
+endpoint:
+  url: "http://localhost:8080/v1"
+  model: "my-model"
+  max_tokens: 4096
+  thinking_tokens: 1024
+`
+	f, err := os.CreateTemp("", "config*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+	f.WriteString(yaml)
+	f.Close()
+
+	cfg, err := config.Load(f.Name())
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Endpoint.ThinkingTokens != 1024 {
+		t.Errorf("got ThinkingTokens %d, want 1024", cfg.Endpoint.ThinkingTokens)
+	}
+}
+
+func TestThinkingTokensDefault(t *testing.T) {
+	yaml := `
+endpoint:
+  url: "http://localhost:8080/v1"
+  model: "my-model"
+  max_tokens: 4096
+`
+	f, err := os.CreateTemp("", "config*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+	f.WriteString(yaml)
+	f.Close()
+
+	cfg, err := config.Load(f.Name())
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Endpoint.ThinkingTokens != 0 {
+		t.Errorf("got ThinkingTokens %d, want 0 (model default)", cfg.Endpoint.ThinkingTokens)
+	}
+}
+
+func TestThinkingTokensSerialization(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	cfg := &config.Config{}
+	cfg.Endpoint.URL = "http://localhost:8080/v1"
+	cfg.Endpoint.Model = "my-model"
+	cfg.Endpoint.MaxTokens = 4096
+	cfg.Endpoint.ThinkingTokens = 1024
+
+	if err := config.Save(path, cfg); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error: %v", err)
+	}
+
+	loaded, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if loaded.Endpoint.ThinkingTokens != 1024 {
+		t.Errorf("got ThinkingTokens %d, want 1024 after save/reload", loaded.Endpoint.ThinkingTokens)
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, "check_yaml.go")); os.IsNotExist(err) {
+		// Check that yaml contains thinking_tokens field
+		if !contains(string(data), "thinking_tokens") {
+			t.Errorf("serialized YAML does not contain 'thinking_tokens' field")
+		}
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}

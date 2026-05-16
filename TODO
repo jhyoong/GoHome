@@ -1,13 +1,18 @@
-1. Show thinking, with toggle on frontend by clicking on it. 
-~~2. Dark mode toggle.~~
-~~3. Context window tracker / token count and usage~~
-4. Tool call and thinking dropdown - possible to "preview" up to 5 lines of output?
-5. Tool call reject and provide input - to link with steering. To also refine the reject flow better - reject and stop completely, or steer, or continue with other commands?
-6. Subagents
-~~7. Shift+Enter to create newline in text input.~~
-8. Copy button on assistant response?
-9. Docker package instructions, and update README with main goal/reason of this project.
-10. Multiple model configs and frontend changes to select model 
-11. YOLO mode
-12. General vs software dev mode ( after subagents )
-13. Markdown rendering
+# TODOs
+
+## Not yet completed:
+- [ ] Tool call preview - Show up to 5 lines of output preview in dropdowns
+- [ ] Tool call reject with steering - Improve reject flow: reject and stop completely, or steer, or continue with other commands
+- [ ] Subagents - Implement subagent support
+- [ ] Copy button - Add copy button on assistant responses
+- [ ] Docker package instructions - Update README with packaging instructions and main goal/reason of project
+- [ ] Multiple model configs - Frontend changes to select different models
+- [ ] YOLO mode - Implement YOLO mode
+- [ ] General vs software dev mode - Mode differentiation (after subagents)
+- [ ] Markdown rendering - Render markdown in responses
+- [ ] Toggle button for expanding tool output - Fix toggle button that broke with recent changes
+
+## Done:
+- [x] Dark mode toggle
+- [x] Context window tracker / token count and usage
+- [x] Shift+Enter to create newline in text input

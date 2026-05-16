@@ -314,6 +314,45 @@ body {
   font-size: 11px;
 }
 
+.thinking-block {
+  margin-top: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  overflow: hidden;
+  font-size: 12px;
+}
+
+.thinking-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--color-surface-alt);
+}
+
+.thinking-label {
+  flex: 1;
+  font-weight: 600;
+  font-family: monospace;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.thinking-body {
+  padding: 8px 10px;
+  background: var(--color-surface-faint);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-style: italic;
+}
+
+.message-thinking {
+  padding: 4px 0;
+  color: var(--color-muted);
+  font-size: 11px;
+}
+
 .btn-stop {
   padding: 8px 16px;
   background: #f38ba8;

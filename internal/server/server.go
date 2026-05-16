@@ -153,10 +153,12 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			if origin == "" {
 				return true
 			}
+			// Allow localhost and local network connections
 			return strings.HasPrefix(origin, "http://localhost") ||
 				strings.HasPrefix(origin, "http://127.0.0.1") ||
 				strings.HasPrefix(origin, "https://localhost") ||
-				strings.HasPrefix(origin, "https://127.0.0.1")
+				strings.HasPrefix(origin, "https://127.0.0.1") ||
+				strings.HasPrefix(origin, "http://192.168.")
 		},
 	}
 
@@ -376,6 +378,10 @@ func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string, steer
 	if wc.loop == nil {
 		return
 	}
+	onThinking := func(token string) {
+		wc.send(outMsg{Type: "thinking_token", Data: token})
+	}
+
 	err := wc.loop.Run(ctx, sessionID, wc.tabID, content, wc.broker,
 		func(token string) { wc.send(outMsg{Type: "token", Data: token}) },
 		func(errMsg string) { wc.send(outMsg{Type: "error", Message: errMsg}) },
@@ -397,6 +403,7 @@ func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string, steer
 				ContextWindow:    contextWindow,
 			})
 		},
+		onThinking,
 	)
 	if err != nil {
 		if ctx.Err() == nil {
