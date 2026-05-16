@@ -111,7 +111,7 @@ function connect() {
       case 'stopped':       clearStream(); break;
       case 'error':         showError(msg.message); break;
       case 'usage':         updateContextUsage(msg); break;
-      case 'subagent_start':         openSubagentBlock(msg.session_id, msg.data); break;
+      case 'subagent_start':         openSubagentBlock(msg.session_id, msg.data, msg.message); break;
       case 'subagent_token':         appendSubagentToken(msg.session_id, msg.data); break;
       case 'subagent_thinking_token': appendSubagentThinkingToken(msg.session_id, msg.data); break;
       case 'subagent_tool_result':   addSubagentToolResult(msg); break;
@@ -297,6 +297,8 @@ function addToolResult(msg) {
     streamingThinkingEl = null;
   }
 
+  if (msg.tool === 'spawn_subagent') return;
+
   const tr = {
     id: generateUUID(),
     tool_name: msg.tool,
@@ -432,7 +434,7 @@ function scrollToBottom() {
 
 // ---- Subagent rendering ----
 
-function openSubagentBlock(sessionID, parentID) {
+function openSubagentBlock(sessionID, parentID, task) {
   const blockEl = document.createElement('div');
   blockEl.className = 'subagent-block';
   blockEl.dataset.sessionId = sessionID;
@@ -445,6 +447,15 @@ function openSubagentBlock(sessionID, parentID) {
     </button>
     <div class="subagent-body"></div>
   `;
+
+  const bodyEl = blockEl.querySelector('.subagent-body');
+
+  if (task) {
+    const taskEl = document.createElement('div');
+    taskEl.className = 'subagent-task';
+    taskEl.textContent = task;
+    bodyEl.appendChild(taskEl);
+  }
 
   blockEl.querySelector('[data-subagent-toggle]').addEventListener('click', () => {
     const body = blockEl.querySelector('.subagent-body');
@@ -459,7 +470,7 @@ function openSubagentBlock(sessionID, parentID) {
 
   subagentBlocks.set(sessionID, {
     blockEl,
-    bodyEl: blockEl.querySelector('.subagent-body'),
+    bodyEl,
     tokenEl: null,
     thinkingEl: null,
   });

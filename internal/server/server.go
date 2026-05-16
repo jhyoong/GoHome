@@ -373,8 +373,8 @@ type wsSubagentEvents struct {
 	wc *wsConn
 }
 
-func (e *wsSubagentEvents) OnStart(sessionID, parentID string) {
-	e.wc.send(outMsg{Type: "subagent_start", SessionID: sessionID, Data: parentID})
+func (e *wsSubagentEvents) OnStart(sessionID, parentID, task string) {
+	e.wc.send(outMsg{Type: "subagent_start", SessionID: sessionID, Data: parentID, Message: task})
 }
 
 func (e *wsSubagentEvents) OnToken(sessionID, token string) {

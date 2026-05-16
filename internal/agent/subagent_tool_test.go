@@ -24,7 +24,7 @@ type mockSubagentEvents struct {
 	toolResult int
 }
 
-func (m *mockSubagentEvents) OnStart(sessionID, _ string)                            { m.starts = append(m.starts, sessionID) }
+func (m *mockSubagentEvents) OnStart(sessionID, _, _ string)                         { m.starts = append(m.starts, sessionID) }
 func (m *mockSubagentEvents) OnToken(_, token string)                                { m.tokens = append(m.tokens, token) }
 func (m *mockSubagentEvents) OnThinkingToken(_, _ string)                            {}
 func (m *mockSubagentEvents) OnToolResult(_, _, _, _ string, _ bool)                 { m.toolResult++ }

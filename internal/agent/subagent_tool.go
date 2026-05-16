@@ -14,7 +14,7 @@ import (
 // SubagentEvents receives streaming events from a running subagent.
 // Implemented by the server per WebSocket connection.
 type SubagentEvents interface {
-	OnStart(sessionID, parentID string)
+	OnStart(sessionID, parentID, task string)
 	OnToken(sessionID, token string)
 	OnThinkingToken(sessionID, token string)
 	OnToolResult(sessionID, tool, params, result string, approved bool)
@@ -90,7 +90,7 @@ func (t *SpawnSubagentTool) Execute(ctx context.Context, params json.RawMessage)
 		return "", fmt.Errorf("creating child session: %w", err)
 	}
 
-	t.events.OnStart(child.ID, t.parentID)
+	t.events.OnStart(child.ID, t.parentID, p.Task)
 
 	var finalText string
 	loop := NewLoop(t.llm, t.registry, t.store, t.systemPrompt)

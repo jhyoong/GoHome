@@ -418,6 +418,7 @@ body {
 /* Subagent blocks */
 .subagent-block {
   margin-top: 8px;
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 6px;
   overflow: hidden;
@@ -434,6 +435,7 @@ body {
   border: none;
   cursor: pointer;
   text-align: left;
+  color: var(--color-fg);
 }
 
 .subagent-header:hover { background: var(--color-surface-hover); }
@@ -443,10 +445,10 @@ body {
   font-weight: 600;
   font-family: monospace;
   text-transform: uppercase;
-  color: var(--color-muted);
+  color: var(--color-fg);
 }
 
-.subagent-toggle { color: var(--color-muted-mid); font-size: 10px; }
+.subagent-toggle { color: var(--color-muted); font-size: 10px; }
 
 .subagent-status { font-weight: bold; }
 .subagent-status.running { color: var(--color-muted); animation: pulse 1.5s infinite; }
@@ -470,6 +472,13 @@ body {
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.5;
+}
+
+.subagent-task {
+  color: var(--color-muted);
+  font-style: italic;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .subagent-error-text {
