@@ -121,6 +121,10 @@ function connect() {
   };
 
   ws.onclose = () => {
+    // finalize any open subagent blocks so indicators don't pulse forever
+    for (const [id] of subagentBlocks) {
+      errorSubagentBlock(id, 'Connection lost');
+    }
     ws = null;
     setTimeout(() => {
       retryDelay = Math.min(retryDelay * 2, 30000);
