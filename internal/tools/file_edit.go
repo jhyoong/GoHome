@@ -13,20 +13,7 @@ func (f *FileEditTool) Description() string {
 	return "Edit a file in place using one of three operations: replace_text, replace_lines, or apply_patch."
 }
 func (f *FileEditTool) Parameters() json.RawMessage {
-	return json.RawMessage(`{
-		"type": "object",
-		"properties": {
-			"path":       {"type": "string", "description": "Absolute or relative path to the file"},
-			"operation":  {"type": "string", "enum": ["replace_text", "replace_lines", "apply_patch"]},
-			"old_string": {"type": "string", "description": "Text to find (replace_text only)"},
-			"new_string": {"type": "string", "description": "Replacement text (replace_text only)"},
-			"start_line": {"type": "integer", "description": "First line to replace, 1-indexed (replace_lines only)"},
-			"end_line":   {"type": "integer", "description": "Last line to replace, inclusive; defaults to start_line (replace_lines only)"},
-			"content":    {"type": "string", "description": "Replacement content; empty string deletes the lines (replace_lines only)"},
-			"patch":      {"type": "string", "description": "Unified diff patch to apply (apply_patch only)"}
-		},
-		"required": ["path", "operation"]
-	}`)
+	return json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"Absolute or relative path to the file"},"operation":{"type":"string","enum":["replace_text","replace_lines","apply_patch"]},"old_string":{"type":"string","description":"Text to find (replace_text only)"},"new_string":{"type":"string","description":"Replacement text (replace_text only)"},"start_line":{"type":"integer","description":"First line to replace, 1-indexed (replace_lines only)"},"end_line":{"type":"integer","description":"Last line to replace, inclusive; defaults to start_line (replace_lines only)"},"content":{"type":"string","description":"Replacement content; empty string deletes the lines (replace_lines only)"},"patch":{"type":"string","description":"Unified diff patch to apply (apply_patch only)"}},"required":["path","operation"]}`)
 }
 
 func (f *FileEditTool) Execute(_ context.Context, params json.RawMessage) (string, error) {
