@@ -74,4 +74,25 @@ func TestRegistryCloneWith(t *testing.T) {
 	if _, ok := clone.Get("file_read"); !ok {
 		t.Error("clone missing file_read tool")
 	}
+
+	// nil entries in extra must not panic
+	clone2 := reg.CloneWith(nil, &tools.FileReadTool{})
+	if _, ok := clone2.Get("file_read"); !ok {
+		t.Error("clone2 missing file_read after nil in extra")
+	}
+
+	// extra tool with same name as existing tool overwrites in clone, not in original
+	// Use mockTool (non-zero size) to avoid Go's zero-size pointer aliasing.
+	original := &mockTool{"dup"}
+	reg.Register(original)
+	overrider := &mockTool{"dup"}
+	clone3 := reg.CloneWith(overrider)
+	got, _ := clone3.Get("dup")
+	if got != overrider {
+		t.Error("extra tool did not overwrite existing tool with same name in clone")
+	}
+	origDup, _ := reg.Get("dup")
+	if origDup == overrider {
+		t.Error("original registry was mutated by CloneWith overwrite")
+	}
 }
