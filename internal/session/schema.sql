@@ -1,8 +1,9 @@
 CREATE TABLE IF NOT EXISTS sessions (
-    id          TEXT PRIMARY KEY,
-    title       TEXT NOT NULL DEFAULT 'New Session',
-    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    id                TEXT PRIMARY KEY,
+    title             TEXT NOT NULL DEFAULT 'New Session',
+    parent_session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
+    created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS messages (
