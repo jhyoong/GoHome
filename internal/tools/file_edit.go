@@ -65,7 +65,37 @@ func (f *FileEditTool) replaceText(path, oldStr, newStr string) (string, error) 
 }
 
 func (f *FileEditTool) replaceLines(path string, startLine, endLine int, content string) (string, error) {
-	return "", fmt.Errorf("not implemented")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	lines := strings.Split(string(data), "\n")
+	total := len(lines)
+
+	if endLine == 0 {
+		endLine = startLine
+	}
+	if startLine < 1 || startLine > total {
+		return "", fmt.Errorf("start_line %d out of range (file has %d lines)", startLine, total)
+	}
+	if endLine < startLine {
+		return "", fmt.Errorf("end_line must be >= start_line")
+	}
+	if endLine > total {
+		return "", fmt.Errorf("end_line %d out of range (file has %d lines)", endLine, total)
+	}
+
+	var result []string
+	result = append(result, lines[:startLine-1]...)
+	if content != "" {
+		result = append(result, strings.Split(content, "\n")...)
+	}
+	result = append(result, lines[endLine:]...)
+
+	if err := os.WriteFile(path, []byte(strings.Join(result, "\n")), 0644); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("replaced lines %d-%d in %s", startLine, endLine, path), nil
 }
 
 func (f *FileEditTool) applyPatch(path, patch string) (string, error) {

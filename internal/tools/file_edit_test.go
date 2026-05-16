@@ -104,3 +104,107 @@ func TestFileEditTool_ReplaceText(t *testing.T) {
 		}
 	})
 }
+
+func TestFileEditTool_ReplaceLines(t *testing.T) {
+	tool := &tools.FileEditTool{}
+
+	t.Run("replaces middle lines", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "file.txt")
+		os.WriteFile(path, []byte("line1\nline2\nline3\nline4"), 0644)
+
+		params, _ := json.Marshal(map[string]any{
+			"path":       path,
+			"operation":  "replace_lines",
+			"start_line": 2,
+			"end_line":   3,
+			"content":    "replaced",
+		})
+		_, err := tool.Execute(context.Background(), params)
+		if err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		got, _ := os.ReadFile(path)
+		if string(got) != "line1\nreplaced\nline4" {
+			t.Errorf("got %q", got)
+		}
+	})
+
+	t.Run("end_line defaults to start_line (single-line replace)", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "file.txt")
+		os.WriteFile(path, []byte("line1\nline2\nline3"), 0644)
+
+		params, _ := json.Marshal(map[string]any{
+			"path":       path,
+			"operation":  "replace_lines",
+			"start_line": 2,
+			"content":    "new2",
+		})
+		_, err := tool.Execute(context.Background(), params)
+		if err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		got, _ := os.ReadFile(path)
+		if string(got) != "line1\nnew2\nline3" {
+			t.Errorf("got %q", got)
+		}
+	})
+
+	t.Run("empty content deletes lines", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "file.txt")
+		os.WriteFile(path, []byte("line1\nline2\nline3"), 0644)
+
+		params, _ := json.Marshal(map[string]any{
+			"path":       path,
+			"operation":  "replace_lines",
+			"start_line": 2,
+			"end_line":   2,
+			"content":    "",
+		})
+		_, err := tool.Execute(context.Background(), params)
+		if err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		got, _ := os.ReadFile(path)
+		if string(got) != "line1\nline3" {
+			t.Errorf("got %q", got)
+		}
+	})
+
+	t.Run("start_line out of range", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "file.txt")
+		os.WriteFile(path, []byte("line1\nline2"), 0644)
+
+		params, _ := json.Marshal(map[string]any{
+			"path":       path,
+			"operation":  "replace_lines",
+			"start_line": 99,
+			"content":    "x",
+		})
+		_, err := tool.Execute(context.Background(), params)
+		if err == nil {
+			t.Fatal("expected error for out-of-range start_line")
+		}
+	})
+
+	t.Run("end_line less than start_line", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "file.txt")
+		os.WriteFile(path, []byte("line1\nline2\nline3"), 0644)
+
+		params, _ := json.Marshal(map[string]any{
+			"path":       path,
+			"operation":  "replace_lines",
+			"start_line": 3,
+			"end_line":   1,
+			"content":    "x",
+		})
+		_, err := tool.Execute(context.Background(), params)
+		if err == nil {
+			t.Fatal("expected error when end_line < start_line")
+		}
+	})
+}
