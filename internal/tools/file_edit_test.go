@@ -274,3 +274,45 @@ func TestFileEditTool_ReplaceLines(t *testing.T) {
 		}
 	})
 }
+
+func TestFileEditTool_ApplyPatch(t *testing.T) {
+	tool := &tools.FileEditTool{}
+
+	t.Run("applies a valid patch", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "file.txt")
+		os.WriteFile(path, []byte("line1\nline2\nline3\nline4\nline5"), 0644)
+
+		patch := "--- a/file.txt\n+++ b/file.txt\n@@ -2,3 +2,3 @@\n line2\n-line3\n+replaced\n line4\n"
+		params, _ := json.Marshal(map[string]any{
+			"path":      path,
+			"operation": "apply_patch",
+			"patch":     patch,
+		})
+		_, err := tool.Execute(context.Background(), params)
+		if err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		got, _ := os.ReadFile(path)
+		if string(got) != "line1\nline2\nreplaced\nline4\nline5" {
+			t.Errorf("got %q", got)
+		}
+	})
+
+	t.Run("patch with context mismatch fails", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "file.txt")
+		os.WriteFile(path, []byte("line1\nline2\nline3"), 0644)
+
+		patch := "--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n WRONGCONTEXT\n-line2\n+replaced\n"
+		params, _ := json.Marshal(map[string]any{
+			"path":      path,
+			"operation": "apply_patch",
+			"patch":     patch,
+		})
+		_, err := tool.Execute(context.Background(), params)
+		if err == nil {
+			t.Fatal("expected error for context mismatch")
+		}
+	})
+}

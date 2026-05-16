@@ -108,5 +108,87 @@ func (f *FileEditTool) replaceLines(path string, startLine, endLine int, content
 }
 
 func (f *FileEditTool) applyPatch(path, patch string) (string, error) {
-	return "", fmt.Errorf("not implemented")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	lines := strings.Split(string(data), "\n")
+
+	patchLines := strings.Split(patch, "\n")
+	i := 0
+	for i < len(patchLines) && !strings.HasPrefix(patchLines[i], "@@") {
+		i++
+	}
+
+	for i < len(patchLines) {
+		if !strings.HasPrefix(patchLines[i], "@@") {
+			i++
+			continue
+		}
+		hunkHeader := patchLines[i]
+		origStart, err := parseHunkOrigStart(hunkHeader)
+		if err != nil {
+			return "", fmt.Errorf("invalid hunk header %q: %w", hunkHeader, err)
+		}
+		i++
+
+		var hunkLines []string
+		for i < len(patchLines) && !strings.HasPrefix(patchLines[i], "@@") {
+			hunkLines = append(hunkLines, patchLines[i])
+			i++
+		}
+
+		lines, err = applyHunk(lines, origStart, hunkLines, hunkHeader)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0644); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("applied patch to %s", path), nil
+}
+
+func parseHunkOrigStart(header string) (int, error) {
+	var origStart int
+	_, err := fmt.Sscanf(header, "@@ -%d,", &origStart)
+	if err != nil {
+		_, err = fmt.Sscanf(header, "@@ -%d ", &origStart)
+	}
+	if err != nil {
+		return 0, err
+	}
+	return origStart, nil
+}
+
+func applyHunk(lines []string, origStart int, hunkLines []string, hunkHeader string) ([]string, error) {
+	pos := origStart - 1
+	fileIdx := pos
+
+	var result []string
+	result = append(result, lines[:pos]...)
+
+	for _, hl := range hunkLines {
+		if len(hl) == 0 {
+			continue
+		}
+		switch hl[0] {
+		case ' ':
+			if fileIdx >= len(lines) || lines[fileIdx] != hl[1:] {
+				return nil, fmt.Errorf("hunk %s failed to apply: context not found", hunkHeader)
+			}
+			result = append(result, lines[fileIdx])
+			fileIdx++
+		case '-':
+			if fileIdx >= len(lines) || lines[fileIdx] != hl[1:] {
+				return nil, fmt.Errorf("hunk %s failed to apply: context not found", hunkHeader)
+			}
+			fileIdx++
+		case '+':
+			result = append(result, hl[1:])
+		}
+	}
+	result = append(result, lines[fileIdx:]...)
+	return result, nil
 }
