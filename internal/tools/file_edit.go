@@ -74,6 +74,9 @@ func (f *FileEditTool) replaceLines(path string, startLine, endLine int, content
 	if hasTrailingNewline {
 		raw = raw[:len(raw)-1]
 	}
+	if raw == "" {
+		return "", fmt.Errorf("file is empty")
+	}
 	lines := strings.Split(raw, "\n")
 	total := len(lines)
 
@@ -175,6 +178,9 @@ func parseHunkOrigStart(header string) (int, error) {
 }
 
 func applyHunk(lines []string, origStart int, hunkLines []string, hunkHeader string) ([]string, int, error) {
+	if origStart < 1 || origStart-1 > len(lines) {
+		return nil, 0, fmt.Errorf("hunk %s: origStart %d out of range (file has %d lines)", hunkHeader, origStart, len(lines))
+	}
 	fileIdx := origStart - 1
 
 	var result []string
@@ -201,6 +207,8 @@ func applyHunk(lines []string, origStart int, hunkLines []string, hunkHeader str
 		case '+':
 			result = append(result, hl[1:])
 			added++
+		case '\\':
+			// "\ No newline at end of file" — informational, ignore
 		}
 	}
 	result = append(result, lines[fileIdx:]...)

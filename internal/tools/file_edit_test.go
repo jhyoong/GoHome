@@ -339,4 +339,25 @@ func TestFileEditTool_ApplyPatch(t *testing.T) {
 			t.Errorf("got %q, want %q", got, want)
 		}
 	})
+
+	t.Run("preserves trailing newline", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "file.txt")
+		os.WriteFile(path, []byte("line1\nline2\nline3\n"), 0644)
+
+		patch := "--- a/file.txt\n+++ b/file.txt\n@@ -2,1 +2,1 @@\n-line2\n+replaced\n"
+		params, _ := json.Marshal(map[string]any{
+			"path":      path,
+			"operation": "apply_patch",
+			"patch":     patch,
+		})
+		_, err := tool.Execute(context.Background(), params)
+		if err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		got, _ := os.ReadFile(path)
+		if string(got) != "line1\nreplaced\nline3\n" {
+			t.Errorf("got %q", got)
+		}
+	})
 }
