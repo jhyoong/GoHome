@@ -315,4 +315,28 @@ func TestFileEditTool_ApplyPatch(t *testing.T) {
 			t.Fatal("expected error for context mismatch")
 		}
 	})
+
+	t.Run("applies multi-hunk patch with line delta", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "file.txt")
+		os.WriteFile(path, []byte("line1\nline2\nline3\nline4\nline5\nline6"), 0644)
+
+		// Hunk 1: replace line2 with two lines (adds 1 line, delta=+1)
+		// Hunk 2: delete line5 (which is now line6 in modified file, but origStart=5 + offset=1 = 6)
+		patch := "--- a/file.txt\n+++ b/file.txt\n@@ -2,1 +2,2 @@\n-line2\n+line2a\n+line2b\n@@ -5,1 +6,0 @@\n-line5\n"
+		params, _ := json.Marshal(map[string]any{
+			"path":      path,
+			"operation": "apply_patch",
+			"patch":     patch,
+		})
+		_, err := tool.Execute(context.Background(), params)
+		if err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		got, _ := os.ReadFile(path)
+		want := "line1\nline2a\nline2b\nline3\nline4\nline6"
+		if string(got) != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
 }
