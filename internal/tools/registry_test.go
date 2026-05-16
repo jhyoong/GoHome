@@ -54,3 +54,24 @@ func TestToLLMTools(t *testing.T) {
 		t.Errorf("got name %q", fn["name"])
 	}
 }
+
+func TestRegistryCloneWith(t *testing.T) {
+	reg := tools.NewRegistry()
+	reg.Register(&tools.ShellTool{})
+
+	extra := &tools.FileReadTool{}
+	clone := reg.CloneWith(extra)
+
+	// Original unchanged
+	if _, ok := reg.Get("file_read"); ok {
+		t.Error("original registry should not have file_read")
+	}
+
+	// Clone has both
+	if _, ok := clone.Get("shell"); !ok {
+		t.Error("clone missing shell tool")
+	}
+	if _, ok := clone.Get("file_read"); !ok {
+		t.Error("clone missing file_read tool")
+	}
+}
