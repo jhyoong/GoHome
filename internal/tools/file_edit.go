@@ -69,7 +69,12 @@ func (f *FileEditTool) replaceLines(path string, startLine, endLine int, content
 	if err != nil {
 		return "", err
 	}
-	lines := strings.Split(string(data), "\n")
+	raw := string(data)
+	hasTrailingNewline := strings.HasSuffix(raw, "\n")
+	if hasTrailingNewline {
+		raw = raw[:len(raw)-1]
+	}
+	lines := strings.Split(raw, "\n")
 	total := len(lines)
 
 	if endLine == 0 {
@@ -92,7 +97,11 @@ func (f *FileEditTool) replaceLines(path string, startLine, endLine int, content
 	}
 	result = append(result, lines[endLine:]...)
 
-	if err := os.WriteFile(path, []byte(strings.Join(result, "\n")), 0644); err != nil {
+	joined := strings.Join(result, "\n")
+	if hasTrailingNewline {
+		joined += "\n"
+	}
+	if err := os.WriteFile(path, []byte(joined), 0644); err != nil {
 		return "", err
 	}
 	return fmt.Sprintf("replaced lines %d-%d in %s", startLine, endLine, path), nil

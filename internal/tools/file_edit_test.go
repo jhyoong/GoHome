@@ -207,4 +207,70 @@ func TestFileEditTool_ReplaceLines(t *testing.T) {
 			t.Fatal("expected error when end_line < start_line")
 		}
 	})
+
+	t.Run("replaces first line", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "file.txt")
+		os.WriteFile(path, []byte("line1\nline2\nline3"), 0644)
+
+		params, _ := json.Marshal(map[string]any{
+			"path":       path,
+			"operation":  "replace_lines",
+			"start_line": 1,
+			"end_line":   1,
+			"content":    "new1",
+		})
+		_, err := tool.Execute(context.Background(), params)
+		if err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		got, _ := os.ReadFile(path)
+		if string(got) != "new1\nline2\nline3" {
+			t.Errorf("got %q", got)
+		}
+	})
+
+	t.Run("replaces last line", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "file.txt")
+		os.WriteFile(path, []byte("line1\nline2\nline3"), 0644)
+
+		params, _ := json.Marshal(map[string]any{
+			"path":       path,
+			"operation":  "replace_lines",
+			"start_line": 3,
+			"end_line":   3,
+			"content":    "new3",
+		})
+		_, err := tool.Execute(context.Background(), params)
+		if err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		got, _ := os.ReadFile(path)
+		if string(got) != "line1\nline2\nnew3" {
+			t.Errorf("got %q", got)
+		}
+	})
+
+	t.Run("preserves trailing newline", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "file.txt")
+		os.WriteFile(path, []byte("line1\nline2\nline3\n"), 0644)
+
+		params, _ := json.Marshal(map[string]any{
+			"path":       path,
+			"operation":  "replace_lines",
+			"start_line": 2,
+			"end_line":   2,
+			"content":    "replaced",
+		})
+		_, err := tool.Execute(context.Background(), params)
+		if err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		got, _ := os.ReadFile(path)
+		if string(got) != "line1\nreplaced\nline3\n" {
+			t.Errorf("got %q", got)
+		}
+	})
 }
