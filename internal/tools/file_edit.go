@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
 )
 
 type FileEditTool struct{}
@@ -43,7 +45,20 @@ func (f *FileEditTool) Execute(_ context.Context, params json.RawMessage) (strin
 }
 
 func (f *FileEditTool) replaceText(path, oldStr, newStr string) (string, error) {
-	return "", fmt.Errorf("not implemented")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	content := string(data)
+	idx := strings.Index(content, oldStr)
+	if idx == -1 {
+		return "", fmt.Errorf("old_string not found in %s", path)
+	}
+	content = content[:idx] + newStr + content[idx+len(oldStr):]
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("replaced text in %s", path), nil
 }
 
 func (f *FileEditTool) replaceLines(path string, startLine, endLine int, content string) (string, error) {
