@@ -107,13 +107,3 @@ Run all tests:
 ```bash
 go test ./...
 ```
-
-| Package | Tests |
-|---------|-------|
-| `internal/config` | `TestParseConfig` — YAML parsing, tilde expansion, defaults |
-| `internal/session` | `TestOpenAndMigrate`, `TestSessionCRUD`, `TestMessageCRUD`, `TestToolResultCRUD` |
-| `internal/tools` | `TestRegistry`, `TestToLLMTools`, `TestShellTool`, `TestFileReadTool`, `TestFileWriteTool` |
-| `internal/approval` | `TestAutoApproveWhitelist`, `TestAutoDenyWhitelist`, `TestAutoApproveAll`, `TestApprovalTimeout`, `TestApprovalContextCancel`, `TestApprovalUserDecision` |
-| `internal/llm` | `TestNonStreamingComplete`, `TestStreamingTokens` |
-| `internal/agent` | `TestSimpleMessageRoundtrip` — full loop with mock LLM, verifies streaming and persistence |
-| `internal/server` | `TestListSessions`, `TestCreateSession` |
