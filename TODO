@@ -11,6 +11,7 @@
 - [ ] General vs software dev mode - Mode differentiation (after subagents)
 - [ ] Markdown rendering - Render markdown in responses
 - [ ] Toggle button for expanding tool output - Fix toggle button that broke with recent changes
+- [ ] Tool output limit - config to set maximum tool output length
 
 ## Done:
 - [x] Dark mode toggle

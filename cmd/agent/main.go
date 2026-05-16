@@ -25,7 +25,7 @@ import (
 	"github.com/jhyoong/gohome/internal/tools"
 )
 
-var version = "dev"
+var version = "0.1.1"
 
 func main() {
 	var (

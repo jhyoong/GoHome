@@ -2,12 +2,18 @@
 
 A single-binary Go server that runs a local AI chat interface in your browser. It connects to any OpenAI-compatible LLM endpoint, executes tools (shell, file read/write) with your approval, and persists sessions in SQLite.
 
+### Why?
+
+I just wanted to vibe code some tools for myself. There are many existing CLI agent tools that are great, but I'm building this just for my own locally hosted LLM usage, and dealing with terminal UI is really difficult. The aim is to keep this project simple with what I use most anyway. The frontend is explicity set to just be a monolith single page app, no npm installs whatsoever. npm in this project is purely just for testing.
+
 ## Requirements
 
-- Go 1.22+
+- Go 1.25.6 (to build from source)
 - A local OpenAI-compatible LLM endpoint (e.g. llama.cpp, Ollama)
 
 ## Quick Start
+
+### From source
 
 ```bash
 # Build binary
@@ -18,6 +24,24 @@ make build
 
 # Open http://localhost:3000 in your browser
 ```
+
+### Docker
+
+```bash
+# Pull and run the latest release
+docker run -p 3000:3000 \
+  -v ~/.gohome:/home/gohome/.gohome \
+  ghcr.io/jhyoong/gohome:latest
+
+# Or pin to a specific version
+docker run -p 3000:3000 \
+  -v ~/.gohome:/home/gohome/.gohome \
+  ghcr.io/jhyoong/gohome:v0.1.1
+
+# Open http://localhost:3000 in your browser
+```
+
+The config file at `~/.gohome/config.yaml` is mounted into the container so your settings persist across restarts.
 
 ## Configuration
 
@@ -107,13 +131,3 @@ Run all tests:
 ```bash
 go test ./...
 ```
-
-| Package | Tests |
-|---------|-------|
-| `internal/config` | `TestParseConfig` — YAML parsing, tilde expansion, defaults |
-| `internal/session` | `TestOpenAndMigrate`, `TestSessionCRUD`, `TestMessageCRUD`, `TestToolResultCRUD` |
-| `internal/tools` | `TestRegistry`, `TestToLLMTools`, `TestShellTool`, `TestFileReadTool`, `TestFileWriteTool` |
-| `internal/approval` | `TestAutoApproveWhitelist`, `TestAutoDenyWhitelist`, `TestAutoApproveAll`, `TestApprovalTimeout`, `TestApprovalContextCancel`, `TestApprovalUserDecision` |
-| `internal/llm` | `TestNonStreamingComplete`, `TestStreamingTokens` |
-| `internal/agent` | `TestSimpleMessageRoundtrip` — full loop with mock LLM, verifies streaming and persistence |
-| `internal/server` | `TestListSessions`, `TestCreateSession` |
