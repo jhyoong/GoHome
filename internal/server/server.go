@@ -420,7 +420,7 @@ func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string, steer
 
 	spawnTool := agent.NewSpawnSubagentTool(
 		wc.server.cfg.LLMClient,
-		wc.server.cfg.Registry,
+		wc.server.cfg.Registry, // base registry: subagents do not get spawn_subagent, preventing recursion
 		wc.server.cfg.Store,
 		wc.broker,
 		&wsSubagentEvents{wc: wc},
