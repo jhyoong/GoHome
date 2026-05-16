@@ -111,6 +111,10 @@ func (t *SpawnSubagentTool) Execute(ctx context.Context, params json.RawMessage)
 			t.events.OnThinkingToken(child.ID, token)
 		},
 	)
+	// The onError callback above handles non-fatal streaming errors during the
+	// loop. The returned err here is a fatal loop termination error. loop.Run
+	// never calls onError before returning a non-nil error, so these two paths
+	// do not double-fire.
 	if err != nil {
 		t.events.OnError(child.ID, err.Error())
 		return "", err
