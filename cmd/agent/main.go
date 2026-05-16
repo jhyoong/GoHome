@@ -95,6 +95,7 @@ func main() {
 	reg.Register(&tools.ShellTool{})
 	reg.Register(&tools.FileReadTool{})
 	reg.Register(&tools.FileWriteTool{})
+	reg.Register(&tools.FileEditTool{})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
