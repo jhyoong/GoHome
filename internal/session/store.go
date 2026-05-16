@@ -96,10 +96,14 @@ func (s *Store) CreateSession(ctx context.Context) (*Session, error) {
 }
 
 func (s *Store) CreateChildSession(ctx context.Context, parentID string) (*Session, error) {
+	if parentID == "" {
+		return nil, fmt.Errorf("parentID must not be empty")
+	}
 	id := uuid.New().String()
-	if _, err := s.db.ExecContext(ctx,
-		`INSERT INTO sessions (id, parent_session_id) VALUES (?, ?)`, id, parentID); err != nil {
-		return nil, err
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO sessions (id, parent_session_id) VALUES (?, ?)`, id, parentID)
+	if err != nil {
+		return nil, fmt.Errorf("create child session (parent %s): %w", parentID, err)
 	}
 	return s.getSession(ctx, id)
 }
