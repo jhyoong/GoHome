@@ -54,7 +54,11 @@ func (r *Registry) CloneWith(extra ...Tool) *Registry {
 	for name, t := range r.tools {
 		clone.tools[name] = t
 	}
+	// extra tools are added last; they overwrite any existing tool with the same name.
 	for _, t := range extra {
+		if t == nil {
+			continue
+		}
 		clone.tools[t.Name()] = t
 	}
 	return clone
