@@ -498,12 +498,6 @@ function addSubagentToolResult(msg) {
   const wrapper = document.createElement('div');
   wrapper.innerHTML = toolCallBlockHtml(tr);
   const toolBlock = wrapper.firstElementChild;
-  toolBlock.querySelector('[data-tool-toggle]').addEventListener('click', function() {
-    const body = toolBlock.querySelector('.tool-call-body');
-    const toggle = toolBlock.querySelector('.tool-call-toggle');
-    body.hidden = !body.hidden;
-    toggle.textContent = body.hidden ? '▼' : '▲';
-  });
   entry.bodyEl.appendChild(toolBlock);
   scrollToBottom();
 }
