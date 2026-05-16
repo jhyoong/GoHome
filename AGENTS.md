@@ -73,7 +73,7 @@ No `.golangci.yml` config file. CI runs `go vet` and `staticcheck`. You should i
 
 ## Dependencies
 
-- Go 1.25.6
+- Go 1.25.6 (minimum required, as specified in `go.mod`)
 - `modernc.org/sqlite` (pure-Go SQLite)
 - `gorilla/websocket` (WebSocket)
 - `gopkg.in/yaml.v3` (config parsing)
