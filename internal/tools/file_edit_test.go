@@ -65,4 +65,42 @@ func TestFileEditTool_ReplaceText(t *testing.T) {
 			t.Fatal("expected error for unknown operation")
 		}
 	})
+
+	t.Run("empty old_string is rejected", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "file.txt")
+		os.WriteFile(path, []byte("hello"), 0644)
+
+		params, _ := json.Marshal(map[string]any{
+			"path":       path,
+			"operation":  "replace_text",
+			"old_string": "",
+			"new_string": "x",
+		})
+		_, err := tool.Execute(context.Background(), params)
+		if err == nil {
+			t.Fatal("expected error for empty old_string")
+		}
+	})
+
+	t.Run("empty new_string deletes the match", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "file.txt")
+		os.WriteFile(path, []byte("hello world"), 0644)
+
+		params, _ := json.Marshal(map[string]any{
+			"path":       path,
+			"operation":  "replace_text",
+			"old_string": "hello ",
+			"new_string": "",
+		})
+		_, err := tool.Execute(context.Background(), params)
+		if err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		got, _ := os.ReadFile(path)
+		if string(got) != "world" {
+			t.Errorf("got %q", got)
+		}
+	})
 }

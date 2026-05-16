@@ -45,6 +45,9 @@ func (f *FileEditTool) Execute(_ context.Context, params json.RawMessage) (strin
 }
 
 func (f *FileEditTool) replaceText(path, oldStr, newStr string) (string, error) {
+	if oldStr == "" {
+		return "", fmt.Errorf("old_string must not be empty")
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
