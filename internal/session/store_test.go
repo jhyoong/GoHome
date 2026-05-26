@@ -236,6 +236,53 @@ func TestMessageThinkingEmpty(t *testing.T) {
 	}
 }
 
+func TestCreateChildSession(t *testing.T) {
+	store, _ := session.Open(t.TempDir() + "/test.db")
+	defer store.Close()
+	ctx := context.Background()
+
+	parent, err := store.CreateSession(ctx)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	child, err := store.CreateChildSession(ctx, parent.ID)
+	if err != nil {
+		t.Fatalf("CreateChildSession: %v", err)
+	}
+	if child.ID == "" {
+		t.Error("empty child session ID")
+	}
+
+	// ListSessions must only return top-level sessions
+	sessions, err := store.ListSessions(ctx)
+	if err != nil {
+		t.Fatalf("ListSessions: %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Errorf("want 1 top-level session, got %d", len(sessions))
+	}
+	if sessions[0].ID != parent.ID {
+		t.Errorf("expected parent session in list, got %s", sessions[0].ID)
+	}
+}
+
+func TestChildSessionCascadeDelete(t *testing.T) {
+	store, _ := session.Open(t.TempDir() + "/test.db")
+	defer store.Close()
+	ctx := context.Background()
+
+	parent, _ := store.CreateSession(ctx)
+	_, _ = store.CreateChildSession(ctx, parent.ID)
+
+	if err := store.DeleteSession(ctx, parent.ID); err != nil {
+		t.Fatalf("DeleteSession: %v", err)
+	}
+	sessions, _ := store.ListSessions(ctx)
+	if len(sessions) != 0 {
+		t.Errorf("want 0 sessions after cascade delete, got %d", len(sessions))
+	}
+}
+
 func TestMigrationAddsThinkingColumn(t *testing.T) {
 	// Test: Opening a database with the old schema (no thinking column) migrates successfully.
 	// This simulates the user's actual bug: existing database without the thinking column.

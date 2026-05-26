@@ -13,7 +13,9 @@ import (
 	"github.com/jhyoong/gohome/internal/agent"
 	"github.com/jhyoong/gohome/internal/approval"
 	"github.com/jhyoong/gohome/internal/config"
+	"github.com/jhyoong/gohome/internal/llm"
 	"github.com/jhyoong/gohome/internal/session"
+	"github.com/jhyoong/gohome/internal/tools"
 )
 
 const (
@@ -23,12 +25,15 @@ const (
 )
 
 type Config struct {
-	Store         *session.Store
-	Loop          *agent.Loop
-	Approval      config.ApprovalConfig
-	FullConfig    *config.Config // pointer to full config for persisting whitelist; set to nil to disable disk writes
-	ConfigPath    string         // original path for saving, e.g. "~/.gohome/config.yaml"
-	ContextWindow int            // max context window in tokens
+	Store                *session.Store
+	LLMClient            *llm.Client
+	Registry             *tools.Registry
+	SystemPrompt         string
+	SubagentSystemPrompt string
+	Approval             config.ApprovalConfig
+	FullConfig           *config.Config // pointer to full config for persisting whitelist; set to nil to disable disk writes
+	ConfigPath           string         // original path for saving, e.g. "~/.gohome/config.yaml"
+	ContextWindow        int            // max context window in tokens
 }
 
 type Server struct {
@@ -131,7 +136,6 @@ type wsConn struct {
 	approvals chan approval.Request
 	broker    *approval.Broker
 	store     *session.Store
-	loop      *agent.Loop
 	server    *Server
 
 	mu        sync.Mutex
@@ -182,7 +186,6 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		approvals: approvalCh,
 		broker:    broker,
 		store:     s.cfg.Store,
-		loop:      s.cfg.Loop,
 		server:    s,
 	}
 
@@ -366,6 +369,41 @@ func (wc *wsConn) dispatcher(ctx context.Context) {
 	}
 }
 
+type wsSubagentEvents struct {
+	wc *wsConn
+}
+
+func (e *wsSubagentEvents) OnStart(sessionID, parentID, task string) {
+	e.wc.send(outMsg{Type: "subagent_start", SessionID: sessionID, Data: parentID, Message: task})
+}
+
+func (e *wsSubagentEvents) OnToken(sessionID, token string) {
+	e.wc.send(outMsg{Type: "subagent_token", SessionID: sessionID, Data: token})
+}
+
+func (e *wsSubagentEvents) OnThinkingToken(sessionID, token string) {
+	e.wc.send(outMsg{Type: "subagent_thinking_token", SessionID: sessionID, Data: token})
+}
+
+func (e *wsSubagentEvents) OnToolResult(sessionID, tool, params, result string, approved bool) {
+	e.wc.send(outMsg{
+		Type:      "subagent_tool_result",
+		SessionID: sessionID,
+		Tool:      tool,
+		Params:    json.RawMessage(params),
+		Result:    result,
+		Approved:  approved,
+	})
+}
+
+func (e *wsSubagentEvents) OnDone(sessionID, finalText string) {
+	e.wc.send(outMsg{Type: "subagent_done", SessionID: sessionID, Message: finalText})
+}
+
+func (e *wsSubagentEvents) OnError(sessionID, errMsg string) {
+	e.wc.send(outMsg{Type: "subagent_error", SessionID: sessionID, Message: errMsg})
+}
+
 func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string, steerCh chan string, isNew bool) {
 	contextWindow := wc.server.cfg.ContextWindow
 	defer func() {
@@ -375,14 +413,28 @@ func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string, steer
 		wc.steerCh = nil
 		wc.mu.Unlock()
 	}()
-	if wc.loop == nil {
+
+	if wc.server.cfg.LLMClient == nil {
 		return
 	}
+
+	spawnTool := agent.NewSpawnSubagentTool(
+		wc.server.cfg.LLMClient,
+		wc.server.cfg.Registry, // base registry: subagents do not get spawn_subagent, preventing recursion
+		wc.server.cfg.Store,
+		wc.broker,
+		&wsSubagentEvents{wc: wc},
+		wc.server.cfg.SubagentSystemPrompt,
+		sessionID,
+	)
+	perRunReg := wc.server.cfg.Registry.CloneWith(spawnTool)
+	loop := agent.NewLoop(wc.server.cfg.LLMClient, perRunReg, wc.server.cfg.Store, wc.server.cfg.SystemPrompt)
+
 	onThinking := func(token string) {
 		wc.send(outMsg{Type: "thinking_token", Data: token})
 	}
 
-	err := wc.loop.Run(ctx, sessionID, wc.tabID, content, wc.broker,
+	err := loop.Run(ctx, sessionID, wc.tabID, content, wc.broker,
 		func(token string) { wc.send(outMsg{Type: "token", Data: token}) },
 		func(errMsg string) { wc.send(outMsg{Type: "error", Message: errMsg}) },
 		func(tool, params, result string, approved bool) {
@@ -405,6 +457,7 @@ func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string, steer
 		},
 		onThinking,
 	)
+
 	if err != nil {
 		if ctx.Err() == nil {
 			wc.send(outMsg{Type: "error", Message: err.Error()})
@@ -417,20 +470,22 @@ func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string, steer
 		wc.send(outMsg{Type: "stopped"})
 	}
 	wc.send(outMsg{Type: "done", MessageID: ""})
-	if isNew && wc.loop != nil {
+
+	if isNew && wc.server.cfg.LLMClient != nil {
 		go func() {
 			tCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 			defer cancel()
-			title, err := wc.loop.GenerateTitle(tCtx, content)
+			titleLoop := agent.NewLoop(wc.server.cfg.LLMClient, wc.server.cfg.Registry, wc.server.cfg.Store, "")
+			title, err := titleLoop.GenerateTitle(tCtx, content)
 			if err != nil {
 				log.Printf("GenerateTitle: %v", err)
 				return
 			}
-			if err := wc.store.UpdateSessionTitle(tCtx, sessionID, title); err != nil {
+			if err := wc.server.cfg.Store.UpdateSessionTitle(tCtx, sessionID, title); err != nil {
 				log.Printf("UpdateSessionTitle: %v", err)
 				return
 			}
-			sessions, _ := wc.store.ListSessions(tCtx)
+			sessions, _ := wc.server.cfg.Store.ListSessions(tCtx)
 			if sessions == nil {
 				sessions = []session.Session{}
 			}
@@ -438,7 +493,7 @@ func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string, steer
 		}()
 	}
 	if !isNew {
-		sessions, _ := wc.store.ListSessions(ctx)
+		sessions, _ := wc.server.cfg.Store.ListSessions(ctx)
 		wc.send(outMsg{Type: "sessions", Data: sessions})
 	}
 }

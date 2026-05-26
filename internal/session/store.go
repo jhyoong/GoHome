@@ -71,9 +71,10 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("migrating schema: %w", err)
 	}
 
-	// Migrate existing tables: add thinking column if it doesn't exist
+	// Migrate existing tables: add columns if they don't exist
 	migrations := []string{
 		`ALTER TABLE messages ADD COLUMN thinking TEXT`,
+		`ALTER TABLE sessions ADD COLUMN parent_session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE`,
 	}
 	for _, m := range migrations {
 		db.Exec(m) // Ignore errors - column may already exist
@@ -94,6 +95,19 @@ func (s *Store) CreateSession(ctx context.Context) (*Session, error) {
 	return s.getSession(ctx, id)
 }
 
+func (s *Store) CreateChildSession(ctx context.Context, parentID string) (*Session, error) {
+	if parentID == "" {
+		return nil, fmt.Errorf("parentID must not be empty")
+	}
+	id := uuid.New().String()
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO sessions (id, parent_session_id) VALUES (?, ?)`, id, parentID)
+	if err != nil {
+		return nil, fmt.Errorf("create child session (parent %s): %w", parentID, err)
+	}
+	return s.getSession(ctx, id)
+}
+
 func (s *Store) getSession(ctx context.Context, id string) (*Session, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT id, title, created_at, updated_at FROM sessions WHERE id = ?`, id)
@@ -106,7 +120,7 @@ func (s *Store) getSession(ctx context.Context, id string) (*Session, error) {
 
 func (s *Store) ListSessions(ctx context.Context) ([]Session, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, title, created_at, updated_at FROM sessions ORDER BY updated_at DESC`)
+		`SELECT id, title, created_at, updated_at FROM sessions WHERE parent_session_id IS NULL ORDER BY updated_at DESC`)
 	if err != nil {
 		return nil, err
 	}

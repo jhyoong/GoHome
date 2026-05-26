@@ -47,6 +47,23 @@ func (r *Registry) All() []Tool {
 	return out
 }
 
+func (r *Registry) CloneWith(extra ...Tool) *Registry {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	clone := &Registry{tools: make(map[string]Tool)}
+	for name, t := range r.tools {
+		clone.tools[name] = t
+	}
+	// extra tools are added last; they overwrite any existing tool with the same name.
+	for _, t := range extra {
+		if t == nil {
+			continue
+		}
+		clone.tools[t.Name()] = t
+	}
+	return clone
+}
+
 func (r *Registry) ToLLMTools() []map[string]any {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

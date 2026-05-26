@@ -55,6 +55,9 @@ let ws = null;
 let streamingEl = null;
 let streamingThinkingEl = null;
 
+// Maps subagent session_id -> { blockEl, bodyEl, tokenEl, thinkingEl }
+const subagentBlocks = new Map();
+
 function generateUUID() {
   if (crypto && crypto.randomUUID) {
     return crypto.randomUUID();
@@ -108,10 +111,20 @@ function connect() {
       case 'stopped':       clearStream(); break;
       case 'error':         showError(msg.message); break;
       case 'usage':         updateContextUsage(msg); break;
+      case 'subagent_start':         openSubagentBlock(msg.session_id, msg.data, msg.message); break;
+      case 'subagent_token':         appendSubagentToken(msg.session_id, msg.data); break;
+      case 'subagent_thinking_token': appendSubagentThinkingToken(msg.session_id, msg.data); break;
+      case 'subagent_tool_result':   addSubagentToolResult(msg); break;
+      case 'subagent_done':          finalizeSubagentBlock(msg.session_id); break;
+      case 'subagent_error':         errorSubagentBlock(msg.session_id, msg.message); break;
     }
   };
 
   ws.onclose = () => {
+    // finalize any open subagent blocks so indicators don't pulse forever
+    for (const [id] of subagentBlocks) {
+      errorSubagentBlock(id, 'Connection lost');
+    }
     ws = null;
     setTimeout(() => {
       retryDelay = Math.min(retryDelay * 2, 30000);
@@ -284,6 +297,8 @@ function addToolResult(msg) {
     streamingThinkingEl = null;
   }
 
+  if (msg.tool === 'spawn_subagent') return;
+
   const tr = {
     id: generateUUID(),
     tool_name: msg.tool,
@@ -415,6 +430,115 @@ function formatJSON(v) {
 
 function scrollToBottom() {
   dom.messages.scrollTop = dom.messages.scrollHeight;
+}
+
+// ---- Subagent rendering ----
+
+function openSubagentBlock(sessionID, parentID, task) {
+  const blockEl = document.createElement('div');
+  blockEl.className = 'subagent-block';
+  blockEl.dataset.sessionId = sessionID;
+
+  blockEl.innerHTML = `
+    <button class="subagent-header" data-subagent-toggle>
+      <span class="subagent-status running">&#9689;</span>
+      <span class="subagent-label">Subagent</span>
+      <span class="subagent-toggle">&#9660;</span>
+    </button>
+    <div class="subagent-body"></div>
+  `;
+
+  const bodyEl = blockEl.querySelector('.subagent-body');
+
+  if (task) {
+    const taskEl = document.createElement('div');
+    taskEl.className = 'subagent-task';
+    taskEl.textContent = task;
+    bodyEl.appendChild(taskEl);
+  }
+
+  blockEl.querySelector('[data-subagent-toggle]').addEventListener('click', () => {
+    const body = blockEl.querySelector('.subagent-body');
+    const toggle = blockEl.querySelector('.subagent-toggle');
+    const hidden = body.hidden;
+    body.hidden = !hidden;
+    toggle.textContent = hidden ? '▼' : '▶';
+  });
+
+  dom.messages.appendChild(blockEl);
+  scrollToBottom();
+
+  subagentBlocks.set(sessionID, {
+    blockEl,
+    bodyEl,
+    tokenEl: null,
+    thinkingEl: null,
+  });
+}
+
+function appendSubagentToken(sessionID, token) {
+  const entry = subagentBlocks.get(sessionID);
+  if (!entry) return;
+  if (!entry.tokenEl) {
+    entry.tokenEl = document.createElement('div');
+    entry.tokenEl.className = 'subagent-text';
+    entry.bodyEl.appendChild(entry.tokenEl);
+  }
+  entry.tokenEl.textContent += token;
+  scrollToBottom();
+}
+
+function appendSubagentThinkingToken(sessionID, token) {
+  const entry = subagentBlocks.get(sessionID);
+  if (!entry) return;
+  if (!entry.thinkingEl) {
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = thinkingBlockHtml('');
+    entry.bodyEl.insertBefore(wrapper.firstElementChild, entry.bodyEl.firstChild);
+    entry.thinkingEl = entry.bodyEl.querySelector('.thinking-body');
+  }
+  entry.thinkingEl.textContent += token;
+  scrollToBottom();
+}
+
+function addSubagentToolResult(msg) {
+  const entry = subagentBlocks.get(msg.session_id);
+  if (!entry) return;
+  const tr = {
+    tool_name: msg.tool,
+    params: msg.params,
+    result: msg.result,
+    approved: msg.approved,
+  };
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = toolCallBlockHtml(tr);
+  const toolBlock = wrapper.firstElementChild;
+  entry.bodyEl.appendChild(toolBlock);
+  scrollToBottom();
+}
+
+function finalizeSubagentBlock(sessionID) {
+  const entry = subagentBlocks.get(sessionID);
+  if (!entry) return;
+  const status = entry.blockEl.querySelector('.subagent-status');
+  status.textContent = '✓';
+  status.className = 'subagent-status done';
+  subagentBlocks.delete(sessionID);
+}
+
+function errorSubagentBlock(sessionID, errMsg) {
+  const entry = subagentBlocks.get(sessionID);
+  if (!entry) return;
+  const status = entry.blockEl.querySelector('.subagent-status');
+  status.textContent = '✗';
+  status.className = 'subagent-status error';
+  if (errMsg) {
+    const errEl = document.createElement('div');
+    errEl.className = 'subagent-error-text';
+    errEl.textContent = errMsg;
+    entry.bodyEl.appendChild(errEl);
+  }
+  subagentBlocks.delete(sessionID);
 }
 
 // ---- Boot ----
