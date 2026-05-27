@@ -110,6 +110,15 @@ function connect() {
         break;
       case 'tool_approval': showApprovalModal(msg); break;
       case 'tool_approval_resolved': onApprovalResolved(msg); break;
+      case 'session_awaiting_approval':
+        // Only show if this tab is NOT currently on that session.
+        if (activeSessionId !== msg.session_id) {
+          showSessionAwaitingToast(msg.session_id, msg.tool);
+        }
+        break;
+      case 'session_approval_resolved':
+        removeSessionAwaitingToast(msg.session_id);
+        break;
       case 'tool_result':   addToolResult(msg); break;
       case 'done':          finalizeStream(msg.message_id); break;
       case 'stopped':       clearStream(); break;
@@ -151,6 +160,7 @@ function renderSessions(sessions) {
 
 function onHistory(msg) {
   activeSessionId = msg.session_id;
+  removeSessionAwaitingToast(msg.session_id);
   state.messages = msg.messages;
   clearStreamEl();
   setBusy(false);
