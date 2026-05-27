@@ -58,6 +58,9 @@ let streamingThinkingEl = null;
 // Maps subagent session_id -> { blockEl, bodyEl, tokenEl, thinkingEl }
 const subagentBlocks = new Map();
 
+// Maps session_id -> { el } for active "session awaiting approval" toasts.
+const pendingToasts = new Map();
+
 function generateUUID() {
   if (crypto && crypto.randomUUID) {
     return crypto.randomUUID();
@@ -437,6 +440,33 @@ function escHtml(s) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function showSessionAwaitingToast(sessionID, tool) {
+  if (pendingToasts.has(sessionID)) return; // already shown
+  const stack = document.getElementById('toast-stack');
+  if (!stack) return;
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.dataset.sessionId = sessionID;
+  el.innerHTML = `
+    <div class="toast-title">Tool approval needed</div>
+    <div class="toast-body">Session is waiting on <code>${escHtml(tool || '')}</code>. Click to open.</div>
+  `;
+  el.addEventListener('click', () => {
+    activeSessionId = sessionID;
+    send({ type: 'load_session', session_id: sessionID });
+    removeSessionAwaitingToast(sessionID);
+  });
+  stack.appendChild(el);
+  pendingToasts.set(sessionID, { el });
+}
+
+function removeSessionAwaitingToast(sessionID) {
+  const entry = pendingToasts.get(sessionID);
+  if (!entry) return;
+  entry.el.remove();
+  pendingToasts.delete(sessionID);
 }
 
 function formatJSON(v) {
