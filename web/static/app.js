@@ -106,6 +106,7 @@ function connect() {
         activeSessionId = msg.session_id;
         break;
       case 'tool_approval': showApprovalModal(msg); break;
+      case 'tool_approval_resolved': onApprovalResolved(msg); break;
       case 'tool_result':   addToolResult(msg); break;
       case 'done':          finalizeStream(msg.message_id); break;
       case 'stopped':       clearStream(); break;
@@ -407,6 +408,14 @@ function showApprovalModal(msg) {
   document.removeEventListener('keydown', handleApprovalKeys);
   document.addEventListener('keydown', handleApprovalKeys);
   requestAnimationFrame(() => dom.approvalAllow.focus());
+}
+
+function onApprovalResolved(msg) {
+  // Another tab (or this tab) resolved the approval. Dismiss our modal
+  // only if it matches the resolved request_id — otherwise we'd close a
+  // modal for a different pending request.
+  if (state.awaitingApproval?.request_id !== msg.request_id) return;
+  hideApprovalModal();
 }
 
 function hideApprovalModal() {
