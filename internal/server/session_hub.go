@@ -22,6 +22,12 @@ type SessionHub struct {
 	watchers map[string]*wsConn          // keyed by tabID
 	pending  map[string]*pendingApproval // request_id → pending
 	refCount int                         // active agent runs
+
+	// GlobalWatchers, when set, returns all conns subscribed to the global
+	// toast stream. The hub uses it to notify non-watcher conns of pending
+	// approvals on this session. Server wires this to its globalWatchers
+	// sync.Map. Nil-safe: skipped if not set.
+	GlobalWatchers func() []*wsConn
 }
 
 type pendingApproval struct {
@@ -141,13 +147,16 @@ func (h *SessionHub) Stop() {
 func (h *SessionHub) fanOut(req approval.Request) {
 	h.mu.Lock()
 	h.pending[req.ID] = &pendingApproval{req: req}
+	watcherSet := make(map[string]struct{}, len(h.watchers))
 	watchers := make([]*wsConn, 0, len(h.watchers))
 	for _, w := range h.watchers {
 		watchers = append(watchers, w)
+		watcherSet[w.tabID] = struct{}{}
 	}
+	getGlobals := h.GlobalWatchers
 	h.mu.Unlock()
 
-	msg := outMsg{
+	approvalMsg := outMsg{
 		Type:      "tool_approval",
 		RequestID: req.ID,
 		Tool:      req.Tool,
@@ -156,9 +165,26 @@ func (h *SessionHub) fanOut(req approval.Request) {
 	}
 	for _, w := range watchers {
 		select {
-		case w.outbound <- msg:
+		case w.outbound <- approvalMsg:
 		default:
-			// Per design: do not block other watchers on one slow tab.
+		}
+	}
+
+	if getGlobals == nil {
+		return
+	}
+	toast := outMsg{
+		Type:      "session_awaiting_approval",
+		SessionID: h.sessionID,
+		Tool:      req.Tool,
+	}
+	for _, w := range getGlobals() {
+		if _, isWatcher := watcherSet[w.tabID]; isWatcher {
+			continue
+		}
+		select {
+		case w.outbound <- toast:
+		default:
 		}
 	}
 }
@@ -200,6 +226,30 @@ func (h *SessionHub) Respond(reqID string, approved bool) bool {
 	for _, w := range watchers {
 		select {
 		case w.outbound <- resolved:
+		default:
+		}
+	}
+
+	if h.GlobalWatchers == nil {
+		return true
+	}
+	cleared := outMsg{
+		Type:      "session_approval_resolved",
+		SessionID: h.sessionID,
+	}
+	h.mu.Lock()
+	watcherSet := make(map[string]struct{}, len(h.watchers))
+	for tabID := range h.watchers {
+		watcherSet[tabID] = struct{}{}
+	}
+	getGlobals := h.GlobalWatchers
+	h.mu.Unlock()
+	for _, w := range getGlobals() {
+		if _, isWatcher := watcherSet[w.tabID]; isWatcher {
+			continue
+		}
+		select {
+		case w.outbound <- cleared:
 		default:
 		}
 	}

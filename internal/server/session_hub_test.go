@@ -208,3 +208,66 @@ func TestSessionHub_ResolvedEventBroadcast(t *testing.T) {
 		}
 	}
 }
+
+func TestSessionHub_ToastToGlobalNonWatchers(t *testing.T) {
+	h := newTestHub(t)
+
+	watcher := newFakeConn("tab-watch")
+	other := newFakeConn("tab-other")
+	h.Watch(watcher)
+
+	// Provide a global-watchers snapshot via the injectable getter.
+	h.GlobalWatchers = func() []*wsConn { return []*wsConn{watcher, other} }
+
+	go h.Run()
+	defer h.Stop()
+
+	go h.broker.Request(context.Background(), "req-1", "shell",
+		json.RawMessage(`{"command":"ls"}`))
+
+	// watcher gets tool_approval (NOT toast).
+	gotApproval := false
+	gotToast := false
+	deadline := time.After(500 * time.Millisecond)
+	for !gotApproval || !gotToast {
+		select {
+		case msg := <-watcher.outbound:
+			if msg.Type == "tool_approval" {
+				gotApproval = true
+			} else if msg.Type == "session_awaiting_approval" {
+				t.Fatal("watcher must not receive toast for its own session")
+			}
+		case msg := <-other.outbound:
+			if msg.Type == "session_awaiting_approval" && msg.SessionID == h.sessionID {
+				gotToast = true
+			} else if msg.Type == "tool_approval" {
+				t.Fatal("non-watcher must not receive tool_approval")
+			}
+		case <-deadline:
+			t.Fatalf("timed out; gotApproval=%v gotToast=%v", gotApproval, gotToast)
+		}
+	}
+
+	// On resolution, non-watcher gets session_approval_resolved.
+	h.Respond("req-1", true)
+	// Drain watcher's resolved event.
+	for {
+		select {
+		case msg := <-watcher.outbound:
+			if msg.Type == "tool_approval_resolved" {
+				goto drained
+			}
+		case <-time.After(500 * time.Millisecond):
+			t.Fatal("watcher missed tool_approval_resolved")
+		}
+	}
+drained:
+	select {
+	case msg := <-other.outbound:
+		if msg.Type != "session_approval_resolved" || msg.SessionID != h.sessionID {
+			t.Fatalf("expected session_approval_resolved, got %+v", msg)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("non-watcher missed session_approval_resolved")
+	}
+}
