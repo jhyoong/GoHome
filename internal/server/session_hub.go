@@ -26,6 +26,9 @@ type pendingApproval struct {
 	req approval.Request
 }
 
+// NewSessionHub constructs a hub for sessionID with its own approval Broker.
+// The broker's outbound request channel is owned by the hub; do not close it
+// externally. Call Run in a goroutine to start dispatching (Task 3).
 func NewSessionHub(sessionID string, cfg config.ApprovalConfig) *SessionHub {
 	ch := make(chan approval.Request, 8)
 	return &SessionHub{
@@ -37,6 +40,8 @@ func NewSessionHub(sessionID string, cfg config.ApprovalConfig) *SessionHub {
 	}
 }
 
+// Broker returns the approval broker bound to this hub. Pass it to the
+// agent loop and any subagent spawn helpers for the session.
 func (h *SessionHub) Broker() *approval.Broker { return h.broker }
 
 func (h *SessionHub) Retain() {

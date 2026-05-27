@@ -3,7 +3,6 @@ package server
 import (
 	"testing"
 
-	"github.com/jhyoong/gohome/internal/approval"
 	"github.com/jhyoong/gohome/internal/config"
 )
 
@@ -14,8 +13,8 @@ func newTestHub(t *testing.T) *SessionHub {
 
 func TestSessionHub_RetainRelease(t *testing.T) {
 	h := newTestHub(t)
-	if h.Idle() {
-		// fresh hub with no watchers and zero refCount IS idle
+	if !h.Idle() {
+		t.Fatal("fresh hub must be idle")
 	}
 	h.Retain()
 	if h.Idle() {
@@ -32,5 +31,4 @@ func TestSessionHub_BrokerNotNil(t *testing.T) {
 	if h.Broker() == nil {
 		t.Fatal("Broker() must return non-nil")
 	}
-	_ = approval.Broker{} // import sanity
 }
