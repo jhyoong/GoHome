@@ -37,8 +37,10 @@ type Config struct {
 }
 
 type Server struct {
-	cfg        Config
-	approvalMu sync.RWMutex // protects cfg.Approval.Whitelist across connections
+	cfg            Config
+	approvalMu     sync.RWMutex // protects cfg.Approval.Whitelist across connections
+	sessionHubs    sync.Map     // sessionID → *SessionHub
+	globalWatchers sync.Map     // tabID → *wsConn
 }
 
 func New(cfg Config) *Server {
@@ -98,6 +100,57 @@ func (s *Server) persistWhitelistEntry(entry config.WhitelistEntry) {
 			log.Printf("always_allow: failed to save config: %v", err)
 		}
 	}
+}
+
+// getOrCreateHub returns the SessionHub for sessionID, creating one on
+// first request. The first creator's hub is the one returned; concurrent
+// callers see the same instance (sync.Map LoadOrStore). The newly-created
+// hub's dispatch loop is started exactly once.
+func (s *Server) getOrCreateHub(sessionID string) *SessionHub {
+	if existing, ok := s.sessionHubs.Load(sessionID); ok {
+		return existing.(*SessionHub)
+	}
+	s.approvalMu.RLock()
+	cfg := s.cfg.Approval
+	s.approvalMu.RUnlock()
+	candidate := NewSessionHub(sessionID, cfg)
+	candidate.GlobalWatchers = s.snapshotGlobalWatchers
+	actual, loaded := s.sessionHubs.LoadOrStore(sessionID, candidate)
+	hub := actual.(*SessionHub)
+	if !loaded {
+		go hub.Run()
+	}
+	return hub
+}
+
+// removeHubIfIdle deletes the hub for sessionID if and only if it has no
+// active agent runs, no watchers, and no pending approvals. Uses
+// CompareAndDelete to avoid removing a hub that a concurrent goroutine
+// has just stored.
+func (s *Server) removeHubIfIdle(sessionID string) {
+	val, ok := s.sessionHubs.Load(sessionID)
+	if !ok {
+		return
+	}
+	hub := val.(*SessionHub)
+	if !hub.Idle() {
+		return
+	}
+	if s.sessionHubs.CompareAndDelete(sessionID, hub) {
+		hub.Stop()
+	}
+}
+
+// snapshotGlobalWatchers returns a slice of all currently-connected
+// wsConn. Used by hubs to address toast notifications to tabs that are
+// NOT watching this hub's session.
+func (s *Server) snapshotGlobalWatchers() []*wsConn {
+	var out []*wsConn
+	s.globalWatchers.Range(func(_, v any) bool {
+		out = append(out, v.(*wsConn))
+		return true
+	})
+	return out
 }
 
 type inMsg struct {
