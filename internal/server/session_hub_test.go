@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -147,11 +148,14 @@ func TestSessionHub_FirstResponderWins(t *testing.T) {
 	<-b.outbound
 
 	var aWon, bWon atomic.Bool
-	go func() { aWon.Store(h.Respond("req-1", true, "tab-a")) }()
-	go func() { bWon.Store(h.Respond("req-1", false, "tab-b")) }()
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); aWon.Store(h.Respond("req-1", true)) }()
+	go func() { defer wg.Done(); bWon.Store(h.Respond("req-1", false)) }()
 
 	select {
 	case approved := <-resultCh:
+		wg.Wait()
 		// Exactly one of aWon/bWon must be true; the broker result must
 		// match the winner. Loser's vote is discarded.
 		wins := 0
@@ -190,7 +194,7 @@ func TestSessionHub_ResolvedEventBroadcast(t *testing.T) {
 	<-a.outbound
 	<-b.outbound
 
-	h.Respond("req-1", true, "tab-a")
+	h.Respond("req-1", true)
 
 	// Both watchers must receive tool_approval_resolved.
 	for _, c := range []*wsConn{a, b} {

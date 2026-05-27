@@ -16,6 +16,7 @@ type SessionHub struct {
 	sessionID  string
 	broker     *approval.Broker
 	approvalCh chan approval.Request
+	done       chan struct{}
 
 	mu       sync.Mutex
 	watchers map[string]*wsConn          // keyed by tabID
@@ -36,6 +37,7 @@ func NewSessionHub(sessionID string, cfg config.ApprovalConfig) *SessionHub {
 	return &SessionHub{
 		sessionID:  sessionID,
 		approvalCh: ch,
+		done:       make(chan struct{}),
 		broker:     approval.NewBroker(cfg, ch),
 		watchers:   make(map[string]*wsConn),
 		pending:    make(map[string]*pendingApproval),
@@ -80,6 +82,9 @@ func (h *SessionHub) Watch(wc *wsConn) {
 	// to avoid holding hub.mu during channel sends.
 	replay := make([]approval.Request, 0, len(h.pending))
 	for _, p := range h.pending {
+		if p.claimed.Load() {
+			continue
+		}
 		replay = append(replay, p.req)
 	}
 	h.mu.Unlock()
@@ -108,19 +113,27 @@ func (h *SessionHub) Unwatch(tabID string) {
 }
 
 // Run is the dispatch loop. Call once in its own goroutine. It exits when
-// Stop is called and the approval channel drains.
+// Stop is called. Any approval requests sent on approvalCh after Stop are
+// silently dropped — the broker's per-request context timeout handles the
+// resulting unanswered Request (returns ErrApprovalTimeout to the agent loop).
 func (h *SessionHub) Run() {
-	for req := range h.approvalCh {
-		h.fanOut(req)
+	for {
+		select {
+		case req := <-h.approvalCh:
+			h.fanOut(req)
+		case <-h.done:
+			return
+		}
 	}
 }
 
-// Stop closes the approval channel, causing Run to return after it
-// drains. Call exactly once per hub; subsequent calls panic on
-// double-close — caller is responsible (server.removeHubIfIdle uses
-// sync.Map CompareAndDelete to enforce single ownership).
+// Stop signals the dispatch loop to exit. Call exactly once per hub;
+// double-call panics on close. The approvalCh is intentionally NOT
+// closed, so any in-flight broker.Request send neither panics nor
+// deadlocks — it either succeeds (and is dropped after Run exits) or
+// the request's context cancels.
 func (h *SessionHub) Stop() {
-	close(h.approvalCh)
+	close(h.done)
 }
 
 // fanOut sends the approval prompt to every current watcher and records
@@ -155,7 +168,7 @@ func (h *SessionHub) fanOut(req approval.Request) {
 // Subsequent calls for the same id return false. After winning, all
 // watchers receive a tool_approval_resolved message so they dismiss
 // their modal.
-func (h *SessionHub) Respond(reqID string, approved bool, fromTabID string) bool {
+func (h *SessionHub) Respond(reqID string, approved bool) bool {
 	h.mu.Lock()
 	pa, ok := h.pending[reqID]
 	h.mu.Unlock()
