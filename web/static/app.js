@@ -297,7 +297,16 @@ function addToolResult(msg) {
     streamingThinkingEl = null;
   }
 
-  if (msg.tool === 'spawn_subagent') return;
+  if (msg.tool === 'spawn_subagent') {
+    // A subagent block already represents this call (rendered by subagent_start
+    // or lazily by a later subagent_* event). Pair it and skip rendering.
+    // Fall through only if every subagent_* event for this call was dropped.
+    const unpaired = dom.messages.querySelector('.subagent-block:not([data-paired])');
+    if (unpaired) {
+      unpaired.dataset.paired = '1';
+      return;
+    }
+  }
 
   const tr = {
     id: generateUUID(),
@@ -476,9 +485,19 @@ function openSubagentBlock(sessionID, parentID, task) {
   });
 }
 
+// Returns the Map entry for sessionID, lazily creating an unattributed block
+// if subagent_start was missed (e.g., dropped by a full outbound channel).
+function getOrOpenSubagentBlock(sessionID) {
+  let entry = subagentBlocks.get(sessionID);
+  if (!entry) {
+    openSubagentBlock(sessionID, '', '');
+    entry = subagentBlocks.get(sessionID);
+  }
+  return entry;
+}
+
 function appendSubagentToken(sessionID, token) {
-  const entry = subagentBlocks.get(sessionID);
-  if (!entry) return;
+  const entry = getOrOpenSubagentBlock(sessionID);
   if (!entry.tokenEl) {
     entry.tokenEl = document.createElement('div');
     entry.tokenEl.className = 'subagent-text';
@@ -489,8 +508,7 @@ function appendSubagentToken(sessionID, token) {
 }
 
 function appendSubagentThinkingToken(sessionID, token) {
-  const entry = subagentBlocks.get(sessionID);
-  if (!entry) return;
+  const entry = getOrOpenSubagentBlock(sessionID);
   if (!entry.thinkingEl) {
     const wrapper = document.createElement('div');
     wrapper.innerHTML = thinkingBlockHtml('');
@@ -502,8 +520,7 @@ function appendSubagentThinkingToken(sessionID, token) {
 }
 
 function addSubagentToolResult(msg) {
-  const entry = subagentBlocks.get(msg.session_id);
-  if (!entry) return;
+  const entry = getOrOpenSubagentBlock(msg.session_id);
   const tr = {
     tool_name: msg.tool,
     params: msg.params,
@@ -518,8 +535,7 @@ function addSubagentToolResult(msg) {
 }
 
 function finalizeSubagentBlock(sessionID) {
-  const entry = subagentBlocks.get(sessionID);
-  if (!entry) return;
+  const entry = getOrOpenSubagentBlock(sessionID);
   const status = entry.blockEl.querySelector('.subagent-status');
   status.textContent = '✓';
   status.className = 'subagent-status done';
@@ -527,8 +543,7 @@ function finalizeSubagentBlock(sessionID) {
 }
 
 function errorSubagentBlock(sessionID, errMsg) {
-  const entry = subagentBlocks.get(sessionID);
-  if (!entry) return;
+  const entry = getOrOpenSubagentBlock(sessionID);
   const status = entry.blockEl.querySelector('.subagent-status');
   status.textContent = '✗';
   status.className = 'subagent-status error';

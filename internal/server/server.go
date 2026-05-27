@@ -182,7 +182,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		conn:      conn,
 		tabID:     tabID,
 		inbound:   make(chan inMsg, 16),
-		outbound:  make(chan outMsg, 64),
+		outbound:  make(chan outMsg, 256),
 		approvals: approvalCh,
 		broker:    broker,
 		store:     s.cfg.Store,
@@ -374,7 +374,7 @@ type wsSubagentEvents struct {
 }
 
 func (e *wsSubagentEvents) OnStart(sessionID, parentID, task string) {
-	e.wc.send(outMsg{Type: "subagent_start", SessionID: sessionID, Data: parentID, Message: task})
+	e.wc.sendCritical(outMsg{Type: "subagent_start", SessionID: sessionID, Data: parentID, Message: task})
 }
 
 func (e *wsSubagentEvents) OnToken(sessionID, token string) {
@@ -397,11 +397,11 @@ func (e *wsSubagentEvents) OnToolResult(sessionID, tool, params, result string, 
 }
 
 func (e *wsSubagentEvents) OnDone(sessionID, finalText string) {
-	e.wc.send(outMsg{Type: "subagent_done", SessionID: sessionID, Message: finalText})
+	e.wc.sendCritical(outMsg{Type: "subagent_done", SessionID: sessionID, Message: finalText})
 }
 
 func (e *wsSubagentEvents) OnError(sessionID, errMsg string) {
-	e.wc.send(outMsg{Type: "subagent_error", SessionID: sessionID, Message: errMsg})
+	e.wc.sendCritical(outMsg{Type: "subagent_error", SessionID: sessionID, Message: errMsg})
 }
 
 func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string, steerCh chan string, isNew bool) {
@@ -503,5 +503,18 @@ func (wc *wsConn) send(msg outMsg) {
 	case wc.outbound <- msg:
 	default:
 		log.Printf("outbound channel full, dropping message type=%s", msg.Type)
+	}
+}
+
+// sendCritical is for low-volume lifecycle events whose loss breaks the UI
+// (e.g., subagent_start — if dropped, the frontend never renders the block).
+// Waits up to 100ms for space before dropping. Returns true if delivered.
+func (wc *wsConn) sendCritical(msg outMsg) bool {
+	select {
+	case wc.outbound <- msg:
+		return true
+	case <-time.After(100 * time.Millisecond):
+		log.Printf("CRITICAL: outbound channel full, dropping lifecycle message type=%s", msg.Type)
+		return false
 	}
 }
