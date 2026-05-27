@@ -391,8 +391,6 @@ func (wc *wsConn) dispatcher(ctx context.Context) {
 					CommandPattern: msg.CommandPattern,
 				}
 				wc.server.persistWhitelistEntry(entry)
-				// Task 8 will extend persistWhitelistEntry to propagate to all
-				// live hub brokers. For now it persists + updates server cfg.
 				wc.mu.Lock()
 				hubs := make([]*SessionHub, 0, len(wc.watching))
 				for _, h := range wc.watching {

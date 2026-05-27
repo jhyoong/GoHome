@@ -3,20 +3,27 @@ package server
 import (
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/jhyoong/gohome/internal/approval"
 	"github.com/jhyoong/gohome/internal/config"
 )
+
+// brokerCleanupGrace is added to brokerTimeout when scheduling pending-
+// entry cleanup. Small enough that a phantom modal window after broker
+// timeout is invisible to a human user.
+const brokerCleanupGrace = 100 * time.Millisecond
 
 // SessionHub owns the approval.Broker for one session and fans approval
 // requests out to all watcher connections (browser tabs) viewing that
 // session. Created lazily when a session needs a broker; torn down when
 // idle (no active agent runs, no watchers, no pending approvals).
 type SessionHub struct {
-	sessionID  string
-	broker     *approval.Broker
-	approvalCh chan approval.Request
-	done       chan struct{}
+	sessionID     string
+	broker        *approval.Broker
+	approvalCh    chan approval.Request
+	done          chan struct{}
+	brokerTimeout time.Duration
 
 	mu       sync.Mutex
 	watchers map[string]*wsConn          // keyed by tabID
@@ -40,13 +47,18 @@ type pendingApproval struct {
 // externally. Call Run in a goroutine to start dispatching (Task 3).
 func NewSessionHub(sessionID string, cfg config.ApprovalConfig) *SessionHub {
 	ch := make(chan approval.Request, 8)
+	timeout := time.Duration(cfg.DefaultTimeout) * time.Second
+	if timeout == 0 {
+		timeout = 5 * time.Minute
+	}
 	return &SessionHub{
-		sessionID:  sessionID,
-		approvalCh: ch,
-		done:       make(chan struct{}),
-		broker:     approval.NewBroker(cfg, ch),
-		watchers:   make(map[string]*wsConn),
-		pending:    make(map[string]*pendingApproval),
+		sessionID:     sessionID,
+		approvalCh:    ch,
+		done:          make(chan struct{}),
+		broker:        approval.NewBroker(cfg, ch),
+		brokerTimeout: timeout,
+		watchers:      make(map[string]*wsConn),
+		pending:       make(map[string]*pendingApproval),
 	}
 }
 
@@ -79,8 +91,9 @@ func (h *SessionHub) Idle() bool {
 // Watch registers a connection as an interested viewer of this session.
 // Any pending approvals are replayed to the new watcher immediately so
 // late-arriving tabs see the modal without waiting for a new request.
-// Idempotent: calling Watch twice with the same tabID is a no-op for
-// the second call.
+// Idempotent on the watcher set: a second call with the same tabID does
+// not duplicate the registration, but pending approvals are re-replayed
+// each time so a re-connecting tab catches up.
 func (h *SessionHub) Watch(wc *wsConn) {
 	h.mu.Lock()
 	h.watchers[wc.tabID] = wc
@@ -155,6 +168,19 @@ func (h *SessionHub) fanOut(req approval.Request) {
 	}
 	getGlobals := h.GlobalWatchers
 	h.mu.Unlock()
+
+	// After the broker's own timeout fires (or the request is otherwise
+	// abandoned), purge the pending entry so Idle() can return true and
+	// late Watch calls don't see a phantom modal for an already-timed-
+	// out request. If the entry is already claimed and deleted by Respond,
+	// this is a no-op.
+	time.AfterFunc(h.brokerTimeout+brokerCleanupGrace, func() {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		if pa, ok := h.pending[req.ID]; ok && !pa.claimed.Load() {
+			delete(h.pending, req.ID)
+		}
+	})
 
 	approvalMsg := outMsg{
 		Type:      "tool_approval",

@@ -271,3 +271,40 @@ drained:
 		t.Fatal("non-watcher missed session_approval_resolved")
 	}
 }
+
+func TestSessionHub_PendingClearedAfterBrokerTimeout(t *testing.T) {
+	// Use a 1s broker timeout for a fast test. Cleanup fires at 1s+100ms.
+	h := NewSessionHub("sess-1", config.ApprovalConfig{DefaultTimeout: 1})
+	h.GlobalWatchers = func() []*wsConn { return nil }
+	go h.Run()
+	defer h.Stop()
+
+	// Trigger a request with no watchers; broker will time out internally.
+	requestDone := make(chan struct{})
+	go func() {
+		_, _ = h.broker.Request(context.Background(), "req-1", "shell",
+			json.RawMessage(`{"command":"ls"}`))
+		close(requestDone)
+	}()
+
+	// Wait for the broker timeout to elapse + cleanup grace.
+	select {
+	case <-requestDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("broker.Request did not return after timeout")
+	}
+
+	// Give the cleanup timer a moment past brokerTimeout+grace.
+	time.Sleep(300 * time.Millisecond)
+
+	h.mu.Lock()
+	leftover := len(h.pending)
+	h.mu.Unlock()
+	if leftover != 0 {
+		t.Fatalf("expected hub.pending empty after broker timeout, got %d entries", leftover)
+	}
+
+	if !h.Idle() {
+		t.Fatal("hub must be Idle after pending is cleared")
+	}
+}
