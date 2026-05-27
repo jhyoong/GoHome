@@ -11,7 +11,6 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/jhyoong/gohome/internal/agent"
-	"github.com/jhyoong/gohome/internal/approval"
 	"github.com/jhyoong/gohome/internal/config"
 	"github.com/jhyoong/gohome/internal/llm"
 	"github.com/jhyoong/gohome/internal/session"
@@ -182,19 +181,22 @@ type outMsg struct {
 }
 
 type wsConn struct {
-	conn      *websocket.Conn
-	tabID     string
-	inbound   chan inMsg
-	outbound  chan outMsg
-	approvals chan approval.Request
-	broker    *approval.Broker
-	store     *session.Store
-	server    *Server
+	conn     *websocket.Conn
+	tabID    string
+	inbound  chan inMsg
+	outbound chan outMsg
+	store    *session.Store
+	server   *Server
 
 	mu        sync.Mutex
 	running   bool
 	runCancel context.CancelFunc
 	steerCh   chan string
+
+	// watching is the set of hubs this connection is currently subscribed
+	// to. In practice a tab views one session at a time, but the map keeps
+	// switch-session transitions safe and idempotent.
+	watching map[string]*SessionHub // keyed by sessionID
 }
 
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
@@ -225,22 +227,19 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	approvalCh := make(chan approval.Request, 8)
-	s.approvalMu.RLock()
-	approvalCfg := s.cfg.Approval
-	s.approvalMu.RUnlock()
-	broker := approval.NewBroker(approvalCfg, approvalCh)
-
 	ws := &wsConn{
-		conn:      conn,
-		tabID:     tabID,
-		inbound:   make(chan inMsg, 16),
-		outbound:  make(chan outMsg, 256),
-		approvals: approvalCh,
-		broker:    broker,
-		store:     s.cfg.Store,
-		server:    s,
+		conn:     conn,
+		tabID:    tabID,
+		inbound:  make(chan inMsg, 16),
+		outbound: make(chan outMsg, 256),
+		store:    s.cfg.Store,
+		server:   s,
+		watching: make(map[string]*SessionHub),
 	}
+
+	s.globalWatchers.Store(tabID, ws)
+	defer s.globalWatchers.Delete(tabID)
+	defer ws.unwatchAll()
 
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
@@ -355,6 +354,7 @@ func (wc *wsConn) dispatcher(ctx context.Context) {
 					wc.send(outMsg{Type: "session_created", SessionID: sessionID})
 					wc.send(outMsg{Type: "sessions", Data: sessions})
 				}
+				wc.watchSession(sessionID)
 				go wc.runAgent(runCtx, sessionID, msg.Content, steerCh, isNew)
 
 			case "stop":
@@ -365,7 +365,17 @@ func (wc *wsConn) dispatcher(ctx context.Context) {
 				wc.mu.Unlock()
 
 			case "tool_response":
-				wc.broker.Respond(msg.RequestID, msg.Approved)
+				wc.mu.Lock()
+				hubs := make([]*SessionHub, 0, len(wc.watching))
+				for _, h := range wc.watching {
+					hubs = append(hubs, h)
+				}
+				wc.mu.Unlock()
+				for _, h := range hubs {
+					if h.Respond(msg.RequestID, msg.Approved) {
+						break
+					}
+				}
 
 			case "always_allow":
 				entry := config.WhitelistEntry{
@@ -373,9 +383,20 @@ func (wc *wsConn) dispatcher(ctx context.Context) {
 					Allow:          "always",
 					CommandPattern: msg.CommandPattern,
 				}
-				wc.broker.AddWhitelistEntry(entry)
 				wc.server.persistWhitelistEntry(entry)
-				wc.broker.Respond(msg.RequestID, true)
+				// Task 8 will extend persistWhitelistEntry to propagate to all
+				// live hub brokers. For now it persists + updates server cfg.
+				wc.mu.Lock()
+				hubs := make([]*SessionHub, 0, len(wc.watching))
+				for _, h := range wc.watching {
+					hubs = append(hubs, h)
+				}
+				wc.mu.Unlock()
+				for _, h := range hubs {
+					if h.Respond(msg.RequestID, true) {
+						break
+					}
+				}
 
 			case "list_sessions":
 				sessions, err := wc.store.ListSessions(ctx)
@@ -404,17 +425,15 @@ func (wc *wsConn) dispatcher(ctx context.Context) {
 				}
 				wc.send(outMsg{Type: "sessions", Data: sessions})
 
+				// Register this tab as a watcher for the loaded session. Hub.Watch
+				// replays any pending approvals for that session.
+				wc.watchSession(msg.SessionID)
+
 			case "delete_session":
 				wc.store.DeleteSession(ctx, msg.SessionID)
 				sessions, _ := wc.store.ListSessions(ctx)
 				wc.send(outMsg{Type: "sessions", Data: sessions})
 			}
-
-		case req := <-wc.approvals:
-			wc.send(outMsg{
-				Type: "tool_approval", RequestID: req.ID,
-				Tool: req.Tool, Params: req.Params,
-			})
 
 		case <-ctx.Done():
 			return
@@ -459,7 +478,11 @@ func (e *wsSubagentEvents) OnError(sessionID, errMsg string) {
 
 func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string, steerCh chan string, isNew bool) {
 	contextWindow := wc.server.cfg.ContextWindow
+	hub := wc.server.getOrCreateHub(sessionID)
+	hub.Retain()
 	defer func() {
+		hub.Release()
+		wc.server.removeHubIfIdle(sessionID)
 		wc.mu.Lock()
 		wc.running = false
 		wc.runCancel = nil
@@ -475,7 +498,7 @@ func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string, steer
 		wc.server.cfg.LLMClient,
 		wc.server.cfg.Registry, // base registry: subagents do not get spawn_subagent, preventing recursion
 		wc.server.cfg.Store,
-		wc.broker,
+		hub.Broker(),
 		&wsSubagentEvents{wc: wc},
 		wc.server.cfg.SubagentSystemPrompt,
 		sessionID,
@@ -487,7 +510,7 @@ func (wc *wsConn) runAgent(ctx context.Context, sessionID, content string, steer
 		wc.send(outMsg{Type: "thinking_token", Data: token})
 	}
 
-	err := loop.Run(ctx, sessionID, wc.tabID, content, wc.broker,
+	err := loop.Run(ctx, sessionID, wc.tabID, content, hub.Broker(),
 		func(token string) { wc.send(outMsg{Type: "token", Data: token}) },
 		func(errMsg string) { wc.send(outMsg{Type: "error", Message: errMsg}) },
 		func(tool, params, result string, approved bool) {
@@ -569,5 +592,47 @@ func (wc *wsConn) sendCritical(msg outMsg) bool {
 	case <-time.After(100 * time.Millisecond):
 		log.Printf("CRITICAL: outbound channel full, dropping lifecycle message type=%s", msg.Type)
 		return false
+	}
+}
+
+// unwatchAll removes this tab from every hub it currently watches and
+// asks the server to clean up any hub that becomes idle as a result.
+func (wc *wsConn) unwatchAll() {
+	wc.mu.Lock()
+	hubs := make([]*SessionHub, 0, len(wc.watching))
+	for _, h := range wc.watching {
+		hubs = append(hubs, h)
+	}
+	wc.watching = make(map[string]*SessionHub)
+	wc.mu.Unlock()
+
+	for _, h := range hubs {
+		h.Unwatch(wc.tabID)
+		wc.server.removeHubIfIdle(h.sessionID)
+	}
+}
+
+// watchSession atomically switches the tab's subscription to sessionID.
+// If the tab was watching a different session, that hub is unwatched
+// first; idempotent if already watching sessionID (Watch is idempotent).
+func (wc *wsConn) watchSession(sessionID string) {
+	hub := wc.server.getOrCreateHub(sessionID)
+
+	wc.mu.Lock()
+	var toUnwatch []*SessionHub
+	for sid, h := range wc.watching {
+		if sid == sessionID {
+			continue
+		}
+		toUnwatch = append(toUnwatch, h)
+		delete(wc.watching, sid)
+	}
+	wc.watching[sessionID] = hub
+	wc.mu.Unlock()
+
+	hub.Watch(wc)
+	for _, h := range toUnwatch {
+		h.Unwatch(wc.tabID)
+		wc.server.removeHubIfIdle(h.sessionID)
 	}
 }
