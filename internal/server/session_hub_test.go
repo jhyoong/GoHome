@@ -1,8 +1,11 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/jhyoong/gohome/internal/approval"
 	"github.com/jhyoong/gohome/internal/config"
@@ -90,5 +93,114 @@ func TestSessionHub_WatchIdempotent(t *testing.T) {
 	defer h.mu.Unlock()
 	if len(h.watchers) != 1 {
 		t.Fatalf("expected 1 watcher after duplicate Watch, got %d", len(h.watchers))
+	}
+}
+
+func TestSessionHub_DispatchFansOutToAllWatchers(t *testing.T) {
+	h := newTestHub(t)
+	go h.Run() // start dispatch loop
+	defer h.Stop()
+
+	a := newFakeConn("tab-a")
+	b := newFakeConn("tab-b")
+	h.Watch(a)
+	h.Watch(b)
+
+	// Trigger a broker.Request in a goroutine; it will block on response.
+	go func() {
+		h.broker.Request(context.Background(), "req-1", "shell",
+			json.RawMessage(`{"command":"ls"}`))
+	}()
+
+	// Both watchers must receive the approval prompt.
+	for _, c := range []*wsConn{a, b} {
+		select {
+		case msg := <-c.outbound:
+			if msg.Type != "tool_approval" || msg.RequestID != "req-1" {
+				t.Fatalf("watcher %s got %+v", c.tabID, msg)
+			}
+		case <-time.After(500 * time.Millisecond):
+			t.Fatalf("watcher %s did not receive tool_approval", c.tabID)
+		}
+	}
+}
+
+func TestSessionHub_FirstResponderWins(t *testing.T) {
+	h := newTestHub(t)
+	go h.Run()
+	defer h.Stop()
+
+	a := newFakeConn("tab-a")
+	b := newFakeConn("tab-b")
+	h.Watch(a)
+	h.Watch(b)
+
+	resultCh := make(chan bool, 1)
+	go func() {
+		ok, _ := h.broker.Request(context.Background(), "req-1", "shell",
+			json.RawMessage(`{"command":"ls"}`))
+		resultCh <- ok
+	}()
+
+	// Wait until both tabs received the prompt before responding.
+	<-a.outbound
+	<-b.outbound
+
+	var aWon, bWon atomic.Bool
+	go func() { aWon.Store(h.Respond("req-1", true, "tab-a")) }()
+	go func() { bWon.Store(h.Respond("req-1", false, "tab-b")) }()
+
+	select {
+	case approved := <-resultCh:
+		// Exactly one of aWon/bWon must be true; the broker result must
+		// match the winner. Loser's vote is discarded.
+		wins := 0
+		if aWon.Load() {
+			wins++
+			if !approved {
+				t.Fatal("tab-a won but broker returned false")
+			}
+		}
+		if bWon.Load() {
+			wins++
+			if approved {
+				t.Fatal("tab-b won but broker returned true")
+			}
+		}
+		if wins != 1 {
+			t.Fatalf("expected exactly 1 winner, got %d", wins)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("broker.Request never returned")
+	}
+}
+
+func TestSessionHub_ResolvedEventBroadcast(t *testing.T) {
+	h := newTestHub(t)
+	go h.Run()
+	defer h.Stop()
+
+	a := newFakeConn("tab-a")
+	b := newFakeConn("tab-b")
+	h.Watch(a)
+	h.Watch(b)
+
+	go h.broker.Request(context.Background(), "req-1", "shell",
+		json.RawMessage(`{"command":"ls"}`))
+	<-a.outbound
+	<-b.outbound
+
+	h.Respond("req-1", true, "tab-a")
+
+	// Both watchers must receive tool_approval_resolved.
+	for _, c := range []*wsConn{a, b} {
+		select {
+		case msg := <-c.outbound:
+			if msg.Type != "tool_approval_resolved" || msg.RequestID != "req-1" {
+				t.Fatalf("watcher %s got %+v", c.tabID, msg)
+			}
+		case <-time.After(500 * time.Millisecond):
+			t.Fatalf("watcher %s did not receive resolved event", c.tabID)
+		}
 	}
 }
