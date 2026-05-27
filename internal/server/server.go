@@ -91,7 +91,6 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 // persistWhitelistEntry appends to the server's shared whitelist and saves to disk.
 func (s *Server) persistWhitelistEntry(entry config.WhitelistEntry) {
 	s.approvalMu.Lock()
-	defer s.approvalMu.Unlock()
 	s.cfg.Approval.Whitelist = append(s.cfg.Approval.Whitelist, entry)
 	if s.cfg.FullConfig != nil {
 		s.cfg.FullConfig.Approval.Whitelist = s.cfg.Approval.Whitelist
@@ -99,6 +98,14 @@ func (s *Server) persistWhitelistEntry(entry config.WhitelistEntry) {
 			log.Printf("always_allow: failed to save config: %v", err)
 		}
 	}
+	s.approvalMu.Unlock()
+
+	// Propagate to every live hub so existing brokers honor the new entry
+	// for in-flight requests. Newly-created hubs pick it up from cfg.
+	s.sessionHubs.Range(func(_, v any) bool {
+		v.(*SessionHub).Broker().AddWhitelistEntry(entry)
+		return true
+	})
 }
 
 // getOrCreateHub returns the SessionHub for sessionID, creating one on
