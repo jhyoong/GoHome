@@ -17,6 +17,9 @@ import (
 //
 // Session context is injected into ctx so that tools can access session state.
 func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
+	// Record the active session so Spawn can reference it.
+	a.Session = sess
+
 	// Inject session into ctx so tools can call tools.SessionFrom(ctx).
 	tctx := tools.WithSession(ctx, sess)
 
