@@ -131,10 +131,13 @@ func TestSnapshots(t *testing.T) {
 				CacheWriteTokens: 50,
 			},
 		}})
+		settle() // wait for usage update to be processed
+
 		tm.Type("/tokens")
 		tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
 
 		settle() // wait for overlay render
+		settle() // extra settle for stability
 		out := captureSnapshot(t, tm)
 		teatest.RequireEqualOutput(t, out)
 	})
