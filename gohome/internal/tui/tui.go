@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textarea"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
@@ -29,6 +30,12 @@ type SessionView struct {
 	Usage    common.Usage
 }
 
+// inputHeight is the fixed height reserved for the textarea.
+const inputHeight = 3
+
+// statusHeight is the height reserved for the status bar (added in a later task).
+const statusHeight = 1
+
 // Model is the root Bubble Tea model for gohome.
 type Model struct {
 	theme    style.Theme
@@ -38,6 +45,10 @@ type Model struct {
 
 	input   textarea.Model
 	inputCh chan string // shared with Frontend.input
+	vp      viewport.Model
+	winW    int
+	winH    int
+	vpReady bool
 }
 
 // New creates and returns a new Model with an initial "main" session.
@@ -54,7 +65,7 @@ func New(fe *Frontend) *Model {
 	ta := textarea.New()
 	ta.Placeholder = "Type a message..."
 	ta.ShowLineNumbers = false
-	ta.SetHeight(3)
+	ta.SetHeight(inputHeight)
 
 	var inputCh chan string
 	if fe != nil {
@@ -88,6 +99,21 @@ func (m *Model) getOrCreateSession(id string, depth int) *SessionView {
 		m.order = append(m.order, id)
 	}
 	return sv
+}
+
+// rebuildViewport refreshes the viewport content from the focused session.
+func (m *Model) rebuildViewport() {
+	if !m.vpReady {
+		return
+	}
+	sv, ok := m.sessions[m.focused]
+	if !ok {
+		return
+	}
+	content := renderTimeline(sv)
+	m.vp.SetContent(content)
+	// Auto-scroll to bottom when new content arrives.
+	m.vp.GotoBottom()
 }
 
 // handleAgentEvent updates the relevant SessionView based on the event kind.
@@ -162,6 +188,10 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) {
 		})
 		sv.InFlight = false
 	}
+
+	if msg.SessionID == m.focused {
+		m.rebuildViewport()
+	}
 }
 
 // sendInputCmd returns a Cmd that delivers text to the input channel
@@ -174,13 +204,32 @@ func (m *Model) sendInputCmd(text string) tea.Cmd {
 	}
 }
 
+// vpHeight returns the viewport height given current window dimensions.
+func (m *Model) vpHeight() int {
+	h := m.winH - inputHeight - statusHeight
+	if h < 1 {
+		h = 1
+	}
+	return h
+}
+
 // Update implements tea.Model.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
+		m.winW = msg.Width
+		m.winH = msg.Height
 		m.input.SetWidth(msg.Width)
+		if !m.vpReady {
+			m.vp = viewport.New(msg.Width, m.vpHeight())
+			m.vpReady = true
+			m.rebuildViewport()
+		} else {
+			m.vp.Width = msg.Width
+			m.vp.Height = m.vpHeight()
+		}
 
 	case tea.KeyMsg:
 		switch msg.Type {
@@ -188,7 +237,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case tea.KeyEnter:
-			// Shift+Enter passes through to textarea for newlines.
+			// Alt+Enter (or Shift+Enter) passes through to textarea for newlines.
 			if !msg.Alt {
 				text := strings.TrimSpace(m.input.Value())
 				if text != "" {
@@ -201,15 +250,25 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					sv.InFlight = true
 
 					m.input.Reset()
+					m.rebuildViewport()
 					cmds = append(cmds, m.sendInputCmd(text))
 				}
 				return m, tea.Batch(cmds...)
 			}
 		}
-		// All other keystrokes go to the textarea.
-		var taCmd tea.Cmd
-		m.input, taCmd = m.input.Update(msg)
-		cmds = append(cmds, taCmd)
+
+		// PgUp / PgDn and Up/Down route to the viewport.
+		switch msg.Type {
+		case tea.KeyPgUp, tea.KeyPgDown, tea.KeyUp, tea.KeyDown:
+			var vpCmd tea.Cmd
+			m.vp, vpCmd = m.vp.Update(msg)
+			cmds = append(cmds, vpCmd)
+		default:
+			// All other keystrokes go to the textarea.
+			var taCmd tea.Cmd
+			m.input, taCmd = m.input.Update(msg)
+			cmds = append(cmds, taCmd)
+		}
 
 	case agentEventMsg:
 		m.handleAgentEvent(msg)
@@ -229,6 +288,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) AddTimelineEntry(sessionID string, e TimelineEntry) {
 	sv := m.getOrCreateSession(sessionID, 1)
 	sv.Timeline = append(sv.Timeline, e)
+	if sessionID == m.focused {
+		m.rebuildViewport()
+	}
 }
 
 // renderTimeline converts a SessionView's timeline to plain text.
@@ -258,6 +320,10 @@ func renderTimeline(sv *SessionView) string {
 
 // View implements tea.Model.
 func (m *Model) View() string {
+	if m.vpReady {
+		return m.vp.View() + "\n" + m.input.View()
+	}
+	// Viewport not yet sized (no WindowSizeMsg received); fall back to plain text.
 	sv, ok := m.sessions[m.focused]
 	if !ok {
 		return "gohome\n" + m.input.View()

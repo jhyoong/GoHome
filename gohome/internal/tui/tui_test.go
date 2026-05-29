@@ -18,9 +18,9 @@ func TestSkeletonRender(t *testing.T) {
 		_ = tm.Quit()
 	})
 
-	// Before any timeline entries the view still renders something.
+	// The textarea placeholder must be visible on startup.
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("gohome"))
+		return bytes.Contains(out, []byte("Type a message"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
 
@@ -89,5 +89,31 @@ func TestInputTextareaSubmit(t *testing.T) {
 	// Assert the user entry appears in the rendered view.
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("world"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
+
+func TestViewportScrollback(t *testing.T) {
+	m := tui.New(nil)
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() {
+		_ = tm.Quit()
+	})
+
+	// Send several agent token-delta events to populate the timeline.
+	// Send PgUp/PgDown in between to verify scroll keys do not crash.
+	entries := []string{"alpha", "beta", "gamma", "delta", "epsilon"}
+	for _, text := range entries {
+		tm.Send(tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+			Kind:      agent.EventTokenDelta,
+			SessionID: "main",
+			TextDelta: text + "\n",
+		}})
+	}
+	tm.Send(tea.KeyMsg{Type: tea.KeyPgUp})
+	tm.Send(tea.KeyMsg{Type: tea.KeyPgDown})
+
+	// The latest content should appear in the accumulated output.
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("epsilon"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
