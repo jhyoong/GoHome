@@ -33,8 +33,11 @@ type SessionView struct {
 // inputHeight is the fixed height reserved for the textarea.
 const inputHeight = 3
 
-// statusHeight is the height reserved for the status bar (added in a later task).
+// statusHeight is the height reserved for the status bar.
 const statusHeight = 1
+
+// stripHeight is the height reserved for the session strip at the top.
+const stripHeight = 1
 
 // Model is the root Bubble Tea model for gohome.
 type Model struct {
@@ -237,7 +240,7 @@ func (m *Model) sendInputCmd(text string) tea.Cmd {
 
 // vpHeight returns the viewport height given current window dimensions.
 func (m *Model) vpHeight() int {
-	h := m.winH - inputHeight - statusHeight
+	h := m.winH - inputHeight - statusHeight - stripHeight
 	if h < 1 {
 		h = 1
 	}
@@ -289,7 +292,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// PgUp / PgDn and Up/Down route to the viewport.
+		// Ctrl+] / Ctrl+[ cycle focus between sessions.
 		switch msg.Type {
+		case tea.KeyCtrlCloseBracket: // Ctrl+]
+			m.focusNext()
+		case tea.KeyCtrlOpenBracket: // Ctrl+[
+			m.focusPrev()
 		case tea.KeyPgUp, tea.KeyPgDown, tea.KeyUp, tea.KeyDown:
 			var vpCmd tea.Cmd
 			m.vp, vpCmd = m.vp.Update(msg)
@@ -351,17 +359,20 @@ func renderTimeline(sv *SessionView) string {
 
 // View implements tea.Model.
 func (m *Model) View() string {
+	strip := m.sessionStrip()
+	sb := m.statusBar()
+
 	if m.vpReady {
-		return m.vp.View() + "\n" + m.input.View()
+		return strip + "\n" + m.vp.View() + "\n" + m.input.View() + "\n" + sb
 	}
 	// Viewport not yet sized (no WindowSizeMsg received); fall back to plain text.
 	sv, ok := m.sessions[m.focused]
 	if !ok {
-		return "gohome\n" + m.input.View()
+		return strip + "\ngohome\n" + m.input.View() + "\n" + sb
 	}
 	content := renderTimeline(sv)
 	if content == "" {
 		content = "gohome\n"
 	}
-	return content + m.input.View()
+	return strip + "\n" + content + m.input.View() + "\n" + sb
 }
