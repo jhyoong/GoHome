@@ -296,6 +296,71 @@ func TestSpawn_ParentWriterMarkers(t *testing.T) {
 	}
 }
 
+// TestSpawn_ChildJSONLHasUserMessage verifies that the child JSONL contains a
+// user_message event whose content matches the task string passed to Spawn.
+// This is the child-side complement of TestSpawn_ParentWriterMarkers.
+func TestSpawn_ChildJSONLHasUserMessage(t *testing.T) {
+	home := t.TempDir()
+	client := oneTextTurnClient("done")
+
+	g := compileYoloGuard(t)
+	fe := &fakeRecorder{}
+
+	a := &Agent{
+		Client:   client,
+		Tools:    tools.NewRegistry(),
+		Guard:    g,
+		Frontend: fe,
+		Writer:   nil,
+		System:   "sys",
+		Home:     home,
+	}
+	a.Session = session.NewSession("parent", home, "model", "anthropic")
+
+	const wantTask = "specific task text"
+	_, _, err := a.Spawn(context.Background(), wantTask, "")
+	if err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+
+	// Find the child JSONL.
+	var childPath string
+	_ = filepath.Walk(filepath.Join(home, "sessions"), func(p string, info os.FileInfo, werr error) error {
+		if werr == nil && !info.IsDir() && strings.HasSuffix(p, ".jsonl") {
+			childPath = p
+		}
+		return nil
+	})
+	if childPath == "" {
+		t.Fatalf("no child JSONL found")
+	}
+
+	lines := readJSONLLines(t, childPath)
+	var foundUserMsg bool
+	for _, m := range lines {
+		var typ string
+		if err := json.Unmarshal(m["type"], &typ); err != nil {
+			continue
+		}
+		if typ != "user_message" {
+			continue
+		}
+		foundUserMsg = true
+		// Verify the content contains the task text.
+		raw, ok := m["content"]
+		if !ok {
+			t.Errorf("user_message missing content field")
+			continue
+		}
+		if !strings.Contains(string(raw), wantTask) {
+			t.Errorf("user_message content does not contain task text %q; got %s", wantTask, string(raw))
+		}
+	}
+	if !foundUserMsg {
+		t.Errorf("child JSONL missing user_message event")
+	}
+}
+
 // readJSONLLines opens path and returns each decoded JSON line as a map.
 func readJSONLLines(t *testing.T, path string) []map[string]json.RawMessage {
 	t.Helper()
