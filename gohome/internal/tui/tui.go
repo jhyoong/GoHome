@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/jhyoong/GoHome/gohome/internal/agent"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 	"github.com/jhyoong/GoHome/gohome/internal/tui/style"
 )
@@ -36,6 +37,7 @@ type Model struct {
 }
 
 // New creates and returns a new Model with an initial "main" session.
+// fe is optional (may be nil for tests that do not need agent routing).
 func New() *Model {
 	main := &SessionView{
 		ID:    "main",
@@ -55,6 +57,91 @@ func (m *Model) Init() tea.Cmd {
 	return nil
 }
 
+// getOrCreateSession returns the SessionView for id, creating it if absent.
+func (m *Model) getOrCreateSession(id string, depth int) *SessionView {
+	sv, ok := m.sessions[id]
+	if !ok {
+		sv = &SessionView{ID: id, Title: id, Depth: depth}
+		m.sessions[id] = sv
+		m.order = append(m.order, id)
+	}
+	return sv
+}
+
+// handleAgentEvent updates the relevant SessionView based on the event kind.
+func (m *Model) handleAgentEvent(msg agentEventMsg) {
+	ev := msg.Ev
+	sv := m.getOrCreateSession(msg.SessionID, 1)
+
+	switch ev.Kind {
+	case agent.EventTokenDelta:
+		// Append to the last assistant entry if it is in-progress, else add new.
+		n := len(sv.Timeline)
+		if n > 0 && sv.Timeline[n-1].Kind == "assistant" {
+			sv.Timeline[n-1].Text += ev.TextDelta
+		} else {
+			sv.Timeline = append(sv.Timeline, TimelineEntry{
+				Kind: "assistant",
+				Text: ev.TextDelta,
+			})
+		}
+
+	case agent.EventToolCallDone:
+		sv.Timeline = append(sv.Timeline, TimelineEntry{
+			Kind:     "tool",
+			ToolName: ev.ToolName,
+			Text:     ev.InputJSON,
+		})
+
+	case agent.EventToolResult:
+		// Set ToolResult on the most recent tool entry without a result.
+		content := ""
+		if ev.Result != nil {
+			content = ev.Result.Content
+		}
+		set := false
+		for i := len(sv.Timeline) - 1; i >= 0; i-- {
+			if sv.Timeline[i].Kind == "tool" && sv.Timeline[i].ToolResult == "" {
+				sv.Timeline[i].ToolResult = content
+				set = true
+				break
+			}
+		}
+		if !set {
+			sv.Timeline = append(sv.Timeline, TimelineEntry{
+				Kind:       "tool",
+				ToolResult: content,
+			})
+		}
+
+	case agent.EventUsageUpdated:
+		if ev.Usage != nil {
+			sv.Usage = *ev.Usage
+		}
+
+	case agent.EventTurnDone:
+		sv.InFlight = false
+
+	case agent.EventSessionStarted:
+		// Subagent session — depth 1, add to order if not already present.
+		m.getOrCreateSession(ev.SessionID, 1)
+
+	case agent.EventSessionEnded:
+		sv.InFlight = false
+
+	case agent.EventError:
+		errText := ""
+		if ev.Err != nil {
+			errText = ev.Err.Error()
+		}
+		sv.Timeline = append(sv.Timeline, TimelineEntry{
+			Kind: "notice",
+			Text: errText,
+		})
+		sv.InFlight = false
+	}
+}
+
 // Update implements tea.Model.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -63,6 +150,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyCtrlC, tea.KeyEsc:
 			return m, tea.Quit
 		}
+
+	case agentEventMsg:
+		m.handleAgentEvent(msg)
 	}
 	return m, nil
 }
@@ -70,12 +160,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // AddTimelineEntry appends an entry to the named session's timeline.
 // It creates the session if it does not exist. Used in tests and by Update.
 func (m *Model) AddTimelineEntry(sessionID string, e TimelineEntry) {
-	sv, ok := m.sessions[sessionID]
-	if !ok {
-		sv = &SessionView{ID: sessionID, Title: sessionID, Depth: 1}
-		m.sessions[sessionID] = sv
-		m.order = append(m.order, sessionID)
-	}
+	sv := m.getOrCreateSession(sessionID, 1)
 	sv.Timeline = append(sv.Timeline, e)
 }
 
