@@ -100,3 +100,40 @@ func TestTranslateEvents_ToolUseAccumulation(t *testing.T) {
 		t.Errorf("expected 1 EventTurnDone, got %d", turnDones)
 	}
 }
+
+func TestTranslateEvents_UsageOnTurnDone(t *testing.T) {
+	frames := []sseFrame{
+		{event: "message_start", data: `{"type":"message_start","message":{"id":"msg_01","role":"assistant","model":"claude-3-5-haiku-20241022","content":[],"stop_reason":null,"usage":{"input_tokens":10,"output_tokens":1,"cache_read_input_tokens":2,"cache_creation_input_tokens":3}}}`},
+		{event: "message_delta", data: `{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":15}}`},
+		{event: "message_stop", data: `{"type":"message_stop"}`},
+	}
+
+	events := collectEvents(translateEvents(makeFrames(frames)))
+
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+
+	e := events[0]
+	if e.Kind != common.EventTurnDone {
+		t.Fatalf("event kind: got %q, want EventTurnDone", e.Kind)
+	}
+	if e.StopReason != "end_turn" {
+		t.Errorf("StopReason: got %q, want %q", e.StopReason, "end_turn")
+	}
+	if e.Usage == nil {
+		t.Fatal("Usage is nil")
+	}
+	if e.Usage.InputTokens != 10 {
+		t.Errorf("InputTokens: got %d, want 10", e.Usage.InputTokens)
+	}
+	if e.Usage.OutputTokens != 15 {
+		t.Errorf("OutputTokens: got %d, want 15", e.Usage.OutputTokens)
+	}
+	if e.Usage.CacheReadTokens != 2 {
+		t.Errorf("CacheReadTokens: got %d, want 2", e.Usage.CacheReadTokens)
+	}
+	if e.Usage.CacheWriteTokens != 3 {
+		t.Errorf("CacheWriteTokens: got %d, want 3", e.Usage.CacheWriteTokens)
+	}
+}
