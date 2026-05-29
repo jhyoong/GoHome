@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 
+	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
@@ -34,27 +35,48 @@ type Model struct {
 	sessions map[string]*SessionView
 	order    []string
 	focused  string
+
+	input   textarea.Model
+	inputCh chan string // shared with Frontend.input
 }
 
 // New creates and returns a new Model with an initial "main" session.
-// fe is optional (may be nil for tests that do not need agent routing).
-func New() *Model {
+// fe may be nil (tests that do not need agent routing or input submission).
+// When fe is non-nil, the Model shares fe.input so submitted text reaches
+// AwaitUserInput.
+func New(fe *Frontend) *Model {
 	main := &SessionView{
 		ID:    "main",
 		Depth: 0,
 		Title: "main",
 	}
-	return &Model{
+
+	ta := textarea.New()
+	ta.Placeholder = "Type a message..."
+	ta.ShowLineNumbers = false
+	ta.SetHeight(3)
+
+	var inputCh chan string
+	if fe != nil {
+		inputCh = fe.input
+	} else {
+		inputCh = make(chan string, 1)
+	}
+
+	m := &Model{
 		theme:    style.Default(),
 		sessions: map[string]*SessionView{"main": main},
 		order:    []string{"main"},
 		focused:  "main",
+		input:    ta,
+		inputCh:  inputCh,
 	}
+	return m
 }
 
-// Init implements tea.Model.
+// Init implements tea.Model. Focuses the textarea on startup.
 func (m *Model) Init() tea.Cmd {
-	return nil
+	return m.input.Focus()
 }
 
 // getOrCreateSession returns the SessionView for id, creating it if absent.
@@ -142,19 +164,64 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) {
 	}
 }
 
+// sendInputCmd returns a Cmd that delivers text to the input channel
+// without blocking the update loop.
+func (m *Model) sendInputCmd(text string) tea.Cmd {
+	ch := m.inputCh
+	return func() tea.Msg {
+		ch <- text
+		return nil
+	}
+}
+
 // Update implements tea.Model.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
+
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.input.SetWidth(msg.Width)
+
 	case tea.KeyMsg:
 		switch msg.Type {
-		case tea.KeyCtrlC, tea.KeyEsc:
+		case tea.KeyCtrlC:
 			return m, tea.Quit
+
+		case tea.KeyEnter:
+			// Shift+Enter passes through to textarea for newlines.
+			if !msg.Alt {
+				text := strings.TrimSpace(m.input.Value())
+				if text != "" {
+					// Add user entry to focused session.
+					sv := m.getOrCreateSession(m.focused, 0)
+					sv.Timeline = append(sv.Timeline, TimelineEntry{
+						Kind: "user",
+						Text: text,
+					})
+					sv.InFlight = true
+
+					m.input.Reset()
+					cmds = append(cmds, m.sendInputCmd(text))
+				}
+				return m, tea.Batch(cmds...)
+			}
 		}
+		// All other keystrokes go to the textarea.
+		var taCmd tea.Cmd
+		m.input, taCmd = m.input.Update(msg)
+		cmds = append(cmds, taCmd)
 
 	case agentEventMsg:
 		m.handleAgentEvent(msg)
+
+	default:
+		// Pass through to textarea for cursor blink etc.
+		var taCmd tea.Cmd
+		m.input, taCmd = m.input.Update(msg)
+		cmds = append(cmds, taCmd)
 	}
-	return m, nil
+
+	return m, tea.Batch(cmds...)
 }
 
 // AddTimelineEntry appends an entry to the named session's timeline.
@@ -193,11 +260,11 @@ func renderTimeline(sv *SessionView) string {
 func (m *Model) View() string {
 	sv, ok := m.sessions[m.focused]
 	if !ok {
-		return "gohome\n"
+		return "gohome\n" + m.input.View()
 	}
 	content := renderTimeline(sv)
 	if content == "" {
-		return "gohome\n"
+		content = "gohome\n"
 	}
-	return content
+	return content + m.input.View()
 }

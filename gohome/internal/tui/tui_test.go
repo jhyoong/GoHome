@@ -5,13 +5,14 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
 	"github.com/jhyoong/GoHome/gohome/internal/tui"
 )
 
 func TestSkeletonRender(t *testing.T) {
-	m := tui.New()
+	m := tui.New(nil)
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() {
 		_ = tm.Quit()
@@ -24,7 +25,7 @@ func TestSkeletonRender(t *testing.T) {
 }
 
 func TestSessionViewTimelineRender(t *testing.T) {
-	m := tui.New()
+	m := tui.New(nil)
 	// Add a user entry to the focused "main" session.
 	m.AddTimelineEntry("main", tui.TimelineEntry{Kind: "user", Text: "hello"})
 
@@ -39,7 +40,7 @@ func TestSessionViewTimelineRender(t *testing.T) {
 }
 
 func TestAgentEventTokenDelta(t *testing.T) {
-	m := tui.New()
+	m := tui.New(nil)
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() {
 		_ = tm.Quit()
@@ -53,5 +54,40 @@ func TestAgentEventTokenDelta(t *testing.T) {
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("hi"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
+
+func TestInputTextareaSubmit(t *testing.T) {
+	fe := tui.NewFrontend()
+	m := tui.New(fe)
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() {
+		_ = tm.Quit()
+	})
+
+	// Read the submitted text from the input channel in a goroutine.
+	received := make(chan string, 1)
+	go func() {
+		select {
+		case s := <-fe.InputCh():
+			received <- s
+		case <-time.After(3 * time.Second):
+			received <- ""
+		}
+	}()
+
+	// Type "world" then Enter.
+	tm.Type("world")
+	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// Assert the input channel received the text.
+	got := <-received
+	if got != "world" {
+		t.Fatalf("expected input channel to receive %q, got %q", "world", got)
+	}
+
+	// Assert the user entry appears in the rendered view.
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("world"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }

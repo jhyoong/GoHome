@@ -38,6 +38,12 @@ func (f *Frontend) SetProgram(p *tea.Program) {
 	f.prog = p
 }
 
+// InputCh returns the channel that delivers user-submitted text. The Model
+// sends on this channel when the user presses Enter; AwaitUserInput reads it.
+func (f *Frontend) InputCh() chan string {
+	return f.input
+}
+
 // Emit implements agent.Frontend. It is safe to call concurrently and does
 // not block the caller: Send is non-blocking when the program is ready.
 func (f *Frontend) Emit(sessionID string, ev agent.Event) {
