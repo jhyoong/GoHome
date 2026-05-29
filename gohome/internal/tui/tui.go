@@ -49,6 +49,11 @@ type Model struct {
 	winW    int
 	winH    int
 	vpReady bool
+
+	// Phase 12 populates these; Phase 11 renders them.
+	modelName     string // LLM model name; "?" when empty
+	yolo          bool   // YOLO mode (skip approval)
+	contextWindow int    // context window size; defaults to 128000
 }
 
 // New creates and returns a new Model with an initial "main" session.
@@ -75,14 +80,40 @@ func New(fe *Frontend) *Model {
 	}
 
 	m := &Model{
-		theme:    style.Default(),
-		sessions: map[string]*SessionView{"main": main},
-		order:    []string{"main"},
-		focused:  "main",
-		input:    ta,
-		inputCh:  inputCh,
+		theme:         style.Default(),
+		sessions:      map[string]*SessionView{"main": main},
+		order:         []string{"main"},
+		focused:       "main",
+		input:         ta,
+		inputCh:       inputCh,
+		contextWindow: 128000,
 	}
 	return m
+}
+
+// SetModelName sets the LLM model name shown in the status bar.
+func (m *Model) SetModelName(name string) {
+	m.modelName = name
+}
+
+// SetYolo sets YOLO mode. When true the status bar shows a red [YOLO] badge.
+func (m *Model) SetYolo(yolo bool) {
+	m.yolo = yolo
+}
+
+// SetContextWindow sets the total context window size used in the token bar.
+// If size <= 0 the default 128000 is used.
+func (m *Model) SetContextWindow(size int) {
+	if size <= 0 {
+		size = 128000
+	}
+	m.contextWindow = size
+}
+
+// Focused returns the ID of the currently focused session.
+// Exported for tests that need to inspect focus state.
+func (m *Model) Focused() string {
+	return m.focused
 }
 
 // Init implements tea.Model. Focuses the textarea on startup.
