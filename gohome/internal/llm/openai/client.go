@@ -12,9 +12,6 @@ import (
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 )
 
-// defaultRetryBackoff is the delay schedule used by Client.Stream between attempts.
-var defaultRetryBackoff = []time.Duration{250 * time.Millisecond, time.Second, 2 * time.Second}
-
 // Client implements common.Client for the OpenAI chat completions API.
 type Client struct {
 	base    string
@@ -52,7 +49,7 @@ func (c *Client) Stream(ctx context.Context, req common.Request) (<-chan common.
 		return nil, fmt.Errorf("openai: build body: %w", err)
 	}
 
-	resp, err := doWithRetry(ctx, c.hc, c.backoff, func() (*http.Request, error) {
+	resp, err := common.DoWithRetry(ctx, c.hc, c.backoff, func() (*http.Request, error) {
 		r, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/chat/completions", bytes.NewReader(body))
 		if err != nil {
 			return nil, err

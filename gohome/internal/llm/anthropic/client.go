@@ -50,7 +50,7 @@ func (c *Client) Stream(ctx context.Context, req common.Request) (<-chan common.
 		return nil, fmt.Errorf("anthropic: build body: %w", err)
 	}
 
-	resp, err := doWithRetry(ctx, c.hc, c.backoff, func() (*http.Request, error) {
+	resp, err := common.DoWithRetry(ctx, c.hc, c.backoff, func() (*http.Request, error) {
 		r, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/v1/messages", bytes.NewReader(body))
 		if err != nil {
 			return nil, err

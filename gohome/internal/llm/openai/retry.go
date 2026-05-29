@@ -1,63 +1,13 @@
 package openai
 
 import (
-	"context"
-	"fmt"
-	"io"
-	"net/http"
 	"time"
+
+	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 )
 
-// doWithRetry performs an HTTP request with retry on transient errors.
-// It retries on connection errors and 5xx responses, but never on 4xx or context cancellation.
-// The maximum number of attempts is len(backoff)+1.
-func doWithRetry(ctx context.Context, hc *http.Client, backoff []time.Duration, buildReq func() (*http.Request, error)) (*http.Response, error) {
-	maxAttempts := len(backoff) + 1
-	var lastErr error
+// defaultRetryBackoff is the delay schedule used by Client.Stream between attempts.
+var defaultRetryBackoff = common.DefaultBackoff
 
-	for attempt := 0; attempt < maxAttempts; attempt++ {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-
-		if attempt > 0 {
-			delay := backoff[attempt-1]
-			if delay > 0 {
-				select {
-				case <-ctx.Done():
-					return nil, ctx.Err()
-				case <-time.After(delay):
-				}
-			}
-		}
-
-		req, err := buildReq()
-		if err != nil {
-			return nil, err
-		}
-
-		resp, err := hc.Do(req)
-		if err != nil {
-			if ctx.Err() != nil {
-				return nil, ctx.Err()
-			}
-			lastErr = fmt.Errorf("attempt %d: %w", attempt+1, err)
-			continue
-		}
-
-		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
-			return resp, nil
-		}
-
-		if resp.StatusCode >= 500 {
-			body, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			lastErr = fmt.Errorf("openai %d: %s", resp.StatusCode, body)
-			continue
-		}
-
-		return resp, nil
-	}
-
-	return nil, lastErr
-}
+// Ensure the package-level alias is the right type.
+var _ []time.Duration = defaultRetryBackoff
