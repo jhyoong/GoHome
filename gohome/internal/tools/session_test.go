@@ -15,7 +15,7 @@ func newFakeSession(cwd string) *fakeSession {
 	return &fakeSession{read: make(map[string]bool), cwd: cwd}
 }
 
-func (s *fakeSession) MarkRead(path string) { s.read[path] = true }
+func (s *fakeSession) MarkRead(path string)     { s.read[path] = true }
 func (s *fakeSession) HasRead(path string) bool { return s.read[path] }
 func (s *fakeSession) CWD() string              { return s.cwd }
 

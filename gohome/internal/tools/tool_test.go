@@ -13,8 +13,8 @@ type fakeTool struct {
 	schema      json.RawMessage
 }
 
-func (f *fakeTool) Name() string             { return f.name }
-func (f *fakeTool) Description() string      { return f.description }
+func (f *fakeTool) Name() string                 { return f.name }
+func (f *fakeTool) Description() string          { return f.description }
 func (f *fakeTool) InputSchema() json.RawMessage { return f.schema }
 func (f *fakeTool) Execute(_ context.Context, _ json.RawMessage, _ ProgressSink) (Result, error) {
 	return Result{Content: "ok"}, nil
