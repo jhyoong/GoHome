@@ -11,12 +11,13 @@ import (
 // Event variant structs — each maps to a JSONL event type.
 
 type SessionStart struct {
-	ID       string `json:"id"`
-	ParentID string `json:"parentId"`
-	CWD      string `json:"cwd"`
-	Model    string `json:"model"`
-	Endpoint string `json:"endpoint"`
-	Depth    int    `json:"depth"`
+	ID        string    `json:"id"`
+	ParentID  string    `json:"parentId"`
+	CWD       string    `json:"cwd"`
+	Model     string    `json:"model"`
+	Endpoint  string    `json:"endpoint"`
+	Depth     int       `json:"depth"`
+	StartedAt time.Time `json:"startedAt"`
 }
 
 type UserMessage struct {
