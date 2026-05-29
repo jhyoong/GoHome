@@ -5,22 +5,16 @@ package tui_test
 //
 //	go test ./gohome/internal/tui/ -run TestSnapshots -update
 //
-// Determinism: lipgloss.SetColorProfile(termenv.Ascii) is called in TestMain
-// (see tui_test_main_test.go) so all colour codes are stripped, making
-// terminal output stable across machines and colour profiles.
-//
-// Note on output capture: FinalOutput collects all bytes written to the
-// virtual terminal from program start until quit. The golden files include
-// the raw terminal sequences (cursor movement, erase). With termenv.Ascii
-// no colour-code sequences are emitted, keeping the golden files stable.
+// Determinism: all state transitions are driven synchronously through
+// Model.Update, and lipgloss.SetColorProfile(termenv.Ascii) is called in
+// TestMain (see tui_test_main_test.go), so View() output is stable across
+// machines and colour profiles. No goroutines, no sleeps, no teatest.
 
 import (
-	"io"
 	"testing"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/x/exp/teatest"
+	"github.com/charmbracelet/x/exp/golden"
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
@@ -30,62 +24,54 @@ import (
 const snapshotW = 80
 const snapshotH = 24
 
-// settle waits a short fixed duration for the TUI to process pending messages
-// and re-render. This avoids draining the output buffer (unlike WaitFor).
-func settle() {
-	time.Sleep(80 * time.Millisecond)
+// apply sends msg to m synchronously and returns the updated *Model.
+func apply(m *tui.Model, msg tea.Msg) *tui.Model {
+	nm, _ := m.Update(msg)
+	return nm.(*tui.Model)
 }
 
-// captureSnapshot quits tm and returns the full accumulated output.
-func captureSnapshot(t *testing.T, tm *teatest.TestModel) []byte {
-	t.Helper()
-	if err := tm.Quit(); err != nil {
-		t.Fatal(err)
-	}
-	out, err := io.ReadAll(tm.FinalOutput(t, teatest.WithFinalTimeout(3*time.Second)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return out
+// newSized builds a Model already sized to 80x24.
+func newSized() *tui.Model {
+	m := tui.New(nil)
+	m = apply(m, tea.WindowSizeMsg{Width: snapshotW, Height: snapshotH})
+	return m
 }
 
 func TestSnapshots(t *testing.T) {
 	// (a) Empty initial view.
 	t.Run("empty_initial_view", func(t *testing.T) {
-		m := tui.New(nil)
-		tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(snapshotW, snapshotH))
-		settle()
-		out := captureSnapshot(t, tm)
-		teatest.RequireEqualOutput(t, out)
+		m := newSized()
+		golden.RequireEqual(t, []byte(m.View()))
 	})
 
 	// (b) After a single user message.
 	t.Run("after_user_message", func(t *testing.T) {
-		m := tui.New(nil)
+		m := newSized()
 		m.AddTimelineEntry("main", tui.TimelineEntry{Kind: "user", Text: "hello world"})
-		tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(snapshotW, snapshotH))
-		settle()
-		out := captureSnapshot(t, tm)
-		teatest.RequireEqualOutput(t, out)
+		golden.RequireEqual(t, []byte(m.View()))
 	})
 
 	// (c) After one assistant turn (token deltas + turn done).
 	t.Run("after_assistant_turn", func(t *testing.T) {
-		m := tui.New(nil)
+		m := newSized()
 		m.AddTimelineEntry("main", tui.TimelineEntry{Kind: "user", Text: "what is 2+2?"})
-		m.AddTimelineEntry("main", tui.TimelineEntry{Kind: "assistant", Text: "The answer is 4."})
-		tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(snapshotW, snapshotH))
-		settle()
-		out := captureSnapshot(t, tm)
-		teatest.RequireEqualOutput(t, out)
+		m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+			Kind:      agent.EventTokenDelta,
+			SessionID: "main",
+			TextDelta: "The answer is 4.",
+		}})
+		m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+			Kind:      agent.EventTurnDone,
+			SessionID: "main",
+		}})
+		golden.RequireEqual(t, []byte(m.View()))
 	})
 
 	// (d) With an approval prompt active.
 	t.Run("with_approval_prompt", func(t *testing.T) {
-		m := tui.New(nil)
-		tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(snapshotW, snapshotH))
+		m := newSized()
 		reply := make(chan guard.ApprovalDecision, 1)
-		tm.Send(tui.ApprovalReqMsg{
+		m = apply(m, tui.ApprovalReqMsg{
 			Req: guard.ApprovalRequest{
 				SessionID:        "main",
 				Tool:             "bash",
@@ -94,34 +80,25 @@ func TestSnapshots(t *testing.T) {
 			},
 			Reply: reply,
 		})
-		settle()
-		out := captureSnapshot(t, tm)
-		teatest.RequireEqualOutput(t, out)
+		golden.RequireEqual(t, []byte(m.View()))
 	})
 
 	// (e) With a subagent in the session strip.
 	t.Run("with_subagent_strip", func(t *testing.T) {
-		m := tui.New(nil)
-		tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(snapshotW, snapshotH))
-		tm.Send(tui.AgentEventMsg{SessionID: "sub1", Ev: agent.Event{
+		m := newSized()
+		m = apply(m, tui.AgentEventMsg{SessionID: "sub1", Ev: agent.Event{
 			Kind:      agent.EventSessionStarted,
 			SessionID: "sub1",
 		}})
-		settle()
-		out := captureSnapshot(t, tm)
-		teatest.RequireEqualOutput(t, out)
+		golden.RequireEqual(t, []byte(m.View()))
 	})
 
 	// (f) With the /tokens overlay open.
 	t.Run("with_tokens_overlay", func(t *testing.T) {
-		m := tui.New(nil)
+		m := newSized()
 		m.SetModelName("claude-3-5-sonnet")
 		m.SetContextWindow(100000)
-		tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(snapshotW, snapshotH))
-
-		settle() // wait for initial render
-
-		tm.Send(tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+		m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
 			Kind:      agent.EventUsageUpdated,
 			SessionID: "main",
 			Usage: &common.Usage{
@@ -131,14 +108,10 @@ func TestSnapshots(t *testing.T) {
 				CacheWriteTokens: 50,
 			},
 		}})
-		settle() // wait for usage update to be processed
-
-		tm.Type("/tokens")
-		tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
-
-		settle() // wait for overlay render
-		settle() // extra settle for stability
-		out := captureSnapshot(t, tm)
-		teatest.RequireEqualOutput(t, out)
+		// Open the /tokens overlay by setting state directly via the exported setter.
+		// The slash command path goes through the textarea (async); using the
+		// exported bool is the cleanest synchronous equivalent.
+		m.OpenTokensOverlay()
+		golden.RequireEqual(t, []byte(m.View()))
 	})
 }

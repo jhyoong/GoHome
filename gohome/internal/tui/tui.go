@@ -858,3 +858,9 @@ func (m *Model) StatusMsg() string {
 func (m *Model) ShowTokens() bool {
 	return m.showTokens
 }
+
+// OpenTokensOverlay opens the /tokens overlay. Used in tests to set this state
+// synchronously without going through the textarea input path.
+func (m *Model) OpenTokensOverlay() {
+	m.showTokens = true
+}
