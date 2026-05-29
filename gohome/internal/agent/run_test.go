@@ -225,6 +225,82 @@ func (tr *trackingTool) Execute(ctx context.Context, in json.RawMessage, sink to
 	return tr.fakeTool.Execute(ctx, in, sink)
 }
 
+// TestRun_DenySteer verifies that when the guard returns DenySteer:
+//   - the tool is NOT executed
+//   - the synthesised tool_result has the steer message as content and IsError true
+//   - Run drives a second Turn (the fake client ends with end_turn on turn 2)
+func TestRun_DenySteer(t *testing.T) {
+	turn1 := []common.StreamEvent{
+		{Kind: common.EventToolCallDone, ToolCallID: "tc-steer", ToolName: "fake", InputJSON: `{}`},
+		{Kind: common.EventTurnDone, StopReason: "tool_use"},
+	}
+	turn2 := []common.StreamEvent{
+		{Kind: common.EventTextDelta, TextDelta: "ok"},
+		{Kind: common.EventTurnDone, StopReason: "end_turn"},
+	}
+	client := &fakeClient{sequences: [][]common.StreamEvent{turn1, turn2}}
+
+	executed := false
+	tracked := &trackingTool{
+		fakeTool: &fakeTool{name: "fake", content: "should-not-run"},
+		executed: &executed,
+	}
+	reg := tools.NewRegistry()
+	reg.Register(tracked)
+
+	const steerMsg = "use X instead"
+	fe := &fakeRecorder{
+		approval: guard.ApprovalDecision{
+			Outcome:      guard.DenySteer,
+			SteerMessage: steerMsg,
+		},
+	}
+	// Real (non-yolo) guard backed by the fakeRecorder as the guard frontend.
+	gfe := &guardFE{fe: fe}
+	wl, err := guard.Compile(guard.WhitelistFile{}, guard.WhitelistFile{}, "")
+	if err != nil {
+		t.Fatalf("guard.Compile: %v", err)
+	}
+	g := guard.NewGuard(wl, gfe)
+
+	a, sess := newTestAgentWithGuard(t, client, fe, g, reg)
+
+	if err := a.Run(context.Background(), sess); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if executed {
+		t.Error("tool was executed despite DenySteer")
+	}
+
+	// Find the RoleTool message and verify steer content + IsError.
+	var foundSteer bool
+	for _, msg := range sess.History {
+		if msg.Role != common.RoleTool {
+			continue
+		}
+		for _, b := range msg.Content {
+			if b.ToolUseID == "tc-steer" {
+				foundSteer = true
+				if !b.IsError {
+					t.Errorf("DenySteer result: IsError want true, got false")
+				}
+				if b.ResultText != steerMsg {
+					t.Errorf("DenySteer result: content = %q, want %q", b.ResultText, steerMsg)
+				}
+			}
+		}
+	}
+	if !foundSteer {
+		t.Errorf("no tool result block for tc-steer found in history")
+	}
+
+	// Verify Run called Stream twice (second turn end_turn).
+	if client.callCount != 2 {
+		t.Errorf("Stream call count: got %d, want 2", client.callCount)
+	}
+}
+
 // TestRun_UnknownTool verifies that a tool_use for an unregistered tool name
 // produces an IsError result but does not crash Run.
 func TestRun_UnknownTool(t *testing.T) {

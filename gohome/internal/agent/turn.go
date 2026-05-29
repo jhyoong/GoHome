@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 	"github.com/jhyoong/GoHome/gohome/internal/session"
@@ -17,12 +18,16 @@ import (
 // the stream failed. A cancelled context causes the event loop to stop early;
 // Run is responsible for wrapping that into the appropriate events/errors.
 func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, error) {
+	maxTokens := 4096
+	if a.MaxTokens > 0 {
+		maxTokens = a.MaxTokens
+	}
 	req := common.Request{
 		Model:     sess.Model,
 		System:    a.System,
 		Messages:  sess.History,
 		Tools:     a.Tools.Schemas(),
-		MaxTokens: 4096,
+		MaxTokens: maxTokens,
 	}
 
 	events, err := a.Client.Stream(ctx, req)
@@ -85,6 +90,11 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, error)
 					Err:       ev.Err,
 				})
 				return "", ev.Err
+
+			default:
+				// Log unknown/future event kinds so they are visible rather than
+				// silently dropped (e.g. EventToolCallPartial will land here).
+				slog.Debug("agent: unhandled stream event", "kind", ev.Kind)
 			}
 		}
 	}
@@ -97,22 +107,28 @@ done:
 	}
 	blocks = append(blocks, toolBlocks...)
 
-	assistantMsg := common.Message{
-		Role:    common.RoleAssistant,
-		Content: blocks,
-	}
-	sess.History = append(sess.History, assistantMsg)
+	// Only persist and append when the assistant message has content.
+	// Skipping an empty message prevents a malformed zero-content assistant
+	// message from reaching wire adapters (which require at least one block).
+	if len(blocks) > 0 {
+		assistantMsg := common.Message{
+			Role:    common.RoleAssistant,
+			Content: blocks,
+		}
+		sess.History = append(sess.History, assistantMsg)
 
-	// Persist to writer.
-	if a.Writer != nil {
-		a.Writer.Emit(session.AssistantMessage{
-			Content:    blocks,
-			StopReason: stopReason,
-			Usage:      usage,
-		})
+		// Persist to writer.
+		if a.Writer != nil {
+			a.Writer.Emit(session.AssistantMessage{
+				Content:    blocks,
+				StopReason: stopReason,
+				Usage:      usage,
+			})
+		}
 	}
 
-	// Forward usage and turn_done events.
+	// Forward usage and turn_done events regardless of content — the Run loop
+	// must always see EventTurnDone to know when to proceed.
 	if usage != nil {
 		a.Frontend.Emit(sess.ID, Event{
 			Kind:      EventUsageUpdated,

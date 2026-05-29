@@ -38,6 +38,8 @@ func (c *fakeClient) Stream(_ context.Context, _ common.Request) (<-chan common.
 }
 
 // newTestAgent creates a minimal Agent wired to a temp session file.
+// NOTE: Guard is left nil. This is only safe for Turn-only tests where
+// no tool dispatching occurs (Run/dispatchTool would panic on a nil Guard).
 func newTestAgent(t *testing.T, client common.Client, fe Frontend) (*Agent, *session.Session, *session.Writer) {
 	t.Helper()
 	dir := t.TempDir()

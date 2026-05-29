@@ -21,7 +21,7 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 	tctx := tools.WithSession(ctx, sess)
 
 	for {
-		stopReason, err := a.Turn(ctx, sess)
+		stopReason, err := a.Turn(tctx, sess)
 		if err != nil {
 			if ctx.Err() != nil {
 				// Context was cancelled during Turn.
@@ -123,6 +123,7 @@ func (a *Agent) dispatchTool(
 		a.Writer.Emit(session.Approval{
 			ToolUseID:    block.ToolUseID,
 			Outcome:      dec.Reason,
+			SavedPattern: dec.SavedPattern,
 			SteerMessage: dec.SteerMessage,
 		})
 	}
