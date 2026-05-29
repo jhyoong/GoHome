@@ -1,4 +1,4 @@
-/gohome
+/bin/
 *.test
 coverage.out
 .gohome/
