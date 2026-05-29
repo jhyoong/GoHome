@@ -8,8 +8,11 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -181,7 +184,7 @@ func main() {
 	registry.Register(tools.EditTool{})
 	registry.Register(tools.BashTool{})
 
-	// Build or resume session (Task 12.3).
+	// Build or resume session.
 	// When --resume is set, load the most-recent session for this cwd.
 	// OpenWriter uses O_APPEND so resuming appends to the existing JSONL file.
 	var (
@@ -260,12 +263,32 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 	}
 	a.RegisterSubagentTool()
 
-	// Agent driver goroutine: REPL loop awaiting user input.
-	ctx := context.Background()
+	// Shutdown ordering (Task 12.5):
+	//   1. p.Run() returns when the user quits the TUI (Ctrl+C / /quit).
+	//      OR a SIGINT/SIGTERM arrives and calls cancel() + p.Quit().
+	//   2. cancel() unblocks AwaitUserInput and any in-flight a.Run call.
+	//   3. wg.Wait() ensures the agent goroutine has exited before we proceed.
+	//   4. session_end is emitted, writer is closed (flushes all queued JSONL),
+	//      then the log file is closed. Guaranteed to complete within ~1s.
+	ctx, cancel := context.WithCancel(context.Background())
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
+		<-sigCh
+		cancel()
+		p.Quit()
+	}()
+
+	// Agent driver goroutine: REPL loop awaiting user input.
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
 		for {
 			text, err := fe.AwaitUserInput(ctx, sess.ID)
 			if err != nil {
+				// Context cancelled: clean exit.
 				return
 			}
 			sess.History = append(sess.History, common.Message{
@@ -281,17 +304,26 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 			})
 			if err := a.Run(ctx, sess); err != nil {
 				slog.Error("agent run failed", "err", err)
+				if ctx.Err() != nil {
+					return
+				}
 			}
 		}
 	}()
 
-	// Run TUI in the main goroutine.
+	// Run TUI in the main goroutine (blocks until user quits or signal).
 	if _, err := p.Run(); err != nil {
 		slog.Error("tui error", "err", err)
 	}
 
+	// Shutdown sequence: cancel context, wait for agent goroutine, flush and close.
+	cancel()
+	wg.Wait()
+
 	writer.Emit(session.SessionEnd{Reason: "user_quit"})
-	_ = writer.Close()
+	if err := writer.Close(); err != nil {
+		slog.Error("writer close error", "err", err)
+	}
 
 	if logFile != nil {
 		slog.Info("gohome exiting")
