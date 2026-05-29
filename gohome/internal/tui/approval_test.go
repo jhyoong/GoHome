@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
+	"github.com/jhyoong/GoHome/gohome/internal/agent"
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
 	"github.com/jhyoong/GoHome/gohome/internal/tui"
 )
@@ -263,4 +264,33 @@ func TestApprovalDenySteerEscCancels(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for decision after Esc-from-steer")
 	}
+}
+
+// --- Task 11.12: cross-session notification line ---
+
+func TestCrossSessionNotificationLine(t *testing.T) {
+	m := tui.New(nil)
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	// Seed a second session "sub-1".
+	tm.Send(tui.AgentEventMsg{
+		SessionID: "sub-1",
+		Ev: agent.Event{
+			Kind:      agent.EventSessionStarted,
+			SessionID: "sub-1",
+		},
+	})
+
+	// Send an approval for "sub-1" while focused on "main".
+	subMsg, _ := makeApprovalReq("sub-1", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
+	tm.Send(subMsg)
+
+	// The notification line must mention "sub-1" and "approval".
+	// In the same frame, the normal textarea must be visible (no Approve overlay on "main").
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		hasNotif := bytes.Contains(out, []byte("sub-1")) && bytes.Contains(out, []byte("approval"))
+		noOverlay := !bytes.Contains(out, []byte("Approve tool call"))
+		return hasNotif && noOverlay
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
