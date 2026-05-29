@@ -104,3 +104,100 @@ func TestApprovalOverlayKey3Denies(t *testing.T) {
 		t.Fatal("timed out waiting for Deny decision")
 	}
 }
+
+// --- Task 11.10: editable allow-always pattern ---
+
+func TestApprovalAllowAlwaysDefaultPattern(t *testing.T) {
+	m := tui.New(nil)
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	msg, ch := makeApprovalReq("main", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
+	tm.Send(msg)
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Approve"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// Press '2' without editing -> AllowAlways with the original pattern.
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+
+	select {
+	case dec := <-ch:
+		if dec.Outcome != guard.AllowAlways {
+			t.Fatalf("expected AllowAlways, got %q", dec.Outcome)
+		}
+		if dec.SavedPattern != "^ls" {
+			t.Fatalf("expected SavedPattern %q, got %q", "^ls", dec.SavedPattern)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for AllowAlways decision")
+	}
+}
+
+func TestApprovalEditPatternThenAllowAlways(t *testing.T) {
+	m := tui.New(nil)
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	msg, ch := makeApprovalReq("main", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
+	tm.Send(msg)
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Approve"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// Press 'e' to enter edit mode.
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	// Type extra text.
+	tm.Type(" -- extra")
+	// Confirm edit with Enter.
+	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+	// Press '2' to allow always.
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+
+	select {
+	case dec := <-ch:
+		if dec.Outcome != guard.AllowAlways {
+			t.Fatalf("expected AllowAlways, got %q", dec.Outcome)
+		}
+		want := "^ls -- extra"
+		if dec.SavedPattern != want {
+			t.Fatalf("expected SavedPattern %q, got %q", want, dec.SavedPattern)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for AllowAlways decision")
+	}
+}
+
+func TestApprovalEditPatternEscReverts(t *testing.T) {
+	m := tui.New(nil)
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	msg, ch := makeApprovalReq("main", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
+	tm.Send(msg)
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Approve"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// Enter edit mode, type something, then Esc to revert.
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	tm.Type("DISCARDED")
+	tm.Send(tea.KeyMsg{Type: tea.KeyEsc})
+	// Now press '2' -> pattern should still be "^ls".
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+
+	select {
+	case dec := <-ch:
+		if dec.Outcome != guard.AllowAlways {
+			t.Fatalf("expected AllowAlways, got %q", dec.Outcome)
+		}
+		if dec.SavedPattern != "^ls" {
+			t.Fatalf("expected reverted pattern %q, got %q", "^ls", dec.SavedPattern)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for AllowAlways decision")
+	}
+}
