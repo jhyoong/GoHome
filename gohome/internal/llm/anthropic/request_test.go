@@ -63,25 +63,37 @@ func TestBuildAnthropicBody(t *testing.T) {
 
 	// model
 	var model string
-	if err := json.Unmarshal(body["model"], &model); err != nil || model != "claude-3-5-haiku-20241022" {
+	if err := json.Unmarshal(body["model"], &model); err != nil {
+		t.Fatalf("unmarshal model: %v", err)
+	}
+	if model != "claude-3-5-haiku-20241022" {
 		t.Errorf("model: got %q", model)
 	}
 
 	// system
 	var system string
-	if err := json.Unmarshal(body["system"], &system); err != nil || system != "You are a helpful assistant." {
+	if err := json.Unmarshal(body["system"], &system); err != nil {
+		t.Fatalf("unmarshal system: %v", err)
+	}
+	if system != "You are a helpful assistant." {
 		t.Errorf("system: got %q", system)
 	}
 
 	// stream
 	var stream bool
-	if err := json.Unmarshal(body["stream"], &stream); err != nil || !stream {
+	if err := json.Unmarshal(body["stream"], &stream); err != nil {
+		t.Fatalf("unmarshal stream: %v", err)
+	}
+	if !stream {
 		t.Error("expected stream:true")
 	}
 
 	// max_tokens
 	var maxTokens int
-	if err := json.Unmarshal(body["max_tokens"], &maxTokens); err != nil || maxTokens != 1024 {
+	if err := json.Unmarshal(body["max_tokens"], &maxTokens); err != nil {
+		t.Fatalf("unmarshal max_tokens: %v", err)
+	}
+	if maxTokens != 1024 {
 		t.Errorf("max_tokens: got %d", maxTokens)
 	}
 
@@ -99,7 +111,9 @@ func TestBuildAnthropicBody(t *testing.T) {
 		Role    string            `json:"role"`
 		Content []json.RawMessage `json:"content"`
 	}
-	json.Unmarshal(messages[0], &msg0)
+	if err := json.Unmarshal(messages[0], &msg0); err != nil {
+		t.Fatalf("unmarshal msg0: %v", err)
+	}
 	if msg0.Role != "user" {
 		t.Errorf("msg0 role: %q", msg0.Role)
 	}
@@ -110,7 +124,9 @@ func TestBuildAnthropicBody(t *testing.T) {
 		Type string `json:"type"`
 		Text string `json:"text"`
 	}
-	json.Unmarshal(msg0.Content[0], &block0)
+	if err := json.Unmarshal(msg0.Content[0], &block0); err != nil {
+		t.Fatalf("unmarshal block0: %v", err)
+	}
 	if block0.Type != "text" || block0.Text != "What files are in /tmp?" {
 		t.Errorf("msg0 block: type=%q text=%q", block0.Type, block0.Text)
 	}
@@ -120,7 +136,9 @@ func TestBuildAnthropicBody(t *testing.T) {
 		Role    string            `json:"role"`
 		Content []json.RawMessage `json:"content"`
 	}
-	json.Unmarshal(messages[1], &msg1)
+	if err := json.Unmarshal(messages[1], &msg1); err != nil {
+		t.Fatalf("unmarshal msg1: %v", err)
+	}
 	if msg1.Role != "assistant" {
 		t.Errorf("msg1 role: %q", msg1.Role)
 	}
@@ -130,12 +148,16 @@ func TestBuildAnthropicBody(t *testing.T) {
 		Name  string          `json:"name"`
 		Input json.RawMessage `json:"input"`
 	}
-	json.Unmarshal(msg1.Content[0], &block1)
+	if err := json.Unmarshal(msg1.Content[0], &block1); err != nil {
+		t.Fatalf("unmarshal block1: %v", err)
+	}
 	if block1.Type != "tool_use" || block1.ID != "toolu_01" || block1.Name != "read_file" {
 		t.Errorf("msg1 tool_use block: type=%q id=%q name=%q", block1.Type, block1.ID, block1.Name)
 	}
 	var input map[string]string
-	json.Unmarshal(block1.Input, &input)
+	if err := json.Unmarshal(block1.Input, &input); err != nil {
+		t.Fatalf("unmarshal block1 input: %v", err)
+	}
 	if input["path"] != "/tmp" {
 		t.Errorf("msg1 tool_use input path: %q", input["path"])
 	}
@@ -145,7 +167,9 @@ func TestBuildAnthropicBody(t *testing.T) {
 		Role    string            `json:"role"`
 		Content []json.RawMessage `json:"content"`
 	}
-	json.Unmarshal(messages[2], &msg2)
+	if err := json.Unmarshal(messages[2], &msg2); err != nil {
+		t.Fatalf("unmarshal msg2: %v", err)
+	}
 	if msg2.Role != "user" {
 		t.Errorf("msg2 role: %q", msg2.Role)
 	}
@@ -155,7 +179,9 @@ func TestBuildAnthropicBody(t *testing.T) {
 		Content   string `json:"content"`
 		IsError   bool   `json:"is_error"`
 	}
-	json.Unmarshal(msg2.Content[0], &block2)
+	if err := json.Unmarshal(msg2.Content[0], &block2); err != nil {
+		t.Fatalf("unmarshal block2: %v", err)
+	}
 	if block2.Type != "tool_result" || block2.ToolUseID != "toolu_01" || block2.Content != "file1.txt\nfile2.txt" {
 		t.Errorf("msg2 tool_result: type=%q id=%q content=%q", block2.Type, block2.ToolUseID, block2.Content)
 	}
@@ -173,11 +199,37 @@ func TestBuildAnthropicBody(t *testing.T) {
 		Description string          `json:"description"`
 		InputSchema json.RawMessage `json:"input_schema"`
 	}
-	json.Unmarshal(tools[0], &tool0)
+	if err := json.Unmarshal(tools[0], &tool0); err != nil {
+		t.Fatalf("unmarshal tool0: %v", err)
+	}
 	if tool0.Name != "read_file" || tool0.Description != "Reads a file from disk." {
 		t.Errorf("tool0: name=%q desc=%q", tool0.Name, tool0.Description)
 	}
 	if string(tool0.InputSchema) == "" {
 		t.Error("tool0 input_schema empty")
+	}
+}
+
+func TestBuildAnthropicBody_MaxTokensZero(t *testing.T) {
+	req := common.Request{
+		Model:     "claude-3-5-haiku-20241022",
+		Messages:  []common.Message{{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}}},
+		MaxTokens: 0,
+	}
+	_, err := buildAnthropicBody(req)
+	if err == nil {
+		t.Fatal("expected error for MaxTokens=0")
+	}
+}
+
+func TestBuildAnthropicBody_MaxTokensNegative(t *testing.T) {
+	req := common.Request{
+		Model:     "claude-3-5-haiku-20241022",
+		Messages:  []common.Message{{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}}},
+		MaxTokens: -1,
+	}
+	_, err := buildAnthropicBody(req)
+	if err == nil {
+		t.Fatal("expected error for MaxTokens=-1")
 	}
 }

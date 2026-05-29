@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/jhyoong/GoHome/gohome/internal/config"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
@@ -20,6 +21,7 @@ type Client struct {
 	model   string
 	headers map[string]string
 	hc      *http.Client
+	backoff []time.Duration
 }
 
 // New creates a Client from an Endpoint and resolved API key.
@@ -30,13 +32,14 @@ func New(e config.Endpoint, apiKey string) *Client {
 		model:   e.DefaultModel,
 		headers: e.Headers,
 		hc:      &http.Client{},
+		backoff: defaultRetryBackoff,
 	}
 }
 
 // Stream sends req to Anthropic and returns a channel of StreamEvent values.
 // On non-2xx responses it returns an error immediately.
 // On success it spawns a goroutine that reads the SSE stream and forwards events.
-// Transient 5xx and connection errors are retried according to retryBackoff.
+// Transient 5xx and connection errors are retried according to defaultRetryBackoff.
 func (c *Client) Stream(ctx context.Context, req common.Request) (<-chan common.StreamEvent, error) {
 	if req.Model == "" {
 		req.Model = c.model
@@ -47,7 +50,7 @@ func (c *Client) Stream(ctx context.Context, req common.Request) (<-chan common.
 		return nil, fmt.Errorf("anthropic: build body: %w", err)
 	}
 
-	resp, err := doWithRetry(ctx, c.hc, func() (*http.Request, error) {
+	resp, err := doWithRetry(ctx, c.hc, c.backoff, func() (*http.Request, error) {
 		r, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/v1/messages", bytes.NewReader(body))
 		if err != nil {
 			return nil, err
@@ -75,8 +78,8 @@ func (c *Client) Stream(ctx context.Context, req common.Request) (<-chan common.
 		defer resp.Body.Close()
 		defer close(out)
 
-		frames := parseSSE(resp.Body)
-		events := translateEvents(frames)
+		frames := parseSSE(ctx, resp.Body)
+		events := translateEvents(ctx, frames)
 
 		for {
 			select {

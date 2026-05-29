@@ -2,6 +2,8 @@ package anthropic
 
 import (
 	"bufio"
+	"context"
+	"fmt"
 	"io"
 	"strings"
 )
@@ -15,8 +17,10 @@ type sseFrame struct {
 // parseSSE reads SSE from r and emits one sseFrame per blank-line-terminated block.
 // Comment lines (starting with ':') are skipped.
 // Multiple data: lines in one block are joined with "\n".
-// The channel is closed at EOF.
-func parseSSE(r io.Reader) <-chan sseFrame {
+// The channel is closed at EOF or when ctx is cancelled.
+// If scanner.Err() is non-nil after the scan loop, an error frame is emitted instead
+// of any partially-accumulated trailing frame.
+func parseSSE(ctx context.Context, r io.Reader) <-chan sseFrame {
 	ch := make(chan sseFrame, 16)
 	go func() {
 		defer close(ch)
@@ -27,16 +31,26 @@ func parseSSE(r io.Reader) <-chan sseFrame {
 		var event string
 		var dataParts []string
 
-		emit := func() {
-			if event == "" && len(dataParts) == 0 {
-				return
+		send := func(f sseFrame) bool {
+			select {
+			case ch <- f:
+				return true
+			case <-ctx.Done():
+				return false
 			}
-			ch <- sseFrame{
+		}
+
+		emit := func() bool {
+			if event == "" && len(dataParts) == 0 {
+				return true
+			}
+			f := sseFrame{
 				event: event,
 				data:  strings.Join(dataParts, "\n"),
 			}
 			event = ""
 			dataParts = dataParts[:0]
+			return send(f)
 		}
 
 		for scanner.Scan() {
@@ -44,7 +58,9 @@ func parseSSE(r io.Reader) <-chan sseFrame {
 
 			// blank line: end of frame
 			if line == "" {
-				emit()
+				if !emit() {
+					return
+				}
 				continue
 			}
 
@@ -60,7 +76,13 @@ func parseSSE(r io.Reader) <-chan sseFrame {
 			}
 		}
 
-		// emit any trailing frame (no trailing blank line)
+		if err := scanner.Err(); err != nil {
+			// I/O error or line-too-long: discard any partial frame and emit an error frame.
+			send(sseFrame{event: "error", data: fmt.Sprintf("parseSSE: %v", err)})
+			return
+		}
+
+		// Clean EOF: emit any trailing frame (no trailing blank line).
 		emit()
 	}()
 	return ch

@@ -1,7 +1,9 @@
 package anthropic
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 )
@@ -62,7 +64,8 @@ type toolBlock struct {
 
 // translateEvents converts a channel of SSE frames to common.StreamEvent.
 // It maintains a state machine tracking open content blocks by index.
-func translateEvents(frames <-chan sseFrame) <-chan common.StreamEvent {
+// When ctx is cancelled, the goroutine exits promptly.
+func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.StreamEvent {
 	ch := make(chan common.StreamEvent, 16)
 
 	go func() {
@@ -76,12 +79,36 @@ func translateEvents(frames <-chan sseFrame) <-chan common.StreamEvent {
 		var usage common.Usage
 		var stopReason string
 
-		for frame := range frames {
+		send := func(e common.StreamEvent) bool {
+			select {
+			case ch <- e:
+				return true
+			case <-ctx.Done():
+				return false
+			}
+		}
+
+		for {
+			var frame sseFrame
+			var ok bool
+			select {
+			case frame, ok = <-frames:
+			case <-ctx.Done():
+				return
+			}
+			if !ok {
+				return
+			}
+
 			switch frame.event {
+			case "error":
+				send(common.StreamEvent{Kind: common.EventError, Err: fmt.Errorf("%s", frame.data)})
+				return
+
 			case "message_start":
 				var d msgStartData
 				if err := json.Unmarshal([]byte(frame.data), &d); err != nil {
-					ch <- common.StreamEvent{Kind: common.EventError, Err: err}
+					send(common.StreamEvent{Kind: common.EventError, Err: err})
 					return
 				}
 				usage.InputTokens = d.Message.Usage.InputTokens
@@ -91,7 +118,7 @@ func translateEvents(frames <-chan sseFrame) <-chan common.StreamEvent {
 			case "content_block_start":
 				var d contentBlockStartData
 				if err := json.Unmarshal([]byte(frame.data), &d); err != nil {
-					ch <- common.StreamEvent{Kind: common.EventError, Err: err}
+					send(common.StreamEvent{Kind: common.EventError, Err: err})
 					return
 				}
 				blockTypes[d.Index] = d.ContentBlock.Type
@@ -105,14 +132,16 @@ func translateEvents(frames <-chan sseFrame) <-chan common.StreamEvent {
 			case "content_block_delta":
 				var d contentBlockDeltaData
 				if err := json.Unmarshal([]byte(frame.data), &d); err != nil {
-					ch <- common.StreamEvent{Kind: common.EventError, Err: err}
+					send(common.StreamEvent{Kind: common.EventError, Err: err})
 					return
 				}
 				switch d.Delta.Type {
 				case "text_delta":
-					ch <- common.StreamEvent{
+					if !send(common.StreamEvent{
 						Kind:      common.EventTextDelta,
 						TextDelta: d.Delta.Text,
+					}) {
+						return
 					}
 				case "input_json_delta":
 					if tb, ok := toolBlocks[d.Index]; ok {
@@ -126,17 +155,19 @@ func translateEvents(frames <-chan sseFrame) <-chan common.StreamEvent {
 					Index int `json:"index"`
 				}
 				if err := json.Unmarshal([]byte(frame.data), &raw); err != nil {
-					ch <- common.StreamEvent{Kind: common.EventError, Err: err}
+					send(common.StreamEvent{Kind: common.EventError, Err: err})
 					return
 				}
 				if blockTypes[raw.Index] == "tool_use" {
 					tb := toolBlocks[raw.Index]
 					if tb != nil {
-						ch <- common.StreamEvent{
+						if !send(common.StreamEvent{
 							Kind:       common.EventToolCallDone,
 							ToolCallID: tb.id,
 							ToolName:   tb.name,
 							InputJSON:  string(tb.inputBuf),
+						}) {
+							return
 						}
 					}
 					delete(toolBlocks, raw.Index)
@@ -146,7 +177,7 @@ func translateEvents(frames <-chan sseFrame) <-chan common.StreamEvent {
 			case "message_delta":
 				var d msgDeltaData
 				if err := json.Unmarshal([]byte(frame.data), &d); err != nil {
-					ch <- common.StreamEvent{Kind: common.EventError, Err: err}
+					send(common.StreamEvent{Kind: common.EventError, Err: err})
 					return
 				}
 				stopReason = d.Delta.StopReason
@@ -154,11 +185,14 @@ func translateEvents(frames <-chan sseFrame) <-chan common.StreamEvent {
 
 			case "message_stop":
 				u := usage // copy
-				ch <- common.StreamEvent{
+				send(common.StreamEvent{
 					Kind:       common.EventTurnDone,
 					StopReason: stopReason,
 					Usage:      &u,
-				}
+				})
+
+			// Unknown event types (e.g. "ping") are silently ignored.
+			default:
 			}
 		}
 	}()

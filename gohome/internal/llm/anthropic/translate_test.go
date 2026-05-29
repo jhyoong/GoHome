@@ -1,6 +1,7 @@
 package anthropic
 
 import (
+	"context"
 	"testing"
 
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
@@ -34,7 +35,7 @@ func TestTranslateEvents_TextDeltas(t *testing.T) {
 		{event: "message_stop", data: `{"type":"message_stop"}`},
 	}
 
-	events := collectEvents(translateEvents(makeFrames(frames)))
+	events := collectEvents(translateEvents(context.Background(), makeFrames(frames)))
 
 	// expect 3 EventTextDelta then 1 EventTurnDone
 	if len(events) != 4 {
@@ -65,7 +66,7 @@ func TestTranslateEvents_ToolUseAccumulation(t *testing.T) {
 		{event: "message_stop", data: `{"type":"message_stop"}`},
 	}
 
-	events := collectEvents(translateEvents(makeFrames(frames)))
+	events := collectEvents(translateEvents(context.Background(), makeFrames(frames)))
 
 	// expect zero EventTextDelta, one EventToolCallDone, one EventTurnDone
 	var textDeltas, toolDones, turnDones int
@@ -108,7 +109,7 @@ func TestTranslateEvents_UsageOnTurnDone(t *testing.T) {
 		{event: "message_stop", data: `{"type":"message_stop"}`},
 	}
 
-	events := collectEvents(translateEvents(makeFrames(frames)))
+	events := collectEvents(translateEvents(context.Background(), makeFrames(frames)))
 
 	if len(events) != 1 {
 		t.Fatalf("expected 1 event, got %d", len(events))
@@ -135,5 +136,73 @@ func TestTranslateEvents_UsageOnTurnDone(t *testing.T) {
 	}
 	if e.Usage.CacheWriteTokens != 3 {
 		t.Errorf("CacheWriteTokens: got %d, want 3", e.Usage.CacheWriteTokens)
+	}
+}
+
+// TestTranslateEvents_CtxCancellationNoLeak verifies that cancelling the context
+// causes the output channel to close promptly without hanging.
+func TestTranslateEvents_CtxCancellationNoLeak(t *testing.T) {
+	// Use a buffered frames channel; leave it open so the goroutine would
+	// otherwise block waiting for more frames.
+	framesCh := make(chan sseFrame, 8)
+
+	// Send two text_delta frames that each produce exactly one StreamEvent.
+	framesCh <- sseFrame{event: "content_block_delta", data: `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"A"}}`}
+	framesCh <- sseFrame{event: "content_block_delta", data: `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"B"}}`}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	out := translateEvents(ctx, framesCh)
+
+	// Drain the two events produced by the two frames.
+	<-out
+	<-out
+
+	// Now cancel. The goroutine is blocked on select {frames | ctx.Done()}.
+	cancel()
+
+	// Drain whatever remains until the channel closes.
+	for range out {
+	}
+	// Reaching here means the goroutine exited — no leak.
+}
+
+// TestTranslateEvents_UnknownEventIgnored verifies that an unknown event type
+// (e.g. "ping") produces no StreamEvent.
+func TestTranslateEvents_UnknownEventIgnored(t *testing.T) {
+	frames := []sseFrame{
+		{event: "ping", data: `{}`},
+		{event: "message_stop", data: `{"type":"message_stop"}`},
+	}
+
+	events := collectEvents(translateEvents(context.Background(), makeFrames(frames)))
+
+	// Only EventTurnDone should be emitted; ping must be ignored.
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event (EventTurnDone), got %d: %v", len(events), events)
+	}
+	if events[0].Kind != common.EventTurnDone {
+		t.Errorf("event kind: got %q, want EventTurnDone", events[0].Kind)
+	}
+}
+
+// TestTranslateEvents_MessageStopWithoutMessageDelta verifies that a message_stop
+// with no preceding message_delta still emits exactly one EventTurnDone with a
+// non-nil Usage (zero-valued tokens are acceptable).
+func TestTranslateEvents_MessageStopWithoutMessageDelta(t *testing.T) {
+	frames := []sseFrame{
+		{event: "message_stop", data: `{"type":"message_stop"}`},
+	}
+
+	events := collectEvents(translateEvents(context.Background(), makeFrames(frames)))
+
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d: %v", len(events), events)
+	}
+	e := events[0]
+	if e.Kind != common.EventTurnDone {
+		t.Errorf("event kind: got %q, want EventTurnDone", e.Kind)
+	}
+	if e.Usage == nil {
+		t.Fatal("Usage must be non-nil even without a preceding message_delta")
 	}
 }

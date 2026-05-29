@@ -1,6 +1,7 @@
 package anthropic
 
 import (
+	"context"
 	"os"
 	"testing"
 )
@@ -12,7 +13,7 @@ func TestParseSSE_Fixture(t *testing.T) {
 	}
 	defer f.Close()
 
-	frames := parseSSE(f)
+	frames := parseSSE(context.Background(), f)
 
 	expected := []sseFrame{
 		{event: "message_start", data: `{"type":"message_start","message":{"id":"msg_01XFDUDYJgAACzvnptvVoYEL","role":"assistant","model":"claude-3-5-haiku-20241022","content":[],"stop_reason":null,"usage":{"input_tokens":10,"output_tokens":1,"cache_read_input_tokens":2,"cache_creation_input_tokens":3}}}`},

@@ -14,11 +14,6 @@ import (
 )
 
 func TestClientStream_RetryOn5xx(t *testing.T) {
-	// Override backoff schedule so retries are instant in tests.
-	origBackoff := retryBackoff
-	retryBackoff = []time.Duration{0, 0, 0}
-	t.Cleanup(func() { retryBackoff = origBackoff })
-
 	fixtureData, err := os.ReadFile("testdata/simple_text.sse")
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
@@ -44,6 +39,7 @@ func TestClientStream_RetryOn5xx(t *testing.T) {
 		DefaultModel: "claude-3-5-haiku-20241022",
 	}
 	client := New(ep, "test-key")
+	client.backoff = []time.Duration{0, 0, 0}
 
 	req := common.Request{
 		Messages:  []common.Message{{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}}},
@@ -68,10 +64,6 @@ func TestClientStream_RetryOn5xx(t *testing.T) {
 }
 
 func TestClientStream_NoRetryOn4xx(t *testing.T) {
-	origBackoff := retryBackoff
-	retryBackoff = []time.Duration{0, 0, 0}
-	t.Cleanup(func() { retryBackoff = origBackoff })
-
 	var attempts int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&attempts, 1)
@@ -84,6 +76,7 @@ func TestClientStream_NoRetryOn4xx(t *testing.T) {
 		DefaultModel: "claude-3-5-haiku-20241022",
 	}
 	client := New(ep, "test-key")
+	client.backoff = []time.Duration{0, 0, 0}
 
 	req := common.Request{
 		Messages:  []common.Message{{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}}},
@@ -101,10 +94,6 @@ func TestClientStream_NoRetryOn4xx(t *testing.T) {
 }
 
 func TestClientStream_NoRetryOnContextCancel(t *testing.T) {
-	origBackoff := retryBackoff
-	retryBackoff = []time.Duration{0, 0, 0}
-	t.Cleanup(func() { retryBackoff = origBackoff })
-
 	var attempts int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&attempts, 1)
@@ -117,6 +106,7 @@ func TestClientStream_NoRetryOnContextCancel(t *testing.T) {
 		DefaultModel: "claude-3-5-haiku-20241022",
 	}
 	client := New(ep, "test-key")
+	client.backoff = []time.Duration{0, 0, 0}
 
 	req := common.Request{
 		Messages:  []common.Message{{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}}},

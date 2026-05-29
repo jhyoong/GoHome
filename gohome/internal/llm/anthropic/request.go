@@ -33,7 +33,7 @@ type anthropicToolResultBlock struct {
 	Type      string `json:"type"`
 	ToolUseID string `json:"tool_use_id"`
 	Content   string `json:"content"`
-	IsError   bool   `json:"is_error"`
+	IsError   bool   `json:"is_error,omitempty"`
 }
 
 // anthropicMessage is the Anthropic wire shape for a single message.
@@ -54,6 +54,10 @@ type anthropicBody struct {
 
 // buildAnthropicBody translates a common.Request to Anthropic wire-format JSON.
 func buildAnthropicBody(req common.Request) ([]byte, error) {
+	if req.MaxTokens <= 0 {
+		return nil, fmt.Errorf("anthropic: max_tokens must be > 0")
+	}
+
 	msgs, err := translateMessages(req.Messages)
 	if err != nil {
 		return nil, err

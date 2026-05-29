@@ -8,15 +8,14 @@ import (
 	"time"
 )
 
-// retryBackoff is the delay schedule between attempts (length == max retries - 1).
-// It is a package-level variable so tests can override it to zero durations.
-var retryBackoff = []time.Duration{250 * time.Millisecond, time.Second, 2 * time.Second}
+// defaultRetryBackoff is the delay schedule used by Client.Stream between attempts.
+var defaultRetryBackoff = []time.Duration{250 * time.Millisecond, time.Second, 2 * time.Second}
 
 // doWithRetry performs an HTTP request with retry on transient errors.
 // It retries on connection errors and 5xx responses, but never on 4xx or context cancellation.
-// The maximum number of attempts is len(retryBackoff)+1.
-func doWithRetry(ctx context.Context, hc *http.Client, buildReq func() (*http.Request, error)) (*http.Response, error) {
-	maxAttempts := len(retryBackoff) + 1
+// The maximum number of attempts is len(backoff)+1.
+func doWithRetry(ctx context.Context, hc *http.Client, backoff []time.Duration, buildReq func() (*http.Request, error)) (*http.Response, error) {
+	maxAttempts := len(backoff) + 1
 	var lastErr error
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
@@ -27,7 +26,7 @@ func doWithRetry(ctx context.Context, hc *http.Client, buildReq func() (*http.Re
 
 		// Sleep before retry (not before the first attempt).
 		if attempt > 0 {
-			delay := retryBackoff[attempt-1]
+			delay := backoff[attempt-1]
 			if delay > 0 {
 				select {
 				case <-ctx.Done():
