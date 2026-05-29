@@ -12,9 +12,9 @@ import (
 
 // chunkDelta is the delta object inside a choice.
 type chunkDelta struct {
-	Role      string            `json:"role"`
-	Content   *string           `json:"content"`
-	ToolCalls []chunkToolCall   `json:"tool_calls"`
+	Role      string          `json:"role"`
+	Content   *string         `json:"content"`
+	ToolCalls []chunkToolCall `json:"tool_calls"`
 }
 
 // chunkToolCall is a single tool_call delta element.
@@ -57,18 +57,21 @@ type toolState struct {
 // translateEvents converts a channel of OpenAI sseFrames to common.StreamEvent values.
 //
 // Text delta handling (Task 4.4):
-//   Non-empty delta.content emits EventTextDelta.
+//
+//	Non-empty delta.content emits EventTextDelta.
 //
 // Tool call accumulation (Task 4.5):
-//   delta.tool_calls elements are keyed by index; arguments strings are
-//   concatenated. When [DONE] is received (or finish_reason=="tool_calls"),
-//   one EventToolCallDone is emitted per accumulated tool call.
+//
+//	delta.tool_calls elements are keyed by index; arguments strings are
+//	concatenated. When [DONE] is received (or finish_reason=="tool_calls"),
+//	one EventToolCallDone is emitted per accumulated tool call.
 //
 // Usage + turn done (Task 4.6):
-//   finish_reason from a choice sets the stop reason. A usage chunk
-//   (choices empty, usage non-nil) captures token counts. On [DONE],
-//   EventTurnDone is emitted with StopReason and non-nil Usage only when
-//   a usage chunk was received.
+//
+//	finish_reason from a choice sets the stop reason. A usage chunk
+//	(choices empty, usage non-nil) captures token counts. On [DONE],
+//	EventTurnDone is emitted with StopReason and non-nil Usage only when
+//	a usage chunk was received.
 func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.StreamEvent {
 	ch := make(chan common.StreamEvent, 16)
 
