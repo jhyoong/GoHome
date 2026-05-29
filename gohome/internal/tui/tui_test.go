@@ -16,7 +16,23 @@ func TestSkeletonRender(t *testing.T) {
 		_ = tm.Quit()
 	})
 
+	// Before any timeline entries the view still renders something.
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("gohome"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
+
+func TestSessionViewTimelineRender(t *testing.T) {
+	m := tui.New()
+	// Add a user entry to the focused "main" session.
+	m.AddTimelineEntry("main", tui.TimelineEntry{Kind: "user", Text: "hello"})
+
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() {
+		_ = tm.Quit()
+	})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("hello"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
