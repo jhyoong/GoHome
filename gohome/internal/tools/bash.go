@@ -50,7 +50,7 @@ type bashInput struct {
 	CWD       *string `json:"cwd"`
 }
 
-func (BashTool) Execute(_ context.Context, in json.RawMessage, sink ProgressSink) (Result, error) {
+func (BashTool) Execute(ctx context.Context, in json.RawMessage, sink ProgressSink) (Result, error) {
 	var inp bashInput
 	if err := json.Unmarshal(in, &inp); err != nil {
 		return Result{IsError: true, Content: "bash: invalid input: " + err.Error()}, nil
@@ -64,7 +64,7 @@ func (BashTool) Execute(_ context.Context, in json.RawMessage, sink ProgressSink
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutMs)*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeoutMs)*time.Millisecond)
 	defer cancel()
 
 	var cmd *exec.Cmd
@@ -93,10 +93,14 @@ func (BashTool) Execute(_ context.Context, in json.RawMessage, sink ProgressSink
 	go func() {
 		defer wg.Done()
 		scanner := bufio.NewScanner(pr)
+		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 		for scanner.Scan() {
 			line := scanner.Text() + "\n"
 			captureBuf.WriteString(line)
 			sink.Update(line)
+		}
+		if err := scanner.Err(); err != nil {
+			captureBuf.WriteString(fmt.Sprintf("\n[bash: scanner error: %v]\n", err))
 		}
 	}()
 
@@ -104,6 +108,13 @@ func (BashTool) Execute(_ context.Context, in json.RawMessage, sink ProgressSink
 	if startErr != nil {
 		pw.Close()
 		wg.Wait()
+		// If the context was already cancelled/timed-out before start, report that.
+		if ctx.Err() == context.DeadlineExceeded {
+			return Result{IsError: true, Content: fmt.Sprintf("bash: timed out after %dms", timeoutMs)}, nil
+		}
+		if ctx.Err() == context.Canceled {
+			return Result{IsError: true, Content: "bash: cancelled"}, nil
+		}
 		return Result{IsError: true, Content: fmt.Sprintf("bash: failed to start: %v", startErr)}, nil
 	}
 
@@ -111,9 +122,12 @@ func (BashTool) Execute(_ context.Context, in json.RawMessage, sink ProgressSink
 	pw.CloseWithError(io.EOF)
 	wg.Wait()
 
-	// Distinguish timeout from other errors.
+	// Distinguish timeout/cancellation from other errors.
 	if ctx.Err() == context.DeadlineExceeded {
 		return Result{IsError: true, Content: fmt.Sprintf("bash: timed out after %dms", timeoutMs)}, nil
+	}
+	if ctx.Err() == context.Canceled {
+		return Result{IsError: true, Content: "bash: cancelled"}, nil
 	}
 
 	// Determine exit code.

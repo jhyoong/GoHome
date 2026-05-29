@@ -72,19 +72,9 @@ func TestBash_SinkReceivesLines(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("unix shell command")
 	}
-	type collectSink struct {
-		lines []string
-	}
-
-	sink := &struct{ lines []string }{}
-	type captureSink struct {
-		target *struct{ lines []string }
-	}
-	cs := &captureSink{target: sink}
 
 	var received []string
 	sp := &spySink{onUpdate: func(s string) { received = append(received, s) }}
-	_ = cs
 
 	raw, _ := json.Marshal(map[string]any{"command": "printf 'line1\\nline2\\nline3\\n'"})
 	bt := &BashTool{}
@@ -101,6 +91,43 @@ func TestBash_SinkReceivesLines(t *testing.T) {
 	combined := strings.Join(received, "")
 	if !strings.Contains(combined, "line1") {
 		t.Errorf("expected 'line1' in sink output, got %q", combined)
+	}
+}
+
+func TestBash_ContextCancelled(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix shell command")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	bt := &BashTool{}
+	raw, _ := json.Marshal(map[string]any{"command": "sleep 10"})
+
+	// Cancel the context immediately after launching Execute in a goroutine.
+	// We cancel after a brief delay so the process has time to start.
+	type outcome struct {
+		res Result
+		err error
+	}
+	ch := make(chan outcome, 1)
+	go func() {
+		res, err := bt.Execute(ctx, raw, NullSink{})
+		ch <- outcome{res, err}
+	}()
+
+	// Give the process a moment to start, then cancel.
+	cancel()
+
+	got := <-ch
+	if got.err != nil {
+		t.Fatalf("unexpected error: %v", got.err)
+	}
+	if !got.res.IsError {
+		t.Fatal("expected IsError when context is cancelled")
+	}
+	if !strings.Contains(got.res.Content, "cancelled") {
+		t.Errorf("expected 'cancelled' in content, got %q", got.res.Content)
 	}
 }
 

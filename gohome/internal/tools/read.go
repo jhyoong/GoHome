@@ -61,6 +61,7 @@ func (rt ReadTool) Execute(ctx context.Context, in json.RawMessage, sink Progres
 	defer f.Close()
 
 	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	var sb strings.Builder
 	lineno := 0
 	written := 0
