@@ -67,6 +67,27 @@ func setupLogging(home string) (*os.File, error) {
 	return f, nil
 }
 
+// pickResume finds the most-recent session for (home, cwd) and loads it.
+// Returns nil session when no sessions exist (caller should start fresh).
+// The returned path is the JSONL file path so the caller can open the writer
+// in append mode to the same file.
+func pickResume(home, cwd string) (*session.Session, []common.Message, string, error) {
+	listings, err := session.List(home, cwd)
+	if err != nil {
+		return nil, nil, "", fmt.Errorf("pickResume: list: %w", err)
+	}
+	if len(listings) == 0 {
+		return nil, nil, "", nil
+	}
+	// List returns sorted descending by StartedAt; index 0 is most recent.
+	listing := listings[0]
+	sess, history, err := session.Load(listing.Path)
+	if err != nil {
+		return nil, nil, "", fmt.Errorf("pickResume: load %s: %w", listing.Path, err)
+	}
+	return sess, history, listing.Path, nil
+}
+
 func main() {
 	flag.Parse()
 
@@ -160,9 +181,33 @@ func main() {
 	registry.Register(tools.EditTool{})
 	registry.Register(tools.BashTool{})
 
-	// Fresh session.
-	sess := session.NewSession(newSessionID(), cwd, endpoint.DefaultModel, epName)
-	writerPath := session.SessionPath(home, cwd, sess.ID, time.Now().UTC())
+	// Build or resume session (Task 12.3).
+	// When --resume is set, load the most-recent session for this cwd.
+	// OpenWriter uses O_APPEND so resuming appends to the existing JSONL file.
+	var (
+		sess       *session.Session
+		writerPath string
+	)
+
+	if *resume {
+		loadedSess, _, resumePath, rerr := pickResume(home, cwd)
+		if rerr != nil {
+			slog.Warn("resume: failed to load sessions, starting fresh", "err", rerr)
+		} else if loadedSess == nil {
+			slog.Info("resume: no previous sessions found, starting fresh")
+		} else {
+			sess = loadedSess
+			writerPath = resumePath
+			fmt.Fprintf(os.Stderr, "gohome: resuming session %s (%s)\n", sess.ID, resumePath)
+			slog.Info("resuming session", "id", sess.ID, "path", resumePath)
+		}
+	}
+
+	if sess == nil {
+		// Fresh session.
+		sess = session.NewSession(newSessionID(), cwd, endpoint.DefaultModel, epName)
+		writerPath = session.SessionPath(home, cwd, sess.ID, time.Now().UTC())
+	}
 
 	writer, err := session.OpenWriter(writerPath)
 	if err != nil {
@@ -170,15 +215,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	writer.Emit(session.SessionStart{
-		ID:        sess.ID,
-		ParentID:  sess.ParentID,
-		CWD:       cwd,
-		Model:     endpoint.DefaultModel,
-		Endpoint:  epName,
-		Depth:     sess.Depth,
-		StartedAt: sess.StartedAt,
-	})
+	// Emit session_start only for fresh sessions (resume appends to existing file).
+	if !*resume {
+		writer.Emit(session.SessionStart{
+			ID:        sess.ID,
+			ParentID:  sess.ParentID,
+			CWD:       cwd,
+			Model:     endpoint.DefaultModel,
+			Endpoint:  epName,
+			Depth:     sess.Depth,
+			StartedAt: sess.StartedAt,
+		})
+	}
 
 	// Build TUI model.
 	m := tui.New(fe)
