@@ -53,9 +53,19 @@ func (f *Frontend) Emit(sessionID string, ev agent.Event) {
 }
 
 // RequestApproval implements agent.Frontend.
-// TODO(11.9): real approval overlay.
-func (f *Frontend) RequestApproval(_ context.Context, _ guard.ApprovalRequest) (guard.ApprovalDecision, error) {
-	return guard.ApprovalDecision{Outcome: guard.Deny}, nil
+// It sends an approvalReqMsg to the Bubble Tea loop and blocks until the UI
+// resolves the prompt or ctx is cancelled.
+func (f *Frontend) RequestApproval(ctx context.Context, req guard.ApprovalRequest) (guard.ApprovalDecision, error) {
+	reply := make(chan guard.ApprovalDecision, 1)
+	if f.prog != nil {
+		f.prog.Send(ApprovalReqMsg{Req: req, Reply: reply})
+	}
+	select {
+	case dec := <-reply:
+		return dec, nil
+	case <-ctx.Done():
+		return guard.ApprovalDecision{Outcome: guard.Deny}, ctx.Err()
+	}
 }
 
 // AwaitUserInput implements agent.Frontend. It blocks until the user submits

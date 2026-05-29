@@ -1,12 +1,14 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
+	"github.com/jhyoong/GoHome/gohome/internal/guard"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 	"github.com/jhyoong/GoHome/gohome/internal/tui/style"
 )
@@ -57,6 +59,12 @@ type Model struct {
 	modelName     string // LLM model name; "?" when empty
 	yolo          bool   // YOLO mode (skip approval)
 	contextWindow int    // context window size; defaults to 128000
+
+	// Approval overlay state (Task 11.9+).
+	// activeApproval is the prompt currently displayed in the input region.
+	// pendingApprovals maps sessionID -> prompt for non-focused sessions.
+	activeApproval   *approvalPrompt
+	pendingApprovals map[string]*approvalPrompt
 }
 
 // New creates and returns a new Model with an initial "main" session.
@@ -83,13 +91,14 @@ func New(fe *Frontend) *Model {
 	}
 
 	m := &Model{
-		theme:         style.Default(),
-		sessions:      map[string]*SessionView{"main": main},
-		order:         []string{"main"},
-		focused:       "main",
-		input:         ta,
-		inputCh:       inputCh,
-		contextWindow: 128000,
+		theme:            style.Default(),
+		sessions:         map[string]*SessionView{"main": main},
+		order:            []string{"main"},
+		focused:          "main",
+		input:            ta,
+		inputCh:          inputCh,
+		contextWindow:    128000,
+		pendingApprovals: make(map[string]*approvalPrompt),
 	}
 	return m
 }
@@ -238,9 +247,59 @@ func (m *Model) sendInputCmd(text string) tea.Cmd {
 	}
 }
 
+// resolveApproval sends dec on the active approval's reply channel and clears
+// the active approval. If another pending approval exists for the focused
+// session, it is promoted to active.
+func (m *Model) resolveApproval(dec guard.ApprovalDecision) {
+	if m.activeApproval == nil {
+		return
+	}
+	m.activeApproval.reply <- dec
+	m.activeApproval = nil
+	// Promote any pending approval for the now-focused session.
+	m.promoteApproval()
+}
+
+// promoteApproval checks whether the focused session has a pending approval
+// and, if so, sets it as the active approval.
+func (m *Model) promoteApproval() {
+	if m.activeApproval != nil {
+		return
+	}
+	if ap, ok := m.pendingApprovals[m.focused]; ok {
+		m.activeApproval = ap
+		delete(m.pendingApprovals, m.focused)
+	}
+}
+
+// notificationLine returns a warning string when a non-focused session needs
+// approval (or another session is in-flight), or "" when quiet.
+func (m *Model) notificationLine() string {
+	// Pending approvals take priority.
+	for sid := range m.pendingApprovals {
+		if sid != m.focused {
+			return fmt.Sprintf("! [%s] needs approval -- Ctrl+] to focus", sid)
+		}
+	}
+	// Secondary: another session is in-flight while we are focused elsewhere.
+	for _, id := range m.order {
+		if id != m.focused {
+			if sv, ok := m.sessions[id]; ok && sv.InFlight {
+				return fmt.Sprintf("! [%s] is running", id)
+			}
+		}
+	}
+	return ""
+}
+
 // vpHeight returns the viewport height given current window dimensions.
+// When a notification line is visible, one extra row is consumed.
 func (m *Model) vpHeight() int {
-	h := m.winH - inputHeight - statusHeight - stripHeight
+	notif := 0
+	if m.notificationLine() != "" {
+		notif = 1
+	}
+	h := m.winH - inputHeight - statusHeight - stripHeight - notif
 	if h < 1 {
 		h = 1
 	}
@@ -265,11 +324,29 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.vp.Height = m.vpHeight()
 		}
 
-	case tea.KeyMsg:
-		switch msg.Type {
-		case tea.KeyCtrlC:
-			return m, tea.Quit
+	case approvalReqMsg:
+		// If this is for the focused session and no approval is active, set it active.
+		if msg.Req.SessionID == m.focused && m.activeApproval == nil {
+			ap := newApprovalPrompt(msg.Req, msg.Reply)
+			m.activeApproval = ap
+		} else {
+			// Queue for later (covers both non-focused and second concurrent request).
+			m.pendingApprovals[msg.Req.SessionID] = newApprovalPrompt(msg.Req, msg.Reply)
+		}
 
+	case tea.KeyMsg:
+		// Ctrl+C always quits.
+		if msg.Type == tea.KeyCtrlC {
+			return m, tea.Quit
+		}
+
+		// When an approval is active, route keys to the approval handler.
+		if m.activeApproval != nil {
+			cmds = append(cmds, m.handleApprovalKey(msg))
+			return m, tea.Batch(cmds...)
+		}
+
+		switch msg.Type {
 		case tea.KeyEnter:
 			// Alt+Enter (or Shift+Enter) passes through to textarea for newlines.
 			if !msg.Alt {
@@ -322,6 +399,89 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
+// handleApprovalKey routes a key press when an approval prompt is active.
+// It returns a Cmd (may be nil).
+func (m *Model) handleApprovalKey(msg tea.KeyMsg) tea.Cmd {
+	ap := m.activeApproval
+	var cmds []tea.Cmd
+
+	// --- steer sub-mode ---
+	if ap.steering {
+		switch msg.Type {
+		case tea.KeyEnter:
+			steer := strings.TrimSpace(ap.steerInput.Value())
+			m.resolveApproval(guard.ApprovalDecision{
+				Outcome:      guard.DenySteer,
+				SteerMessage: steer,
+			})
+		case tea.KeyEsc:
+			// Cancel steer, return to approval menu.
+			ap.steering = false
+			ap.steerInput.SetValue("")
+			ap.steerInput.Blur()
+		default:
+			var tiCmd tea.Cmd
+			ap.steerInput, tiCmd = ap.steerInput.Update(msg)
+			cmds = append(cmds, tiCmd)
+		}
+		return tea.Batch(cmds...)
+	}
+
+	// --- pattern edit sub-mode ---
+	if ap.editing {
+		switch msg.Type {
+		case tea.KeyEnter:
+			// Confirm the edited pattern.
+			ap.pattern = ap.patternInput.Value()
+			ap.editing = false
+			ap.patternInput.Blur()
+		case tea.KeyEsc:
+			// Revert: restore original pattern, exit edit mode.
+			ap.patternInput.SetValue(ap.pattern)
+			ap.editing = false
+			ap.patternInput.Blur()
+		default:
+			var tiCmd tea.Cmd
+			ap.patternInput, tiCmd = ap.patternInput.Update(msg)
+			cmds = append(cmds, tiCmd)
+		}
+		return tea.Batch(cmds...)
+	}
+
+	// --- top-level approval menu ---
+	switch {
+	case msg.Type == tea.KeyEsc:
+		m.resolveApproval(guard.ApprovalDecision{Outcome: guard.Deny})
+	case keyRune(msg) == '1':
+		m.resolveApproval(guard.ApprovalDecision{Outcome: guard.AllowOnce})
+	case keyRune(msg) == '2':
+		m.resolveApproval(guard.ApprovalDecision{
+			Outcome:      guard.AllowAlways,
+			SavedPattern: ap.pattern,
+		})
+	case keyRune(msg) == '3':
+		m.resolveApproval(guard.ApprovalDecision{Outcome: guard.Deny})
+	case keyRune(msg) == '4':
+		ap.steering = true
+		ap.steerInput.Focus()
+	case keyRune(msg) == 'e':
+		ap.editing = true
+		ap.patternInput.SetValue(ap.pattern)
+		ap.patternInput.Focus()
+		ap.patternInput.CursorEnd()
+	}
+	return tea.Batch(cmds...)
+}
+
+// keyRune returns the single rune for a KeyRunes message, or 0 if the message
+// carries zero or more than one rune.
+func keyRune(msg tea.KeyMsg) rune {
+	if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 {
+		return msg.Runes[0]
+	}
+	return 0
+}
+
 // AddTimelineEntry appends an entry to the named session's timeline.
 // It creates the session if it does not exist. Used in tests and by Update.
 func (m *Model) AddTimelineEntry(sessionID string, e TimelineEntry) {
@@ -357,22 +517,37 @@ func renderTimeline(sv *SessionView) string {
 	return sb.String()
 }
 
+// inputRegion returns the string to render in place of the normal textarea.
+// When an approval prompt is active it renders the approval overlay instead.
+func (m *Model) inputRegion() string {
+	if m.activeApproval != nil {
+		return renderApprovalOverlay(m.activeApproval, m.winW)
+	}
+	return m.input.View()
+}
+
 // View implements tea.Model.
 func (m *Model) View() string {
 	strip := m.sessionStrip()
 	sb := m.statusBar()
 
+	// Notification line between viewport and input region (Task 11.12).
+	notif := ""
+	if nl := m.notificationLine(); nl != "" {
+		notif = m.theme.Notification.Render(nl) + "\n"
+	}
+
 	if m.vpReady {
-		return strip + "\n" + m.vp.View() + "\n" + m.input.View() + "\n" + sb
+		return strip + "\n" + m.vp.View() + "\n" + notif + m.inputRegion() + "\n" + sb
 	}
 	// Viewport not yet sized (no WindowSizeMsg received); fall back to plain text.
 	sv, ok := m.sessions[m.focused]
 	if !ok {
-		return strip + "\ngohome\n" + m.input.View() + "\n" + sb
+		return strip + "\ngohome\n" + notif + m.inputRegion() + "\n" + sb
 	}
 	content := renderTimeline(sv)
 	if content == "" {
 		content = "gohome\n"
 	}
-	return strip + "\n" + content + m.input.View() + "\n" + sb
+	return strip + "\n" + content + notif + m.inputRegion() + "\n" + sb
 }
