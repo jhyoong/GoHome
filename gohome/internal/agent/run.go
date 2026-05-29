@@ -27,15 +27,13 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 		stopReason, err := a.Turn(tctx, sess)
 		if err != nil {
 			if ctx.Err() != nil {
-				// Context was cancelled during Turn.
+				// Context was cancelled during Turn. Emit a frontend event but
+				// do NOT write session_end here — the writer's owner emits that.
 				a.Frontend.Emit(sess.ID, Event{
 					Kind:       EventTurnDone,
 					SessionID:  sess.ID,
 					StopReason: "cancelled",
 				})
-				if a.Writer != nil {
-					a.Writer.Emit(session.SessionEnd{Reason: "cancelled"})
-				}
 				return ctx.Err()
 			}
 			return err

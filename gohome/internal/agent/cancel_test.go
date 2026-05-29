@@ -1,11 +1,7 @@
 package agent
 
 import (
-	"bufio"
 	"context"
-	"encoding/json"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -42,21 +38,15 @@ func (c *blockingClient) Stream(_ context.Context, _ common.Request) (<-chan com
 // TestRun_CancelMidTurn verifies that:
 //   - Run returns context.Canceled when the context is cancelled mid-turn.
 //   - The Frontend receives EventTurnDone with StopReason "cancelled".
-//   - A SessionEnd event with Reason "cancelled" is persisted.
+//
+// Run is NOT responsible for emitting session_end — that is the writer owner's
+// job (cmd/gohome/main.go for the parent, agent.Spawn for child writers).
 func TestRun_CancelMidTurn(t *testing.T) {
 	bgCtx, bgCancel := context.WithCancel(context.Background())
 	t.Cleanup(bgCancel) // ensure the client goroutine is cleaned up when the test ends
 	client := &blockingClient{firstDelta: "partial", bgCtx: bgCtx}
 
-	dir := t.TempDir()
-	path := filepath.Join(dir, "session.jsonl")
-	w, err := session.OpenWriter(path)
-	if err != nil {
-		t.Fatalf("OpenWriter: %v", err)
-	}
-	// Note: we close the writer manually after Run so we can read the file.
-
-	sess := session.NewSession("sess-cancel", dir, "model", "anthropic")
+	sess := session.NewSession("sess-cancel", t.TempDir(), "model", "anthropic")
 	fe := &fakeRecorder{}
 
 	wl, err := guardCompileEmpty(t)
@@ -70,7 +60,7 @@ func TestRun_CancelMidTurn(t *testing.T) {
 		Tools:    tools.NewRegistry(),
 		Guard:    g,
 		Frontend: fe,
-		Writer:   w,
+		Writer:   nil, // Run never emits session_end; no writer needed here
 		System:   "system",
 	}
 
@@ -96,43 +86,6 @@ func TestRun_CancelMidTurn(t *testing.T) {
 	}
 	if !sawCancelledTurnDone {
 		t.Errorf("frontend did not receive EventTurnDone{StopReason:'cancelled'}; events: %+v", fe.events)
-	}
-
-	// Close writer and check persisted events.
-	if err := w.Close(); err != nil {
-		t.Fatalf("writer Close: %v", err)
-	}
-
-	f, err := os.Open(path)
-	if err != nil {
-		t.Fatalf("open session file: %v", err)
-	}
-	defer f.Close()
-
-	var foundSessionEnd bool
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
-		var m map[string]json.RawMessage
-		if err := json.Unmarshal([]byte(line), &m); err != nil {
-			continue
-		}
-		var typStr string
-		if err := json.Unmarshal(m["type"], &typStr); err != nil {
-			continue
-		}
-		if typStr == "session_end" {
-			var reason string
-			if err := json.Unmarshal(m["reason"], &reason); err == nil && reason == "cancelled" {
-				foundSessionEnd = true
-			}
-		}
-	}
-	if !foundSessionEnd {
-		t.Errorf("no session_end{reason:cancelled} found in JSONL")
 	}
 }
 

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -108,6 +109,13 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 
 	// Determine whether the run ended in error.
 	isError := runErr != nil
+
+	// Emit session_end on the child writer — exactly one per writer owner.
+	endReason := "done"
+	if errors.Is(runErr, context.Canceled) || ctx.Err() != nil {
+		endReason = "cancelled"
+	}
+	cw.Emit(session.SessionEnd{Reason: endReason})
 
 	// Persist done marker on the PARENT writer.
 	if a.Writer != nil {

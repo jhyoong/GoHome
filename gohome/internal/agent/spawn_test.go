@@ -361,6 +361,66 @@ func TestSpawn_ChildJSONLHasUserMessage(t *testing.T) {
 	}
 }
 
+// TestSpawn_ChildJSONLHasSessionEnd verifies that the child's JSONL file
+// contains exactly one session_end event (emitted by Spawn, not by Run).
+func TestSpawn_ChildJSONLHasSessionEnd(t *testing.T) {
+	home := t.TempDir()
+	client := oneTextTurnClient("result")
+
+	g := compileYoloGuard(t)
+	fe := &fakeRecorder{}
+
+	a := &Agent{
+		Client:   client,
+		Tools:    tools.NewRegistry(),
+		Guard:    g,
+		Frontend: fe,
+		Writer:   nil,
+		System:   "sys",
+		Home:     home,
+	}
+	a.Session = session.NewSession("parent", home, "model", "anthropic")
+
+	_, _, err := a.Spawn(context.Background(), "task", "")
+	if err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+
+	// Find the child JSONL.
+	var childPath string
+	_ = filepath.Walk(filepath.Join(home, "sessions"), func(p string, info os.FileInfo, werr error) error {
+		if werr == nil && !info.IsDir() && strings.HasSuffix(p, ".jsonl") {
+			childPath = p
+		}
+		return nil
+	})
+	if childPath == "" {
+		t.Fatalf("no child JSONL found under %s/sessions", home)
+	}
+
+	lines := readJSONLLines(t, childPath)
+	var sessionEndCount int
+	var sessionEndReason string
+	for _, m := range lines {
+		var typ string
+		if err := json.Unmarshal(m["type"], &typ); err != nil {
+			continue
+		}
+		if typ == "session_end" {
+			sessionEndCount++
+			if r, ok := m["reason"]; ok {
+				_ = json.Unmarshal(r, &sessionEndReason)
+			}
+		}
+	}
+	if sessionEndCount != 1 {
+		t.Errorf("child JSONL: got %d session_end events, want exactly 1", sessionEndCount)
+	}
+	if sessionEndReason != "done" {
+		t.Errorf("child JSONL: session_end reason = %q, want %q", sessionEndReason, "done")
+	}
+}
+
 // readJSONLLines opens path and returns each decoded JSON line as a map.
 func readJSONLLines(t *testing.T, path string) []map[string]json.RawMessage {
 	t.Helper()
