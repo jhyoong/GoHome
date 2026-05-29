@@ -8,9 +8,9 @@ import (
 
 // Writer asynchronously writes JSONL events to a file.
 type Writer struct {
-	f        *os.File
-	ch       chan any
-	done     chan struct{}
+	f         *os.File
+	ch        chan any
+	done      chan struct{}
 	closeOnce sync.Once
 	closeErr  error
 }
