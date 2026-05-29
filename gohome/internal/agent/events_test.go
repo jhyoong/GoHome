@@ -13,10 +13,10 @@ var _ Frontend = (*fakeRecorder)(nil)
 
 // fakeRecorder is the shared test double used across all agent tests.
 type fakeRecorder struct {
-	events   []Event
-	approval guard.ApprovalDecision
-	approvalErr error
-	userInput   string
+	events       []Event
+	approval     guard.ApprovalDecision
+	approvalErr  error
+	userInput    string
 	userInputErr error
 }
 
