@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -196,5 +197,29 @@ func TestResolveAPIKey_NeitherReturnsError(t *testing.T) {
 	_, err := ResolveAPIKey(Endpoint{})
 	if !errors.Is(err, ErrNoAPIKey) {
 		t.Errorf("got %v, want ErrNoAPIKey", err)
+	}
+}
+
+// Task 2.4: Default paths
+func TestDefaultGlobalPath(t *testing.T) {
+	p, err := DefaultGlobalPath()
+	if err != nil {
+		t.Fatalf("DefaultGlobalPath: %v", err)
+	}
+	suffix := filepath.Join(".gohome", "settings.json")
+	if !strings.HasSuffix(p, suffix) {
+		t.Errorf("path %q does not end with %q", p, suffix)
+	}
+}
+
+func TestDefaultProjectPath(t *testing.T) {
+	cwd := t.TempDir()
+	p := DefaultProjectPath(cwd)
+	suffix := filepath.Join(".gohome", "settings.json")
+	if !strings.HasSuffix(p, suffix) {
+		t.Errorf("path %q does not end with %q", p, suffix)
+	}
+	if !strings.HasPrefix(p, cwd) {
+		t.Errorf("path %q does not start with cwd %q", p, cwd)
 	}
 }

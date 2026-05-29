@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"path/filepath"
 )
 
 // ErrNoAPIKey is returned when an endpoint has no usable API key.
@@ -93,4 +94,20 @@ func ResolveAPIKey(e Endpoint) (string, error) {
 		}
 	}
 	return "", ErrNoAPIKey
+}
+
+// DefaultGlobalPath returns the canonical global settings path:
+// <home>/.gohome/settings.json
+func DefaultGlobalPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".gohome", "settings.json"), nil
+}
+
+// DefaultProjectPath returns the settings path relative to cwd:
+// <cwd>/.gohome/settings.json
+func DefaultProjectPath(cwd string) string {
+	return filepath.Join(cwd, ".gohome", "settings.json")
 }
