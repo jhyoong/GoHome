@@ -1,5 +1,10 @@
 package common
 
+import (
+	"context"
+	"encoding/json"
+)
+
 type Role string
 
 const (
@@ -57,4 +62,22 @@ type StreamEvent struct {
 	StopReason string
 	Usage      *Usage
 	Err        error
+}
+
+type ToolDef struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	InputSchema json.RawMessage `json:"inputSchema"`
+}
+
+type Request struct {
+	Model     string
+	System    string
+	Messages  []Message
+	Tools     []ToolDef
+	MaxTokens int
+}
+
+type Client interface {
+	Stream(ctx context.Context, req Request) (<-chan StreamEvent, error)
 }

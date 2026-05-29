@@ -1,11 +1,55 @@
 package common_test
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 )
+
+// fakeClient is a local stub that satisfies common.Client.
+type fakeClient struct{}
+
+func (fakeClient) Stream(_ context.Context, _ common.Request) (<-chan common.StreamEvent, error) {
+	ch := make(chan common.StreamEvent)
+	close(ch)
+	return ch, nil
+}
+
+func TestRequest_FieldsAndClientInterface(t *testing.T) {
+	schema := json.RawMessage(`{"type":"object"}`)
+	req := common.Request{
+		Model:  "gpt-4o",
+		System: "you are helpful",
+		Messages: []common.Message{
+			{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}},
+		},
+		Tools: []common.ToolDef{
+			{Name: "search", Description: "web search", InputSchema: schema},
+		},
+		MaxTokens: 512,
+	}
+
+	if req.Model != "gpt-4o" {
+		t.Errorf("model: want gpt-4o, got %q", req.Model)
+	}
+	if len(req.Tools) != 1 {
+		t.Fatalf("tools length: want 1, got %d", len(req.Tools))
+	}
+	if req.Tools[0].Name != "search" {
+		t.Errorf("tool name: want search, got %q", req.Tools[0].Name)
+	}
+	if string(req.Tools[0].InputSchema) != `{"type":"object"}` {
+		t.Errorf("input schema: want raw json, got %s", req.Tools[0].InputSchema)
+	}
+	if req.MaxTokens != 512 {
+		t.Errorf("maxTokens: want 512, got %d", req.MaxTokens)
+	}
+
+	// Confirm fakeClient satisfies the interface at compile time.
+	var _ common.Client = fakeClient{}
+}
 
 func TestStreamEvent_KindAndNilUsage(t *testing.T) {
 	ev := common.StreamEvent{Kind: common.EventTextDelta, TextDelta: "x"}
