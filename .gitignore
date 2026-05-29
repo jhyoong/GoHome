@@ -1,0 +1,4 @@
+/gohome
+*.test
+coverage.out
+.gohome/
