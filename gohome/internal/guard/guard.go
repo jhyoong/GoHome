@@ -33,4 +33,5 @@ type Decision struct {
 	Allow        bool
 	Reason       string
 	SteerMessage string
+	SavedPattern string
 }

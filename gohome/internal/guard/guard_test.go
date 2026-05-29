@@ -161,6 +161,36 @@ func (f *fakefrontend_allowAlways) RequestApproval(_ context.Context, req Approv
 	return f.decision, nil
 }
 
+func TestCheck_AllowAlways_SavedPattern(t *testing.T) {
+	tmpDir := t.TempDir()
+	projPath := tmpDir + "/whitelist.json"
+
+	wl, err := Compile(WhitelistFile{}, WhitelistFile{}, projPath)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+
+	const wantPattern = "^git log"
+	fe := &fakefrontend_allowAlways{
+		decision: ApprovalDecision{Outcome: AllowAlways, SavedPattern: wantPattern},
+	}
+	g := NewGuard(wl, fe)
+
+	dec, err := g.Check(context.Background(), "sess1", "bash", bashCmd("git log"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !dec.Allow {
+		t.Error("allow_always: expected Allow=true")
+	}
+	if dec.Reason != "user_always" {
+		t.Errorf("allow_always: expected reason 'user_always', got %q", dec.Reason)
+	}
+	if dec.SavedPattern != wantPattern {
+		t.Errorf("allow_always: Decision.SavedPattern = %q, want %q", dec.SavedPattern, wantPattern)
+	}
+}
+
 func TestCheck_Deny(t *testing.T) {
 	fe := &fakeFrontend{
 		response: ApprovalDecision{Outcome: Deny},

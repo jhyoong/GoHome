@@ -68,7 +68,7 @@ func (g *Guard) Check(ctx context.Context, sessionID, tool string, input json.Ra
 			// Future calls will re-prompt, which is acceptable.
 			_ = err
 		}
-		return Decision{Allow: true, Reason: "user_always"}, nil
+		return Decision{Allow: true, Reason: "user_always", SavedPattern: dec.SavedPattern}, nil
 
 	case Deny:
 		return Decision{Allow: false, Reason: "user_denied"}, nil
