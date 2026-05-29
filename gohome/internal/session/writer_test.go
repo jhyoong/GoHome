@@ -64,6 +64,28 @@ func TestWriter(t *testing.T) {
 	}
 }
 
+func TestWriterCloseIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "idempotent.jsonl")
+
+	w, err := OpenWriter(path)
+	if err != nil {
+		t.Fatalf("OpenWriter: %v", err)
+	}
+
+	w.Emit(SessionEnd{Reason: "test"})
+
+	// First close should succeed.
+	if err := w.Close(); err != nil {
+		t.Fatalf("first Close: %v", err)
+	}
+
+	// Second close must not panic and must return nil.
+	if err := w.Close(); err != nil {
+		t.Errorf("second Close: got %v, want nil", err)
+	}
+}
+
 func TestWriterMkdirAll(t *testing.T) {
 	dir := t.TempDir()
 	// Use a nested directory that doesn't exist yet

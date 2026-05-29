@@ -3,13 +3,16 @@ package session
 import (
 	"os"
 	"path/filepath"
+	"sync"
 )
 
 // Writer asynchronously writes JSONL events to a file.
 type Writer struct {
-	f    *os.File
-	ch   chan any
-	done chan struct{}
+	f        *os.File
+	ch       chan any
+	done     chan struct{}
+	closeOnce sync.Once
+	closeErr  error
 }
 
 // OpenWriter opens (or creates) the JSONL file at path, creating parent directories
@@ -38,10 +41,14 @@ func (w *Writer) Emit(ev any) {
 }
 
 // Close flushes all queued events and closes the file.
+// It is idempotent: the second and subsequent calls are no-ops that return nil.
 func (w *Writer) Close() error {
-	close(w.ch)
-	<-w.done
-	return w.f.Close()
+	w.closeOnce.Do(func() {
+		close(w.ch)
+		<-w.done
+		w.closeErr = w.f.Close()
+	})
+	return w.closeErr
 }
 
 // isCritical reports whether ev requires an fsync after writing.
