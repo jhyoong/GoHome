@@ -190,6 +190,7 @@ func main() {
 	var (
 		sess       *session.Session
 		writerPath string
+		isResumed  bool
 	)
 
 	if *resume {
@@ -201,6 +202,7 @@ func main() {
 		} else {
 			sess = loadedSess
 			writerPath = resumePath
+			isResumed = true
 			fmt.Fprintf(os.Stderr, "gohome: resuming session %s (%s)\n", sess.ID, resumePath)
 			slog.Info("resuming session", "id", sess.ID, "path", resumePath)
 		}
@@ -219,7 +221,7 @@ func main() {
 	}
 
 	// Emit session_start only for fresh sessions (resume appends to existing file).
-	if !*resume {
+	if !isResumed {
 		writer.Emit(session.SessionStart{
 			ID:        sess.ID,
 			ParentID:  sess.ParentID,
