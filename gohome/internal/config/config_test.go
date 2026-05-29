@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -155,5 +156,45 @@ func TestLoad_MalformedJSONTreatedAsEmpty(t *testing.T) {
 	// malformed project treated as empty; global default kept
 	if merged.DefaultEndpoint != "g" {
 		t.Errorf("DefaultEndpoint: got %q, want g", merged.DefaultEndpoint)
+	}
+}
+
+// Task 2.3: API key resolution
+func TestResolveAPIKey_LiteralKey(t *testing.T) {
+	key, err := ResolveAPIKey(Endpoint{APIKey: "literal-key"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if key != "literal-key" {
+		t.Errorf("got %q, want literal-key", key)
+	}
+}
+
+func TestResolveAPIKey_EnvVar(t *testing.T) {
+	t.Setenv("TEST_API_KEY_VAR", "env-value")
+	key, err := ResolveAPIKey(Endpoint{APIKeyEnv: "TEST_API_KEY_VAR"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if key != "env-value" {
+		t.Errorf("got %q, want env-value", key)
+	}
+}
+
+func TestResolveAPIKey_LiteralTakesPrecedenceOverEnv(t *testing.T) {
+	t.Setenv("TEST_API_KEY_BOTH", "env-value")
+	key, err := ResolveAPIKey(Endpoint{APIKey: "literal", APIKeyEnv: "TEST_API_KEY_BOTH"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if key != "literal" {
+		t.Errorf("got %q, want literal", key)
+	}
+}
+
+func TestResolveAPIKey_NeitherReturnsError(t *testing.T) {
+	_, err := ResolveAPIKey(Endpoint{})
+	if !errors.Is(err, ErrNoAPIKey) {
+		t.Errorf("got %v, want ErrNoAPIKey", err)
 	}
 }

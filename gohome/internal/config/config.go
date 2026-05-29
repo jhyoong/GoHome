@@ -7,6 +7,9 @@ import (
 	"os"
 )
 
+// ErrNoAPIKey is returned when an endpoint has no usable API key.
+var ErrNoAPIKey = errors.New("no API key configured")
+
 // Wire identifies which LLM HTTP protocol an endpoint speaks.
 type Wire string
 
@@ -74,4 +77,20 @@ func Load(globalPath, projectPath string) (Settings, error) {
 	}
 
 	return merged, nil
+}
+
+// ResolveAPIKey returns the API key for e.
+// A literal APIKey field takes precedence over APIKeyEnv.
+// Returns ErrNoAPIKey when neither is configured.
+func ResolveAPIKey(e Endpoint) (string, error) {
+	if e.APIKey != "" {
+		return e.APIKey, nil
+	}
+	if e.APIKeyEnv != "" {
+		val := os.Getenv(e.APIKeyEnv)
+		if val != "" {
+			return val, nil
+		}
+	}
+	return "", ErrNoAPIKey
 }
