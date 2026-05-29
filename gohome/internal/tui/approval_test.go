@@ -201,3 +201,66 @@ func TestApprovalEditPatternEscReverts(t *testing.T) {
 		t.Fatal("timed out waiting for AllowAlways decision")
 	}
 }
+
+// --- Task 11.11: deny + steer ---
+
+func TestApprovalDenySteer(t *testing.T) {
+	m := tui.New(nil)
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	msg, ch := makeApprovalReq("main", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
+	tm.Send(msg)
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Approve"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// Press '4' to enter steer mode.
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'4'}})
+	tm.Type("use rg instead")
+	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+
+	select {
+	case dec := <-ch:
+		if dec.Outcome != guard.DenySteer {
+			t.Fatalf("expected DenySteer, got %q", dec.Outcome)
+		}
+		if dec.SteerMessage != "use rg instead" {
+			t.Fatalf("expected SteerMessage %q, got %q", "use rg instead", dec.SteerMessage)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for DenySteer decision")
+	}
+}
+
+func TestApprovalDenySteerEscCancels(t *testing.T) {
+	m := tui.New(nil)
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	msg, ch := makeApprovalReq("main", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
+	tm.Send(msg)
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Approve"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// Enter steer mode, then Esc -> should return to menu without resolving.
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'4'}})
+	tm.Type("cancel me")
+	tm.Send(tea.KeyMsg{Type: tea.KeyEsc})
+
+	// The overlay should still be active (no decision sent yet).
+	// Now press '1' -> AllowOnce should be the actual decision.
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+
+	select {
+	case dec := <-ch:
+		if dec.Outcome != guard.AllowOnce {
+			t.Fatalf("expected AllowOnce after Esc-from-steer, got %q", dec.Outcome)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for decision after Esc-from-steer")
+	}
+}
