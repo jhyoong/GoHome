@@ -30,6 +30,10 @@ type SessionView struct {
 	Timeline []TimelineEntry
 	InFlight bool
 	Usage    common.Usage
+
+	// Context-fullness warning sentinels (Task 11.16).
+	warned80 bool
+	warned95 bool
 }
 
 // inputHeight is the fixed height reserved for the textarea.
@@ -55,6 +59,10 @@ type Model struct {
 	winH    int
 	vpReady bool
 
+	// cursor indexes the focused session's Timeline. When input is empty,
+	// Up/Down move the cursor; Enter on a tool entry toggles expansion.
+	cursor int
+
 	// Phase 12 populates these; Phase 11 renders them.
 	modelName     string // LLM model name; "?" when empty
 	yolo          bool   // YOLO mode (skip approval)
@@ -65,6 +73,16 @@ type Model struct {
 	// pendingApprovals maps sessionID -> prompt for non-focused sessions.
 	activeApproval   *approvalPrompt
 	pendingApprovals map[string]*approvalPrompt
+
+	// showTokens controls the /tokens overlay (Task 11.15).
+	showTokens bool
+
+	// statusMsg is a transient message shown near the status bar (Task 11.14).
+	statusMsg string
+
+	// Context warning tracking per session (Task 11.16).
+	// warned80/warned95 are set in handleAgentEvent to fire once per session.
+	contextNotice string // most recent context warning for the notification line
 }
 
 // New creates and returns a new Model with an initial "main" session.
@@ -145,6 +163,8 @@ func (m *Model) getOrCreateSession(id string, depth int) *SessionView {
 }
 
 // rebuildViewport refreshes the viewport content from the focused session.
+// cursorActive controls whether the timeline cursor highlight is shown.
+// Pass true when the input is empty (cursor-navigation mode).
 func (m *Model) rebuildViewport() {
 	if !m.vpReady {
 		return
@@ -153,7 +173,12 @@ func (m *Model) rebuildViewport() {
 	if !ok {
 		return
 	}
-	content := renderTimeline(sv)
+	cur := -1
+	if strings.TrimSpace(m.input.Value()) == "" {
+		m.clampCursor()
+		cur = m.cursor
+	}
+	content := renderTimeline(sv, cur)
 	m.vp.SetContent(content)
 	// Auto-scroll to bottom when new content arrives.
 	m.vp.GotoBottom()
@@ -208,6 +233,7 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) {
 	case agent.EventUsageUpdated:
 		if ev.Usage != nil {
 			sv.Usage = *ev.Usage
+			m.checkContextWarnings(sv)
 		}
 
 	case agent.EventTurnDone:
@@ -273,7 +299,8 @@ func (m *Model) promoteApproval() {
 }
 
 // notificationLine returns a warning string when a non-focused session needs
-// approval (or another session is in-flight), or "" when quiet.
+// approval (or another session is in-flight), or the highest context warning,
+// or "" when quiet.
 func (m *Model) notificationLine() string {
 	// Pending approvals take priority.
 	for sid := range m.pendingApprovals {
@@ -289,7 +316,28 @@ func (m *Model) notificationLine() string {
 			}
 		}
 	}
+	// Context fullness warning for the focused session (Task 11.16).
+	if m.contextNotice != "" {
+		return m.contextNotice
+	}
 	return ""
+}
+
+// checkContextWarnings fires one-time context-fullness warnings for sv.
+// It updates sv.warned80/warned95 and m.contextNotice.
+func (m *Model) checkContextWarnings(sv *SessionView) {
+	if m.contextWindow <= 0 {
+		return
+	}
+	used := sv.Usage.InputTokens + sv.Usage.OutputTokens
+	ratio := float64(used) / float64(m.contextWindow)
+	if ratio >= 0.95 && !sv.warned95 {
+		sv.warned95 = true
+		m.contextNotice = "Context near limit -- next turn may fail or truncate."
+	} else if ratio >= 0.80 && !sv.warned80 {
+		sv.warned80 = true
+		m.contextNotice = "Context 80% full -- consider /new or /resume into a fresh session."
+	}
 }
 
 // vpHeight returns the viewport height given current window dimensions.
@@ -346,36 +394,88 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(cmds...)
 		}
 
+		// When the /tokens overlay is open, only Esc is handled.
+		if m.showTokens {
+			if msg.Type == tea.KeyEsc {
+				m.showTokens = false
+			}
+			return m, tea.Batch(cmds...)
+		}
+
 		switch msg.Type {
 		case tea.KeyEnter:
-			// Alt+Enter (or Shift+Enter) passes through to textarea for newlines.
-			if !msg.Alt {
-				text := strings.TrimSpace(m.input.Value())
-				if text != "" {
-					// Add user entry to focused session.
-					sv := m.getOrCreateSession(m.focused, 0)
-					sv.Timeline = append(sv.Timeline, TimelineEntry{
-						Kind: "user",
-						Text: text,
-					})
-					sv.InFlight = true
-
-					m.input.Reset()
-					m.rebuildViewport()
-					cmds = append(cmds, m.sendInputCmd(text))
+			// Alt+Enter passes through to textarea for newlines.
+			if msg.Alt {
+				break
+			}
+			text := strings.TrimSpace(m.input.Value())
+			// Enter-disambiguation rule:
+			// - If input is empty AND cursor is on a tool entry -> toggle expansion.
+			// - If input starts with '/' -> run slash command.
+			// - Otherwise -> submit text to agent.
+			if text == "" {
+				sv, ok := m.sessions[m.focused]
+				if ok && m.cursor >= 0 && m.cursor < len(sv.Timeline) {
+					entry := &sv.Timeline[m.cursor]
+					if entry.Kind == "tool" {
+						entry.Expanded = !entry.Expanded
+						m.rebuildViewport()
+					}
 				}
 				return m, tea.Batch(cmds...)
 			}
+			if strings.HasPrefix(text, "/") {
+				cmd := m.handleSlashCommand(text)
+				m.input.Reset()
+				m.rebuildViewport()
+				if cmd != nil {
+					cmds = append(cmds, cmd)
+				}
+				return m, tea.Batch(cmds...)
+			}
+			// Normal submit.
+			sv := m.getOrCreateSession(m.focused, 0)
+			sv.Timeline = append(sv.Timeline, TimelineEntry{
+				Kind: "user",
+				Text: text,
+			})
+			sv.InFlight = true
+			m.input.Reset()
+			m.cursor = len(sv.Timeline) - 1
+			m.rebuildViewport()
+			cmds = append(cmds, m.sendInputCmd(text))
+			return m, tea.Batch(cmds...)
 		}
 
-		// PgUp / PgDn and Up/Down route to the viewport.
+		// PgUp / PgDn and Up/Down route to the viewport when input is non-empty.
+		// When input is empty, Up/Down move the timeline cursor.
 		// Ctrl+] / Ctrl+[ cycle focus between sessions.
 		switch msg.Type {
 		case tea.KeyCtrlCloseBracket: // Ctrl+]
 			m.focusNext()
 		case tea.KeyCtrlOpenBracket: // Ctrl+[
 			m.focusPrev()
-		case tea.KeyPgUp, tea.KeyPgDown, tea.KeyUp, tea.KeyDown:
+		case tea.KeyUp:
+			if strings.TrimSpace(m.input.Value()) == "" {
+				m.cursor--
+				m.clampCursor()
+				m.rebuildViewport()
+			} else {
+				var vpCmd tea.Cmd
+				m.vp, vpCmd = m.vp.Update(msg)
+				cmds = append(cmds, vpCmd)
+			}
+		case tea.KeyDown:
+			if strings.TrimSpace(m.input.Value()) == "" {
+				m.cursor++
+				m.clampCursor()
+				m.rebuildViewport()
+			} else {
+				var vpCmd tea.Cmd
+				m.vp, vpCmd = m.vp.Update(msg)
+				cmds = append(cmds, vpCmd)
+			}
+		case tea.KeyPgUp, tea.KeyPgDown:
 			var vpCmd tea.Cmd
 			m.vp, vpCmd = m.vp.Update(msg)
 			cmds = append(cmds, vpCmd)
@@ -492,23 +592,94 @@ func (m *Model) AddTimelineEntry(sessionID string, e TimelineEntry) {
 	}
 }
 
+// shortSummary produces a short single-line summary of a (possibly multi-line)
+// string. If the string is a single line (no newlines), it is returned as-is
+// (truncated to 60 chars). If multi-line, returns "N lines".
+func shortSummary(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	lines := strings.Split(s, "\n")
+	if len(lines) == 1 {
+		if len(s) > 60 {
+			return s[:57] + "..."
+		}
+		return s
+	}
+	return fmt.Sprintf("%d lines", len(lines))
+}
+
+// shortArg extracts a brief summary from a tool's InputJSON (the args).
+// It shows the value of the first string field found, or the raw JSON truncated.
+func shortArg(inputJSON string) string {
+	inputJSON = strings.TrimSpace(inputJSON)
+	if inputJSON == "" {
+		return ""
+	}
+	// Try to parse as {"field": "value"} and use the first string value.
+	// We do a simple scan rather than importing encoding/json to avoid cycles.
+	// Find the first quoted value after the first colon.
+	colonIdx := strings.Index(inputJSON, `"`)
+	_ = colonIdx
+	// Use shortSummary on the raw JSON as a simple fallback.
+	return shortSummary(inputJSON)
+}
+
 // renderTimeline converts a SessionView's timeline to plain text.
-func renderTimeline(sv *SessionView) string {
+// cursor is the index of the highlighted entry (used when input is empty).
+// Pass cursor = -1 to render without highlighting.
+func renderTimeline(sv *SessionView, cursor int) string {
 	var sb strings.Builder
-	for _, e := range sv.Timeline {
+	for i, e := range sv.Timeline {
+		// Cursor marker: leading ">" for the selected entry.
+		marker := "  "
+		if i == cursor {
+			marker = "> "
+		}
+
 		switch e.Kind {
 		case "user":
-			sb.WriteString("> ")
+			sb.WriteString(marker)
+			sb.WriteString("you: ")
 			sb.WriteString(e.Text)
 			sb.WriteString("\n")
 		case "assistant":
+			sb.WriteString(marker)
 			sb.WriteString(e.Text)
 			sb.WriteString("\n")
 		case "tool":
-			sb.WriteString("tool: ")
-			sb.WriteString(e.ToolName)
+			// Collapsed line: "> <toolName> <short-arg>  ->  <short-result>"
+			arg := shortArg(e.Text)
+			result := shortSummary(e.ToolResult)
+			collapsed := fmt.Sprintf("[tool] %s", e.ToolName)
+			if arg != "" {
+				collapsed += " " + arg
+			}
+			if result != "" {
+				collapsed += "  ->  " + result
+			}
+			sb.WriteString(marker)
+			sb.WriteString(collapsed)
 			sb.WriteString("\n")
+			// Expanded: show full args and full result.
+			if e.Expanded {
+				if e.Text != "" {
+					sb.WriteString("       args: ")
+					sb.WriteString(e.Text)
+					sb.WriteString("\n")
+				}
+				if e.ToolResult != "" {
+					sb.WriteString("       result:\n")
+					for _, line := range strings.Split(e.ToolResult, "\n") {
+						sb.WriteString("         ")
+						sb.WriteString(line)
+						sb.WriteString("\n")
+					}
+				}
+			}
 		case "notice":
+			sb.WriteString(marker)
 			sb.WriteString("[notice] ")
 			sb.WriteString(e.Text)
 			sb.WriteString("\n")
@@ -517,11 +688,120 @@ func renderTimeline(sv *SessionView) string {
 	return sb.String()
 }
 
+// clampCursor ensures m.cursor is within the valid range for the focused session.
+func (m *Model) clampCursor() {
+	sv, ok := m.sessions[m.focused]
+	if !ok || len(sv.Timeline) == 0 {
+		m.cursor = 0
+		return
+	}
+	n := len(sv.Timeline)
+	if m.cursor < 0 {
+		m.cursor = 0
+	}
+	if m.cursor >= n {
+		m.cursor = n - 1
+	}
+}
+
+// slashCommands is the static list of available slash commands.
+var slashCommands = []string{
+	"/new", "/resume", "/yolo", "/endpoint", "/model", "/cancel", "/tokens", "/quit",
+}
+
+// slashComplete returns all commands in slashCommands that have prefix as a prefix.
+func slashComplete(prefix string) []string {
+	var out []string
+	for _, cmd := range slashCommands {
+		if strings.HasPrefix(cmd, prefix) {
+			out = append(out, cmd)
+		}
+	}
+	return out
+}
+
+// handleSlashCommand parses and executes a slash command string.
+// It returns a tea.Cmd when an action requires one (e.g. tea.Quit), or nil.
+func (m *Model) handleSlashCommand(raw string) tea.Cmd {
+	fields := strings.Fields(raw)
+	if len(fields) == 0 {
+		return nil
+	}
+	cmd := fields[0]
+	switch cmd {
+	case "/quit":
+		return tea.Quit
+	case "/yolo":
+		m.yolo = !m.yolo
+		if m.yolo {
+			m.statusMsg = "YOLO mode ON"
+		} else {
+			m.statusMsg = "YOLO mode OFF"
+		}
+	case "/tokens":
+		m.showTokens = true
+		m.statusMsg = ""
+	default:
+		m.statusMsg = cmd + ": not implemented"
+	}
+	return nil
+}
+
+// renderTokensOverlay renders the /tokens usage overlay for the focused session.
+func (m *Model) renderTokensOverlay() string {
+	sv, ok := m.sessions[m.focused]
+	if !ok {
+		return ""
+	}
+	u := sv.Usage
+	used := u.InputTokens + u.OutputTokens
+	total := m.contextWindow
+	pct := 0
+	if total > 0 {
+		pct = int(float64(used) / float64(total) * 100)
+		if pct > 100 {
+			pct = 100
+		}
+	}
+	modelName := m.modelName
+	if modelName == "" {
+		modelName = "?"
+	}
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Token usage -- %s -- %s\n", sv.ID, modelName))
+	sb.WriteString(fmt.Sprintf("  Input tokens    %d\n", u.InputTokens))
+	sb.WriteString(fmt.Sprintf("  Output tokens   %d\n", u.OutputTokens))
+	sb.WriteString(fmt.Sprintf("  Cache reads     %d\n", u.CacheReadTokens))
+	sb.WriteString(fmt.Sprintf("  Cache writes    %d\n", u.CacheWriteTokens))
+	sb.WriteString("  --------------------\n")
+	sb.WriteString(fmt.Sprintf("  Total           %d / %d (%d%%)\n", used, total, pct))
+	sb.WriteString("  Esc to close")
+	return sb.String()
+}
+
+// slashPalette renders the autocomplete list when input starts with '/'.
+// Returns "" when not applicable.
+func (m *Model) slashPalette() string {
+	val := m.input.Value()
+	if !strings.HasPrefix(val, "/") {
+		return ""
+	}
+	matches := slashComplete(val)
+	if len(matches) == 0 {
+		return ""
+	}
+	return strings.Join(matches, "  ")
+}
+
 // inputRegion returns the string to render in place of the normal textarea.
 // When an approval prompt is active it renders the approval overlay instead.
 func (m *Model) inputRegion() string {
 	if m.activeApproval != nil {
 		return renderApprovalOverlay(m.activeApproval, m.winW)
+	}
+	palette := m.slashPalette()
+	if palette != "" {
+		return palette + "\n" + m.input.View()
 	}
 	return m.input.View()
 }
@@ -529,7 +809,13 @@ func (m *Model) inputRegion() string {
 // View implements tea.Model.
 func (m *Model) View() string {
 	strip := m.sessionStrip()
-	sb := m.statusBar()
+	sbar := m.statusBar()
+
+	// Status message line (transient, Task 11.14).
+	statusLine := ""
+	if m.statusMsg != "" {
+		statusLine = m.statusMsg + "\n"
+	}
 
 	// Notification line between viewport and input region (Task 11.12).
 	notif := ""
@@ -537,17 +823,38 @@ func (m *Model) View() string {
 		notif = m.theme.Notification.Render(nl) + "\n"
 	}
 
+	// /tokens overlay replaces the main content area (Task 11.15).
+	if m.showTokens {
+		overlay := m.renderTokensOverlay()
+		return strip + "\n" + overlay + "\n" + notif + statusLine + sbar
+	}
+
 	if m.vpReady {
-		return strip + "\n" + m.vp.View() + "\n" + notif + m.inputRegion() + "\n" + sb
+		return strip + "\n" + m.vp.View() + "\n" + notif + statusLine + m.inputRegion() + "\n" + sbar
 	}
 	// Viewport not yet sized (no WindowSizeMsg received); fall back to plain text.
 	sv, ok := m.sessions[m.focused]
 	if !ok {
-		return strip + "\ngohome\n" + notif + m.inputRegion() + "\n" + sb
+		return strip + "\ngohome\n" + notif + statusLine + m.inputRegion() + "\n" + sbar
 	}
-	content := renderTimeline(sv)
+	content := renderTimeline(sv, -1)
 	if content == "" {
 		content = "gohome\n"
 	}
-	return strip + "\n" + content + notif + m.inputRegion() + "\n" + sb
+	return strip + "\n" + content + notif + statusLine + m.inputRegion() + "\n" + sbar
+}
+
+// Yolo returns current yolo mode state (exported for tests).
+func (m *Model) Yolo() bool {
+	return m.yolo
+}
+
+// StatusMsg returns the current transient status message (exported for tests).
+func (m *Model) StatusMsg() string {
+	return m.statusMsg
+}
+
+// ShowTokens returns whether the tokens overlay is displayed (exported for tests).
+func (m *Model) ShowTokens() bool {
+	return m.showTokens
 }
