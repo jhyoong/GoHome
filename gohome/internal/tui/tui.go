@@ -80,6 +80,11 @@ type Model struct {
 	// statusMsg is a transient message shown near the status bar (Task 11.14).
 	statusMsg string
 
+	// onYoloChange is called whenever the /yolo command toggles the YOLO flag.
+	// It is set via SetYoloCallback and allows the TUI to propagate the change
+	// to the guard without importing the guard package directly.
+	onYoloChange func(bool)
+
 	// Context warning tracking per session (Task 11.16).
 	// warned80/warned95 are set in handleAgentEvent to fire once per session.
 	contextNotice string // most recent context warning for the notification line
@@ -129,6 +134,13 @@ func (m *Model) SetModelName(name string) {
 // SetYolo sets YOLO mode. When true the status bar shows a red [YOLO] badge.
 func (m *Model) SetYolo(yolo bool) {
 	m.yolo = yolo
+}
+
+// SetYoloCallback registers a function that is called whenever the /yolo
+// command toggles YOLO mode. The argument is the new yolo value.
+// This keeps the TUI decoupled from the concrete guard type.
+func (m *Model) SetYoloCallback(fn func(bool)) {
+	m.onYoloChange = fn
 }
 
 // SetContextWindow sets the total context window size used in the token bar.
@@ -611,19 +623,9 @@ func shortSummary(s string) string {
 }
 
 // shortArg extracts a brief summary from a tool's InputJSON (the args).
-// It shows the value of the first string field found, or the raw JSON truncated.
+// It delegates to shortSummary to produce a compact single-line representation.
 func shortArg(inputJSON string) string {
-	inputJSON = strings.TrimSpace(inputJSON)
-	if inputJSON == "" {
-		return ""
-	}
-	// Try to parse as {"field": "value"} and use the first string value.
-	// We do a simple scan rather than importing encoding/json to avoid cycles.
-	// Find the first quoted value after the first colon.
-	colonIdx := strings.Index(inputJSON, `"`)
-	_ = colonIdx
-	// Use shortSummary on the raw JSON as a simple fallback.
-	return shortSummary(inputJSON)
+	return shortSummary(strings.TrimSpace(inputJSON))
 }
 
 // renderTimeline converts a SessionView's timeline to plain text.
@@ -737,6 +739,9 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 			m.statusMsg = "YOLO mode ON"
 		} else {
 			m.statusMsg = "YOLO mode OFF"
+		}
+		if m.onYoloChange != nil {
+			m.onYoloChange(m.yolo)
 		}
 	case "/tokens":
 		m.showTokens = true

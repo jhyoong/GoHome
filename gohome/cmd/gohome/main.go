@@ -235,6 +235,7 @@ func main() {
 
 	// Build TUI model.
 	m := tui.New(fe)
+	m.SetYoloCallback(g.SetYolo)
 	m.SetModelName(endpoint.DefaultModel)
 	contextWindow := endpoint.ContextWindow
 	if contextWindow <= 0 {
@@ -318,7 +319,9 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		slog.Error("tui error", "err", err)
 	}
 
-	// Shutdown sequence: cancel context, wait for agent goroutine, flush and close.
+	// Shutdown sequence: stop signal delivery so the goroutine can exit, cancel
+	// the context, then wait for the agent goroutine before flushing JSONL.
+	signal.Stop(sigCh)
 	cancel()
 	wg.Wait()
 
