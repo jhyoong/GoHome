@@ -7,6 +7,18 @@ import (
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 )
 
+func TestStreamEvent_KindAndNilUsage(t *testing.T) {
+	ev := common.StreamEvent{Kind: common.EventTextDelta, TextDelta: "x"}
+	if ev.Kind != common.EventTextDelta {
+		t.Errorf("kind: want %q, got %q", common.EventTextDelta, ev.Kind)
+	}
+
+	var zero common.StreamEvent
+	if zero.Usage != nil {
+		t.Errorf("nil usage: want nil, got %+v", zero.Usage)
+	}
+}
+
 func TestMessage_JSONRoundtrip(t *testing.T) {
 	original := common.Message{
 		Role: common.RoleUser,

@@ -30,3 +30,31 @@ type Message struct {
 	Role    Role    `json:"role"`
 	Content []Block `json:"content"`
 }
+
+type EventKind string
+
+const (
+	EventTextDelta       EventKind = "text_delta"
+	EventToolCallPartial EventKind = "tool_call_partial"
+	EventToolCallDone    EventKind = "tool_call_done"
+	EventTurnDone        EventKind = "turn_done"
+	EventError           EventKind = "error"
+)
+
+type Usage struct {
+	InputTokens      int `json:"inputTokens"`
+	OutputTokens     int `json:"outputTokens"`
+	CacheReadTokens  int `json:"cacheReadTokens,omitempty"`
+	CacheWriteTokens int `json:"cacheWriteTokens,omitempty"`
+}
+
+type StreamEvent struct {
+	Kind       EventKind
+	TextDelta  string
+	ToolCallID string
+	ToolName   string
+	InputJSON  string
+	StopReason string
+	Usage      *Usage
+	Err        error
+}
