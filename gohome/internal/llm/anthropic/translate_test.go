@@ -55,3 +55,48 @@ func TestTranslateEvents_TextDeltas(t *testing.T) {
 		t.Errorf("last event kind: got %q, want EventTurnDone", events[3].Kind)
 	}
 }
+
+func TestTranslateEvents_ToolUseAccumulation(t *testing.T) {
+	frames := []sseFrame{
+		{event: "content_block_start", data: `{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_01","name":"read_file","input":{}}}`},
+		{event: "content_block_delta", data: `{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"path\""}}`},
+		{event: "content_block_delta", data: `{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":":{\"sub\":\"foo\"}}"}}`},
+		{event: "content_block_stop", data: `{"type":"content_block_stop","index":0}`},
+		{event: "message_stop", data: `{"type":"message_stop"}`},
+	}
+
+	events := collectEvents(translateEvents(makeFrames(frames)))
+
+	// expect zero EventTextDelta, one EventToolCallDone, one EventTurnDone
+	var textDeltas, toolDones, turnDones int
+	for _, e := range events {
+		switch e.Kind {
+		case common.EventTextDelta:
+			textDeltas++
+		case common.EventToolCallDone:
+			toolDones++
+			if e.ToolCallID != "toolu_01" {
+				t.Errorf("ToolCallID: got %q, want %q", e.ToolCallID, "toolu_01")
+			}
+			if e.ToolName != "read_file" {
+				t.Errorf("ToolName: got %q, want %q", e.ToolName, "read_file")
+			}
+			wantInput := `{"path":{"sub":"foo"}}`
+			if e.InputJSON != wantInput {
+				t.Errorf("InputJSON: got %q, want %q", e.InputJSON, wantInput)
+			}
+		case common.EventTurnDone:
+			turnDones++
+		}
+	}
+
+	if textDeltas != 0 {
+		t.Errorf("expected 0 EventTextDelta, got %d", textDeltas)
+	}
+	if toolDones != 1 {
+		t.Errorf("expected 1 EventToolCallDone, got %d", toolDones)
+	}
+	if turnDones != 1 {
+		t.Errorf("expected 1 EventTurnDone, got %d", turnDones)
+	}
+}
