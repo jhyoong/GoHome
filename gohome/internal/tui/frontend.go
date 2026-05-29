@@ -2,10 +2,19 @@ package tui
 
 import (
 	"context"
+	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
+)
+
+// Compile-time assertions: Frontend must satisfy both agent.Frontend and
+// guard.Frontend. If either interface changes incompatibly, this file will
+// fail to compile, surfacing the mismatch immediately.
+var (
+	_ agent.Frontend = (*Frontend)(nil)
+	_ guard.Frontend = (*Frontend)(nil)
 )
 
 // AgentEventMsg wraps an agent.Event for delivery to the Bubble Tea update loop.
@@ -52,14 +61,17 @@ func (f *Frontend) Emit(sessionID string, ev agent.Event) {
 	}
 }
 
-// RequestApproval implements agent.Frontend.
+// RequestApproval implements agent.Frontend and guard.Frontend.
 // It sends an approvalReqMsg to the Bubble Tea loop and blocks until the UI
 // resolves the prompt or ctx is cancelled.
+// If no program has been wired (f.prog == nil) it returns Deny immediately
+// rather than blocking until context cancellation.
 func (f *Frontend) RequestApproval(ctx context.Context, req guard.ApprovalRequest) (guard.ApprovalDecision, error) {
-	reply := make(chan guard.ApprovalDecision, 1)
-	if f.prog != nil {
-		f.prog.Send(ApprovalReqMsg{Req: req, Reply: reply})
+	if f.prog == nil {
+		return guard.ApprovalDecision{Outcome: guard.Deny}, fmt.Errorf("tui: no program wired")
 	}
+	reply := make(chan guard.ApprovalDecision, 1)
+	f.prog.Send(ApprovalReqMsg{Req: req, Reply: reply})
 	select {
 	case dec := <-reply:
 		return dec, nil
