@@ -79,3 +79,50 @@ func TestEditorEmptySubmitReturnsNotOk(t *testing.T) {
 		t.Error("Submit() on empty editor should return ok=false")
 	}
 }
+
+func TestEditorInsertTextSingleLine(t *testing.T) {
+	e := NewEditor(80, 24)
+	e.InsertText("hello")
+	if e.Value() != "hello" {
+		t.Errorf("Value() = %q, want %q", e.Value(), "hello")
+	}
+}
+
+func TestEditorInsertTextMultiLine(t *testing.T) {
+	e := NewEditor(80, 24)
+	e.InsertText("line1\nline2\nline3")
+	if e.Value() != "line1\nline2\nline3" {
+		t.Errorf("Value() = %q, want %q", e.Value(), "line1\nline2\nline3")
+	}
+}
+
+func TestEditorInsertTextAtCursor(t *testing.T) {
+	e := NewEditor(80, 24)
+	e.InsertRune('a')
+	e.InsertRune('b')
+	// cursor is after 'b', col=2
+	e.InsertText("X\nY")
+	// expected: "abX\nY"
+	want := "abX\nY"
+	if e.Value() != want {
+		t.Errorf("Value() = %q, want %q", e.Value(), want)
+	}
+}
+
+func TestEditorInsertTextStripsCarriageReturn(t *testing.T) {
+	e := NewEditor(80, 24)
+	e.InsertText("line1\r\nline2\r\n")
+	want := "line1\nline2\n"
+	if e.Value() != want {
+		t.Errorf("Value() = %q, want %q", e.Value(), want)
+	}
+}
+
+func TestEditorInsertTextReplacesTab(t *testing.T) {
+	e := NewEditor(80, 24)
+	e.InsertText("a\tb")
+	want := "a    b"
+	if e.Value() != want {
+		t.Errorf("Value() = %q, want %q", e.Value(), want)
+	}
+}

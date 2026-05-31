@@ -126,6 +126,59 @@ func (e *EditorComponent) InsertNewline() {
 	e.clampScroll()
 }
 
+// InsertText inserts a block of text at the current cursor position.
+// It strips carriage returns, replaces tabs with four spaces, and splits on
+// newlines so multi-line pastes are handled correctly.
+func (e *EditorComponent) InsertText(s string) {
+	if e.browsing {
+		e.history.StopBrowsing()
+		e.browsing = false
+	}
+
+	s = strings.ReplaceAll(s, "\r", "")
+	s = strings.ReplaceAll(s, "\t", "    ")
+
+	parts := strings.Split(s, "\n")
+	if len(parts) == 0 {
+		return
+	}
+
+	line := []rune(e.lines[e.cursorLine])
+	col := e.cursorCol
+	if col > len(line) {
+		col = len(line)
+	}
+
+	before := string(line[:col])
+	after := string(line[col:])
+
+	if len(parts) == 1 {
+		e.lines[e.cursorLine] = before + parts[0] + after
+		e.cursorCol = col + utf8.RuneCountInString(parts[0])
+		return
+	}
+
+	// First part appends to current line's prefix.
+	e.lines[e.cursorLine] = before + parts[0]
+
+	// Middle parts are new lines.
+	newLines := make([]string, 0, len(e.lines)+len(parts)-1)
+	newLines = append(newLines, e.lines[:e.cursorLine+1]...)
+	for _, p := range parts[1 : len(parts)-1] {
+		newLines = append(newLines, p)
+	}
+
+	// Last part gets the suffix from the original line.
+	lastPart := parts[len(parts)-1]
+	newLines = append(newLines, lastPart+after)
+	newLines = append(newLines, e.lines[e.cursorLine+1:]...)
+
+	e.lines = newLines
+	e.cursorLine = e.cursorLine + len(parts) - 1
+	e.cursorCol = utf8.RuneCountInString(lastPart)
+	e.clampScroll()
+}
+
 // Submit returns the trimmed content and true if non-empty, clears the editor,
 // and adds the text to history. Returns ("", false) if the content is empty.
 func (e *EditorComponent) Submit() (string, bool) {
