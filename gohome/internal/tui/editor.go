@@ -366,6 +366,10 @@ func (e *EditorComponent) HandleInput(msg tea.KeyMsg) tea.Cmd {
 		}
 		return nil
 
+	case tea.KeySpace:
+		e.InsertRune(' ')
+		return nil
+
 	case tea.KeyRunes:
 		for _, r := range msg.Runes {
 			e.InsertRune(r)
