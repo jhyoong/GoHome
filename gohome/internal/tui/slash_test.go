@@ -12,7 +12,7 @@ import (
 
 // TestSlashYoloTogglesYolo types "/yolo" then Enter and asserts yolo toggled.
 func TestSlashYoloTogglesYolo(t *testing.T) {
-	m := tui.New(nil)
+	m := tui.New(nil, "")
 	// Capture initial yolo state.
 	initialYolo := m.Yolo()
 
@@ -39,7 +39,7 @@ func TestSlashYoloTogglesYolo(t *testing.T) {
 // TestSlashYoloCallbackFires asserts that SetYoloCallback is invoked when
 // /yolo is typed, receiving the new yolo value each time.
 func TestSlashYoloCallbackFires(t *testing.T) {
-	m := tui.New(nil)
+	m := tui.New(nil, "")
 
 	var recorded []bool
 	m.SetYoloCallback(func(v bool) { recorded = append(recorded, v) })
@@ -83,7 +83,7 @@ func TestSlashYoloCallbackFires(t *testing.T) {
 
 // TestSlashNewNotImplemented types "/new" then Enter and asserts "not implemented".
 func TestSlashNewNotImplemented(t *testing.T) {
-	m := tui.New(nil)
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
@@ -101,7 +101,7 @@ func TestSlashNewNotImplemented(t *testing.T) {
 
 // TestSlashPaletteSuggestsCommands types "/" and asserts command suggestions appear.
 func TestSlashPaletteSuggestsCommands(t *testing.T) {
-	m := tui.New(nil)
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 

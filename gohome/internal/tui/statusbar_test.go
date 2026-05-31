@@ -15,7 +15,7 @@ import (
 // when the model has a focused session with non-zero usage, a modelName, and
 // yolo mode enabled.
 func TestStatusBarContent(t *testing.T) {
-	m := tui.New(nil)
+	m := tui.New(nil, "")
 	m.SetModelName("opus")
 	m.SetYolo(true)
 
@@ -49,7 +49,7 @@ func TestStatusBarContent(t *testing.T) {
 
 // TestStatusBarNoYolo verifies [YOLO] is absent when yolo is false.
 func TestStatusBarNoYolo(t *testing.T) {
-	m := tui.New(nil)
+	m := tui.New(nil, "")
 	m.SetModelName("sonnet")
 	// yolo defaults to false
 
@@ -75,7 +75,7 @@ func TestStatusBarNoYolo(t *testing.T) {
 
 // TestStatusBarModelUnknown verifies "?" is shown when no modelName is set.
 func TestStatusBarModelUnknown(t *testing.T) {
-	m := tui.New(nil)
+	m := tui.New(nil, "")
 	// modelName defaults to ""
 
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(120, 24))

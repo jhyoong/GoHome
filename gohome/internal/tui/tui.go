@@ -90,13 +90,16 @@ type Model struct {
 	contextNotice string // most recent context warning for the notification line
 }
 
-// New creates and returns a new Model with an initial "main" session.
-// fe may be nil (tests that do not need agent routing or input submission).
-// When fe is non-nil, the Model shares fe.input so submitted text reaches
-// AwaitUserInput.
-func New(fe *Frontend) *Model {
+// New creates and returns a new Model with an initial session whose ID matches
+// the agent session. fe may be nil (tests that do not need agent routing or
+// input submission). When fe is non-nil, the Model shares fe.input so submitted
+// text reaches AwaitUserInput.
+func New(fe *Frontend, sessionID string) *Model {
+	if sessionID == "" {
+		sessionID = "main"
+	}
 	main := &SessionView{
-		ID:    "main",
+		ID:    sessionID,
 		Depth: 0,
 		Title: "main",
 	}
@@ -115,9 +118,9 @@ func New(fe *Frontend) *Model {
 
 	m := &Model{
 		theme:            style.Default(),
-		sessions:         map[string]*SessionView{"main": main},
-		order:            []string{"main"},
-		focused:          "main",
+		sessions:         map[string]*SessionView{sessionID: main},
+		order:            []string{sessionID},
+		focused:          sessionID,
 		input:            ta,
 		inputCh:          inputCh,
 		contextWindow:    128000,

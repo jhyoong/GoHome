@@ -26,7 +26,7 @@ func (m *Model) sessionStrip() string {
 		if sv.InFlight {
 			state = "running"
 		}
-		label := id + " " + state
+		label := sv.Title + " " + state
 		if id == m.focused {
 			sb.WriteString(chipFocused.Render(label))
 		} else {

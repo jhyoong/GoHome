@@ -14,7 +14,7 @@ import (
 // TestSessionStripShowsFocused verifies the strip renders when there is only
 // the default "main" session.
 func TestSessionStripShowsFocused(t *testing.T) {
-	m := tui.New(nil)
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(120, 24))
 	t.Cleanup(func() {
 		_ = tm.Quit()
@@ -30,7 +30,7 @@ func TestSessionStripShowsFocused(t *testing.T) {
 // TestFocusCyclingCtrlCloseBracket verifies that Ctrl+] moves focus to a
 // sub-session registered via an EventSessionStarted message.
 func TestFocusCyclingCtrlCloseBracket(t *testing.T) {
-	m := tui.New(nil)
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(120, 24))
 	t.Cleanup(func() {
 		_ = tm.Quit()
@@ -77,7 +77,7 @@ func TestFocusCyclingCtrlCloseBracket(t *testing.T) {
 
 // TestFocusCyclingCtrlOpenBracket verifies that Ctrl+[ moves focus backward.
 func TestFocusCyclingCtrlOpenBracket(t *testing.T) {
-	m := tui.New(nil)
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(120, 24))
 	t.Cleanup(func() {
 		_ = tm.Quit()

@@ -32,7 +32,7 @@ func apply(m *tui.Model, msg tea.Msg) *tui.Model {
 
 // newSized builds a Model already sized to 80x24.
 func newSized() *tui.Model {
-	m := tui.New(nil)
+	m := tui.New(nil, "")
 	m = apply(m, tea.WindowSizeMsg{Width: snapshotW, Height: snapshotH})
 	return m
 }

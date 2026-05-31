@@ -234,7 +234,7 @@ func main() {
 	}
 
 	// Build TUI model.
-	m := tui.New(fe)
+	m := tui.New(fe, sess.ID)
 	m.SetYoloCallback(g.SetYolo)
 	m.SetModelName(endpoint.DefaultModel)
 	contextWindow := endpoint.ContextWindow

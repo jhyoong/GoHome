@@ -14,7 +14,7 @@ import (
 // TestContextWarning80 drives a usage event above 80% of a small context window
 // and asserts the 80% warning text appears.
 func TestContextWarning80(t *testing.T) {
-	m := tui.New(nil)
+	m := tui.New(nil, "")
 	// Set a small context window so we can easily exceed 80%.
 	m.SetContextWindow(1000)
 
@@ -46,7 +46,7 @@ func TestContextWarning80(t *testing.T) {
 
 // TestContextWarning95 drives usage above 95% and asserts the 95% warning.
 func TestContextWarning95(t *testing.T) {
-	m := tui.New(nil)
+	m := tui.New(nil, "")
 	m.SetContextWindow(1000)
 
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))

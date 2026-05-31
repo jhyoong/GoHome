@@ -12,7 +12,7 @@ import (
 )
 
 func TestSkeletonRender(t *testing.T) {
-	m := tui.New(nil)
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() {
 		_ = tm.Quit()
@@ -25,7 +25,7 @@ func TestSkeletonRender(t *testing.T) {
 }
 
 func TestSessionViewTimelineRender(t *testing.T) {
-	m := tui.New(nil)
+	m := tui.New(nil, "")
 	// Add a user entry to the focused "main" session.
 	m.AddTimelineEntry("main", tui.TimelineEntry{Kind: "user", Text: "hello"})
 
@@ -40,7 +40,7 @@ func TestSessionViewTimelineRender(t *testing.T) {
 }
 
 func TestAgentEventTokenDelta(t *testing.T) {
-	m := tui.New(nil)
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() {
 		_ = tm.Quit()
@@ -59,7 +59,7 @@ func TestAgentEventTokenDelta(t *testing.T) {
 
 func TestInputTextareaSubmit(t *testing.T) {
 	fe := tui.NewFrontend()
-	m := tui.New(fe)
+	m := tui.New(fe, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() {
 		_ = tm.Quit()
@@ -93,7 +93,7 @@ func TestInputTextareaSubmit(t *testing.T) {
 }
 
 func TestViewportScrollback(t *testing.T) {
-	m := tui.New(nil)
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() {
 		_ = tm.Quit()

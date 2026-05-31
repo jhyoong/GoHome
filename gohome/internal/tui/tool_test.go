@@ -14,7 +14,7 @@ import (
 // TestToolCallCollapsedLine sends EventToolCallDone + EventToolResult and
 // asserts the collapsed line shows the tool name.
 func TestToolCallCollapsedLine(t *testing.T) {
-	m := tui.New(nil)
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
@@ -41,7 +41,7 @@ func TestToolCallCollapsedLine(t *testing.T) {
 // TestToolCallExpansionToggle sends a tool event, moves cursor to it (Up with
 // empty input), presses Enter to expand, and asserts expanded content appears.
 func TestToolCallExpansionToggle(t *testing.T) {
-	m := tui.New(nil)
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 

@@ -15,7 +15,7 @@ import (
 // TestTokensOverlayShowsUsage opens the /tokens overlay and asserts the usage
 // breakdown is rendered (including total); then presses Esc and asserts it closes.
 func TestTokensOverlayShowsUsage(t *testing.T) {
-	m := tui.New(nil)
+	m := tui.New(nil, "")
 	m.SetContextWindow(10000)
 
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
