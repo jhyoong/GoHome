@@ -1,7 +1,11 @@
 package tui
 
 import (
+	"strings"
 	"testing"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
 
 // TestBarCells exercises the cell-count math at several key ratios.
@@ -67,5 +71,37 @@ func TestProgressBarZeroWidth(t *testing.T) {
 	got := progressBar(50, 100, 0)
 	if got != "" {
 		t.Errorf("progressBar with width=0 should return empty, got %q", got)
+	}
+}
+
+func TestProgressBarColorThresholds(t *testing.T) {
+	// Force ANSI color output so lipgloss emits escape sequences even in
+	// a non-TTY test environment. With termenv.ANSI, terminal colors 1/2/3
+	// render as \x1b[31m / \x1b[32m / \x1b[33m (basic 3x/4x codes).
+	lipgloss.SetColorProfile(termenv.ANSI)
+	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
+
+	tests := []struct {
+		name     string
+		used     int
+		total    int
+		wantSeq  string // ANSI escape sequence fragment
+	}{
+		{"50% is green", 50, 100, "[32m"},
+		{"79% is green", 79, 100, "[32m"},
+		{"80% is yellow", 80, 100, "[33m"},
+		{"90% is yellow", 90, 100, "[33m"},
+		{"95% is yellow", 95, 100, "[33m"},
+		{"96% is red", 96, 100, "[31m"},
+		{"100% is red", 100, 100, "[31m"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			bar := progressBar(tc.used, tc.total, 10)
+			if !strings.Contains(bar, tc.wantSeq) {
+				t.Errorf("progressBar(%d, %d, 10) = %q, want seq %s",
+					tc.used, tc.total, bar, tc.wantSeq)
+			}
+		})
 	}
 }

@@ -34,9 +34,9 @@ func barCells(used, total, width int) int {
 
 // progressBar renders a width-cell bar using filled/empty Unicode block chars.
 // The bar colour reflects how full it is:
-//   - ratio <= 0.50  -> green
-//   - 0.50 < ratio <= 0.80 -> yellow
-//   - ratio > 0.80          -> red
+//   - ratio < 0.80   -> green
+//   - 0.80 <= ratio <= 0.95 -> yellow
+//   - ratio > 0.95          -> red
 func progressBar(used, total, width int) string {
 	if width <= 0 {
 		return ""
@@ -55,9 +55,9 @@ func progressBar(used, total, width int) string {
 
 	var color lipgloss.Color
 	switch {
-	case ratio <= 0.50:
+	case ratio < 0.80:
 		color = lipgloss.Color("2") // green
-	case ratio <= 0.80:
+	case ratio <= 0.95:
 		color = lipgloss.Color("3") // yellow
 	default:
 		color = lipgloss.Color("1") // red
