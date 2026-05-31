@@ -590,68 +590,6 @@ func shortArg(inputJSON string) string {
 	return shortSummary(strings.TrimSpace(inputJSON))
 }
 
-// renderTimeline converts a SessionView's timeline to plain text.
-// cursor is the index of the highlighted entry (used when input is empty).
-// Pass cursor = -1 to render without highlighting.
-func renderTimeline(sv *SessionView, cursor int) string {
-	var sb strings.Builder
-	for i, e := range sv.Timeline {
-		// Cursor marker: leading ">" for the selected entry.
-		marker := "  "
-		if i == cursor {
-			marker = "> "
-		}
-
-		switch e.Kind {
-		case "user":
-			sb.WriteString(marker)
-			sb.WriteString("you: ")
-			sb.WriteString(e.Text)
-			sb.WriteString("\n")
-		case "assistant":
-			sb.WriteString(marker)
-			sb.WriteString(e.Text)
-			sb.WriteString("\n")
-		case "tool":
-			// Collapsed line: "> <toolName> <short-arg>  ->  <short-result>"
-			arg := shortArg(e.Text)
-			result := shortSummary(e.ToolResult)
-			collapsed := fmt.Sprintf("[tool] %s", e.ToolName)
-			if arg != "" {
-				collapsed += " " + arg
-			}
-			if result != "" {
-				collapsed += "  ->  " + result
-			}
-			sb.WriteString(marker)
-			sb.WriteString(collapsed)
-			sb.WriteString("\n")
-			// Expanded: show full args and full result.
-			if e.Expanded {
-				if e.Text != "" {
-					sb.WriteString("       args: ")
-					sb.WriteString(e.Text)
-					sb.WriteString("\n")
-				}
-				if e.ToolResult != "" {
-					sb.WriteString("       result:\n")
-					for _, line := range strings.Split(e.ToolResult, "\n") {
-						sb.WriteString("         ")
-						sb.WriteString(line)
-						sb.WriteString("\n")
-					}
-				}
-			}
-		case "notice":
-			sb.WriteString(marker)
-			sb.WriteString("[notice] ")
-			sb.WriteString(e.Text)
-			sb.WriteString("\n")
-		}
-	}
-	return sb.String()
-}
-
 // clampCursor ensures m.cursor is within the valid range for the focused session.
 func (m *Model) clampCursor() {
 	sv, ok := m.sessions[m.focused]
