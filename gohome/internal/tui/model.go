@@ -18,6 +18,7 @@ type TimelineEntry struct {
 	ToolName   string
 	ToolResult string
 	Expanded   bool
+	Status     string // "" | "pending" | "success" | "error" (tool entries only)
 }
 
 // SessionView holds the display state for one agent session.
@@ -219,26 +220,39 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 			Kind:     "tool",
 			ToolName: ev.ToolName,
 			Text:     ev.InputJSON,
+			Status:   "pending",
 		})
 
 	case agent.EventToolResult:
 		// Set ToolResult on the most recent tool entry without a result.
 		content := ""
+		isErr := false
 		if ev.Result != nil {
 			content = ev.Result.Content
+			isErr = ev.Result.IsError
 		}
 		set := false
 		for i := len(sv.Timeline) - 1; i >= 0; i-- {
 			if sv.Timeline[i].Kind == "tool" && sv.Timeline[i].ToolResult == "" {
 				sv.Timeline[i].ToolResult = content
+				if isErr {
+					sv.Timeline[i].Status = "error"
+				} else {
+					sv.Timeline[i].Status = "success"
+				}
 				set = true
 				break
 			}
 		}
 		if !set {
+			status := "success"
+			if isErr {
+				status = "error"
+			}
 			sv.Timeline = append(sv.Timeline, TimelineEntry{
 				Kind:       "tool",
 				ToolResult: content,
+				Status:     status,
 			})
 		}
 

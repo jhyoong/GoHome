@@ -59,3 +59,50 @@ func TestChatScrolling(t *testing.T) {
 		t.Errorf("expected max 10 lines, got %d", len(lines))
 	}
 }
+
+func TestToolStatusPending(t *testing.T) {
+	entries := []TimelineEntry{{
+		Kind:     "tool",
+		ToolName: "bash",
+		Text:     `{"command":"ls"}`,
+		Status:   "pending",
+	}}
+	c := NewChat(&entries, 20)
+	lines := c.Render(80)
+	joined := strings.Join(lines, "\n")
+	if !strings.Contains(joined, "bash") {
+		t.Errorf("tool name not found: %q", joined)
+	}
+}
+
+func TestToolStatusSuccess(t *testing.T) {
+	entries := []TimelineEntry{{
+		Kind:       "tool",
+		ToolName:   "bash",
+		Text:       `{"command":"ls"}`,
+		ToolResult: "file.txt",
+		Status:     "success",
+	}}
+	c := NewChat(&entries, 20)
+	lines := c.Render(80)
+	joined := strings.Join(lines, "\n")
+	if !strings.Contains(joined, "bash") {
+		t.Errorf("tool name not found: %q", joined)
+	}
+}
+
+func TestToolStatusError(t *testing.T) {
+	entries := []TimelineEntry{{
+		Kind:       "tool",
+		ToolName:   "bash",
+		Text:       `{"command":"rm /"}`,
+		ToolResult: "permission denied",
+		Status:     "error",
+	}}
+	c := NewChat(&entries, 20)
+	lines := c.Render(80)
+	joined := strings.Join(lines, "\n")
+	if !strings.Contains(joined, "ERROR") {
+		t.Errorf("error prefix not found: %q", joined)
+	}
+}

@@ -8,7 +8,6 @@ import (
 
 var (
 	userPrefix  = lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
-	toolStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Italic(true)
 	noticeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 )
 
@@ -157,11 +156,24 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 func renderToolLine(e TimelineEntry, maxWidth int) string {
 	arg := shortArg(e.Text)
 	result := shortSummary(e.ToolResult)
-	line := toolStyle.Render(fmt.Sprintf("[tool] %s", e.ToolName))
+
+	var st lipgloss.Style
+	switch e.Status {
+	case "error":
+		st = lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true)
+	case "success":
+		st = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+	default: // "pending" or ""
+		st = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Italic(true)
+	}
+
+	line := st.Render(fmt.Sprintf("[tool] %s", e.ToolName))
 	if arg != "" {
 		line += " " + arg
 	}
-	if result != "" {
+	if e.Status == "error" && result != "" {
+		line += "  ->  ERROR: " + result
+	} else if result != "" {
 		line += "  ->  " + result
 	}
 	if VisualWidth(StripAnsi(line)) > maxWidth {

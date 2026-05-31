@@ -6,7 +6,9 @@ import "github.com/charmbracelet/lipgloss"
 type Theme struct {
 	UserMsg      lipgloss.Style
 	AssistantMsg lipgloss.Style
-	ToolLine     lipgloss.Style
+	ToolPending  lipgloss.Style
+	ToolSuccess  lipgloss.Style
+	ToolError    lipgloss.Style
 	StatusBar    lipgloss.Style
 	Notification lipgloss.Style
 }
@@ -19,9 +21,14 @@ func Default() Theme {
 			Bold(true),
 		AssistantMsg: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("7")),
-		ToolLine: lipgloss.NewStyle().
+		ToolPending: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("3")).
 			Italic(true),
+		ToolSuccess: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("2")),
+		ToolError: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("1")).
+			Bold(true),
 		StatusBar: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("8")).
 			Background(lipgloss.Color("0")),
