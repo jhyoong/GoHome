@@ -81,8 +81,9 @@ func TestSlashYoloCallbackFires(t *testing.T) {
 	}
 }
 
-// TestSlashNewNotImplemented types "/new" then Enter and asserts "not implemented".
-func TestSlashNewNotImplemented(t *testing.T) {
+// TestSlashNewNotConfigured types "/new" then Enter and asserts "not configured"
+// when no NewSession callback has been registered.
+func TestSlashNewNotConfigured(t *testing.T) {
 	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
@@ -95,7 +96,7 @@ func TestSlashNewNotImplemented(t *testing.T) {
 	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("not implemented"))
+		return bytes.Contains(out, []byte("not configured"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
 

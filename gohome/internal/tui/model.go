@@ -88,6 +88,10 @@ type Model struct {
 	// Context warning tracking per session (Task 11.16).
 	// warned80/warned95 are set in handleAgentEvent to fire once per session.
 	contextNotice string // most recent context warning for the notification line
+
+	// slashCB holds optional callbacks wired to slash commands (/new, /resume,
+	// /model, /cancel). Set via SetSlashCallbacks.
+	slashCB SlashCallbacks
 }
 
 // New creates and returns a new Model with an initial session whose ID matches
@@ -144,6 +148,12 @@ func (m *Model) SetYolo(yolo bool) {
 // This keeps the TUI decoupled from the concrete guard type.
 func (m *Model) SetYoloCallback(fn func(bool)) {
 	m.onYoloChange = fn
+}
+
+// SetSlashCallbacks registers the callbacks invoked by /new, /resume, /cancel,
+// and /model slash commands.
+func (m *Model) SetSlashCallbacks(cb SlashCallbacks) {
+	m.slashCB = cb
 }
 
 // SetContextWindow sets the total context window size used in the token bar.
@@ -749,8 +759,66 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 	case "/tokens":
 		m.showTokens = true
 		m.statusMsg = ""
+	case "/cancel":
+		if m.slashCB.CancelSession != nil {
+			m.slashCB.CancelSession(m.focused)
+		}
+		sv := m.getOrCreateSession(m.focused, 0)
+		sv.InFlight = false
+		sv.Timeline = append(sv.Timeline, TimelineEntry{Kind: "notice", Text: "Cancelled."})
+		m.statusMsg = "Cancelled"
+	case "/new":
+		if m.slashCB.NewSession != nil {
+			id, err := m.slashCB.NewSession()
+			if err != nil {
+				m.statusMsg = fmt.Sprintf("/new: %v", err)
+			} else {
+				m.getOrCreateSession(id, 0)
+				m.focused = id
+				m.cursor = 0
+				m.statusMsg = "New session: " + id
+			}
+		} else {
+			m.statusMsg = "/new: not configured"
+		}
+	case "/resume":
+		if len(fields) < 2 {
+			m.statusMsg = "/resume: provide a session ID"
+			break
+		}
+		sid := fields[1]
+		if m.slashCB.ResumeSession != nil {
+			err := m.slashCB.ResumeSession(sid)
+			if err != nil {
+				m.statusMsg = fmt.Sprintf("/resume: %v", err)
+			} else {
+				m.getOrCreateSession(sid, 0)
+				m.focused = sid
+				m.cursor = 0
+				m.statusMsg = "Resumed: " + sid
+			}
+		} else {
+			m.statusMsg = "/resume: not configured"
+		}
+	case "/model":
+		if len(fields) < 2 {
+			m.statusMsg = fmt.Sprintf("Current model: %s", m.modelName)
+			break
+		}
+		name := fields[1]
+		if m.slashCB.SetModel != nil {
+			err := m.slashCB.SetModel(name)
+			if err != nil {
+				m.statusMsg = fmt.Sprintf("/model: %v", err)
+			} else {
+				m.modelName = name
+				m.statusMsg = "Model set to " + name
+			}
+		} else {
+			m.statusMsg = "/model: not configured"
+		}
 	default:
-		m.statusMsg = cmd + ": not implemented"
+		m.statusMsg = cmd + ": unknown command"
 	}
 	return nil
 }
