@@ -617,8 +617,8 @@ func shortSummary(s string) string {
 	}
 	lines := strings.Split(s, "\n")
 	if len(lines) == 1 {
-		if len(s) > 60 {
-			return s[:57] + "..."
+		if VisualWidth(s) > 60 {
+			return TruncateText(s, 57) + "..."
 		}
 		return s
 	}
