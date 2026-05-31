@@ -18,9 +18,9 @@ func TestSkeletonRender(t *testing.T) {
 		_ = tm.Quit()
 	})
 
-	// The textarea placeholder must be visible on startup.
+	// The editor border must be visible on startup.
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("Type a message"))
+		return bytes.Contains(out, []byte("─"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
 

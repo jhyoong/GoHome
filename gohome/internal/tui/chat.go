@@ -37,6 +37,9 @@ func (c *ChatComponent) SetMaxHeight(h int) { c.maxHeight = h }
 // SetCursor sets the index of the highlighted timeline entry.
 func (c *ChatComponent) SetCursor(idx int) { c.cursor = idx }
 
+// SetTimeline updates the timeline pointer backing this component.
+func (c *ChatComponent) SetTimeline(t *[]TimelineEntry) { c.timeline = t }
+
 // ScrollUp scrolls up by n lines, disabling auto-scroll.
 func (c *ChatComponent) ScrollUp(n int) {
 	c.scrollTop -= n

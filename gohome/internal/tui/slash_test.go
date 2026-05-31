@@ -21,7 +21,7 @@ func TestSlashYoloTogglesYolo(t *testing.T) {
 
 	// Wait for the TUI to initialise.
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("Type a message"))
+		return bytes.Contains(out, []byte("─"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
 	tm.Type("/yolo")
@@ -48,7 +48,7 @@ func TestSlashYoloCallbackFires(t *testing.T) {
 	t.Cleanup(func() { _ = tm.Quit() })
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("Type a message"))
+		return bytes.Contains(out, []byte("─"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
 	// First toggle: off -> on
@@ -89,7 +89,7 @@ func TestSlashNewNotConfigured(t *testing.T) {
 	t.Cleanup(func() { _ = tm.Quit() })
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("Type a message"))
+		return bytes.Contains(out, []byte("─"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
 	tm.Type("/new")
@@ -107,7 +107,7 @@ func TestSlashPaletteSuggestsCommands(t *testing.T) {
 	t.Cleanup(func() { _ = tm.Quit() })
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("Type a message"))
+		return bytes.Contains(out, []byte("─"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
 	// Type just "/" to trigger the palette with all commands.

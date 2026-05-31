@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/textarea"
-	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
@@ -36,9 +34,6 @@ type SessionView struct {
 	warned95 bool
 }
 
-// inputHeight is the fixed height reserved for the textarea.
-const inputHeight = 3
-
 // statusHeight is the height reserved for the status bar.
 const statusHeight = 1
 
@@ -52,12 +47,12 @@ type Model struct {
 	order    []string
 	focused  string
 
-	input   textarea.Model
-	inputCh chan string // shared with Frontend.input
-	vp      viewport.Model
+	editor  *EditorComponent
+	chat    *ChatComponent
+	spinner *SpinnerComponent
+	inputCh chan string
 	winW    int
 	winH    int
-	vpReady bool
 
 	// cursor indexes the focused session's Timeline. When input is empty,
 	// Up/Down move the cursor; Enter on a tool entry toggles expansion.
@@ -108,11 +103,6 @@ func New(fe *Frontend, sessionID string) *Model {
 		Title: "main",
 	}
 
-	ta := textarea.New()
-	ta.Placeholder = "Type a message..."
-	ta.ShowLineNumbers = false
-	ta.SetHeight(inputHeight)
-
 	var inputCh chan string
 	if fe != nil {
 		inputCh = fe.input
@@ -125,11 +115,13 @@ func New(fe *Frontend, sessionID string) *Model {
 		sessions:         map[string]*SessionView{sessionID: main},
 		order:            []string{sessionID},
 		focused:          sessionID,
-		input:            ta,
 		inputCh:          inputCh,
 		contextWindow:    128000,
 		pendingApprovals: make(map[string]*approvalPrompt),
+		editor:           NewEditor(80, 24),
+		spinner:          NewSpinner(),
 	}
+	m.chat = NewChat(&main.Timeline, 20)
 	return m
 }
 
@@ -171,9 +163,9 @@ func (m *Model) Focused() string {
 	return m.focused
 }
 
-// Init implements tea.Model. Focuses the textarea on startup.
+// Init implements tea.Model.
 func (m *Model) Init() tea.Cmd {
-	return m.input.Focus()
+	return nil
 }
 
 // getOrCreateSession returns the SessionView for id, creating it if absent.
@@ -187,30 +179,25 @@ func (m *Model) getOrCreateSession(id string, depth int) *SessionView {
 	return sv
 }
 
-// rebuildViewport refreshes the viewport content from the focused session.
-// cursorActive controls whether the timeline cursor highlight is shown.
-// Pass true when the input is empty (cursor-navigation mode).
+// rebuildViewport refreshes the chat component state from the focused session.
 func (m *Model) rebuildViewport() {
-	if !m.vpReady {
-		return
-	}
 	sv, ok := m.sessions[m.focused]
 	if !ok {
 		return
 	}
 	cur := -1
-	if strings.TrimSpace(m.input.Value()) == "" {
+	if strings.TrimSpace(m.editor.Value()) == "" {
 		m.clampCursor()
 		cur = m.cursor
 	}
-	content := renderTimeline(sv, cur)
-	m.vp.SetContent(content)
-	// Auto-scroll to bottom when new content arrives.
-	m.vp.GotoBottom()
+	m.chat.SetTimeline(&sv.Timeline)
+	m.chat.SetCursor(cur)
+	m.chat.ScrollToBottom()
 }
 
 // handleAgentEvent updates the relevant SessionView based on the event kind.
-func (m *Model) handleAgentEvent(msg agentEventMsg) {
+// It returns a tea.Cmd (SpinnerTickCmd when the spinner starts, nil otherwise).
+func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 	ev := msg.Ev
 	sv := m.getOrCreateSession(msg.SessionID, 1)
 
@@ -283,9 +270,24 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) {
 		sv.InFlight = false
 	}
 
+	// Spinner: start on first token delta, stop on completion/error.
+	switch ev.Kind {
+	case agent.EventTokenDelta:
+		if !m.spinner.Active() {
+			m.spinner.Start("Thinking...")
+		}
+	case agent.EventTurnDone, agent.EventSessionEnded, agent.EventError:
+		m.spinner.Stop()
+	}
+
 	if msg.SessionID == m.focused {
 		m.rebuildViewport()
 	}
+
+	if ev.Kind == agent.EventTokenDelta && m.spinner.Active() {
+		return SpinnerTickCmd()
+	}
+	return nil
 }
 
 // sendInputCmd returns a Cmd that delivers text to the input channel
@@ -365,20 +367,6 @@ func (m *Model) checkContextWarnings(sv *SessionView) {
 	}
 }
 
-// vpHeight returns the viewport height given current window dimensions.
-// When a notification line is visible, one extra row is consumed.
-func (m *Model) vpHeight() int {
-	notif := 0
-	if m.notificationLine() != "" {
-		notif = 1
-	}
-	h := m.winH - inputHeight - statusHeight - stripHeight - notif
-	if h < 1 {
-		h = 1
-	}
-	return h
-}
-
 // Update implements tea.Model.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
@@ -387,14 +375,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.winW = msg.Width
 		m.winH = msg.Height
-		m.input.SetWidth(msg.Width)
-		if !m.vpReady {
-			m.vp = viewport.New(msg.Width, m.vpHeight())
-			m.vpReady = true
-			m.rebuildViewport()
-		} else {
-			m.vp.Width = msg.Width
-			m.vp.Height = m.vpHeight()
+		m.editor.SetTermHeight(msg.Height)
+
+	case spinnerTickMsg:
+		if m.spinner.Active() {
+			m.spinner.Tick()
+			cmds = append(cmds, SpinnerTickCmd())
 		}
 
 	case approvalReqMsg:
@@ -428,97 +414,60 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.Type {
-		case tea.KeyEnter:
-			// Alt+Enter passes through to textarea for newlines.
-			if msg.Alt {
-				break
-			}
-			text := strings.TrimSpace(m.input.Value())
-			// Enter-disambiguation rule:
-			// - If input is empty AND cursor is on a tool entry -> toggle expansion.
-			// - If input starts with '/' -> run slash command.
-			// - Otherwise -> submit text to agent.
-			if text == "" {
-				sv, ok := m.sessions[m.focused]
-				if ok && m.cursor >= 0 && m.cursor < len(sv.Timeline) {
-					entry := &sv.Timeline[m.cursor]
-					if entry.Kind == "tool" {
-						entry.Expanded = !entry.Expanded
-						m.rebuildViewport()
-					}
-				}
-				return m, tea.Batch(cmds...)
-			}
-			if strings.HasPrefix(text, "/") {
-				cmd := m.handleSlashCommand(text)
-				m.input.Reset()
-				m.rebuildViewport()
-				if cmd != nil {
-					cmds = append(cmds, cmd)
-				}
-				return m, tea.Batch(cmds...)
-			}
-			// Normal submit.
-			sv := m.getOrCreateSession(m.focused, 0)
-			sv.Timeline = append(sv.Timeline, TimelineEntry{
-				Kind: "user",
-				Text: text,
-			})
-			sv.InFlight = true
-			m.input.Reset()
-			m.cursor = len(sv.Timeline) - 1
-			m.rebuildViewport()
-			cmds = append(cmds, m.sendInputCmd(text))
-			return m, tea.Batch(cmds...)
-		}
-
-		// PgUp / PgDn and Up/Down route to the viewport when input is non-empty.
-		// When input is empty, Up/Down move the timeline cursor.
-		// Ctrl+] / Ctrl+[ cycle focus between sessions.
-		switch msg.Type {
-		case tea.KeyCtrlCloseBracket: // Ctrl+]
+		case tea.KeyCtrlCloseBracket:
 			m.focusNext()
-		case tea.KeyCtrlOpenBracket: // Ctrl+[
+		case tea.KeyCtrlOpenBracket:
 			m.focusPrev()
-		case tea.KeyUp:
-			if strings.TrimSpace(m.input.Value()) == "" {
-				m.cursor--
-				m.clampCursor()
-				m.rebuildViewport()
+		case tea.KeyPgUp:
+			m.chat.ScrollUp(5)
+		case tea.KeyPgDown:
+			m.chat.ScrollDown(5)
+		case tea.KeyEnter:
+			if msg.Alt {
+				m.editor.InsertNewline()
 			} else {
-				var vpCmd tea.Cmd
-				m.vp, vpCmd = m.vp.Update(msg)
-				cmds = append(cmds, vpCmd)
+				text := strings.TrimSpace(m.editor.Value())
+				if text == "" {
+					sv, ok := m.sessions[m.focused]
+					if ok && m.cursor >= 0 && m.cursor < len(sv.Timeline) {
+						entry := &sv.Timeline[m.cursor]
+						if entry.Kind == "tool" {
+							entry.Expanded = !entry.Expanded
+						}
+					}
+				} else if strings.HasPrefix(text, "/") {
+					cmd := m.handleSlashCommand(text)
+					m.editor.SetValue("")
+					m.rebuildViewport()
+					if cmd != nil {
+						cmds = append(cmds, cmd)
+					}
+				} else {
+					sv := m.getOrCreateSession(m.focused, 0)
+					sv.Timeline = append(sv.Timeline, TimelineEntry{
+						Kind: "user",
+						Text: text,
+					})
+					sv.InFlight = true
+					m.editor.SetValue("")
+					m.cursor = len(sv.Timeline) - 1
+					m.rebuildViewport()
+					cmds = append(cmds, m.sendInputCmd(text))
+				}
 			}
-		case tea.KeyDown:
-			if strings.TrimSpace(m.input.Value()) == "" {
-				m.cursor++
-				m.clampCursor()
-				m.rebuildViewport()
-			} else {
-				var vpCmd tea.Cmd
-				m.vp, vpCmd = m.vp.Update(msg)
-				cmds = append(cmds, vpCmd)
-			}
-		case tea.KeyPgUp, tea.KeyPgDown:
-			var vpCmd tea.Cmd
-			m.vp, vpCmd = m.vp.Update(msg)
-			cmds = append(cmds, vpCmd)
+			return m, tea.Batch(cmds...)
 		default:
-			// All other keystrokes go to the textarea.
-			var taCmd tea.Cmd
-			m.input, taCmd = m.input.Update(msg)
-			cmds = append(cmds, taCmd)
+			cmd := m.editor.HandleInput(msg)
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
 		}
 
 	case agentEventMsg:
-		m.handleAgentEvent(msg)
+		if cmd := m.handleAgentEvent(msg); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 
-	default:
-		// Pass through to textarea for cursor blink etc.
-		var taCmd tea.Cmd
-		m.input, taCmd = m.input.Update(msg)
-		cmds = append(cmds, taCmd)
 	}
 
 	return m, tea.Batch(cmds...)
@@ -858,7 +807,7 @@ func (m *Model) renderTokensOverlay() string {
 // slashPalette renders the autocomplete list when input starts with '/'.
 // Returns "" when not applicable.
 func (m *Model) slashPalette() string {
-	val := m.input.Value()
+	val := m.editor.Value()
 	if !strings.HasPrefix(val, "/") {
 		return ""
 	}
@@ -869,55 +818,69 @@ func (m *Model) slashPalette() string {
 	return strings.Join(matches, "  ")
 }
 
-// inputRegion returns the string to render in place of the normal textarea.
-// When an approval prompt is active it renders the approval overlay instead.
-func (m *Model) inputRegion() string {
-	if m.activeApproval != nil {
-		return renderApprovalOverlay(m.activeApproval, m.winW)
-	}
-	palette := m.slashPalette()
-	if palette != "" {
-		return palette + "\n" + m.input.View()
-	}
-	return m.input.View()
-}
-
 // View implements tea.Model.
 func (m *Model) View() string {
-	strip := m.sessionStrip()
-	sbar := m.statusBar()
-
-	// Status message line (transient, Task 11.14).
-	statusLine := ""
-	if m.statusMsg != "" {
-		statusLine = m.statusMsg + "\n"
+	// Guard against zero-size window (no WindowSizeMsg received yet).
+	if m.winW <= 0 {
+		return "gohome"
 	}
 
-	// Notification line between viewport and input region (Task 11.12).
-	notif := ""
+	var sections []string
+
+	sections = append(sections, m.sessionStrip())
+
 	if nl := m.notificationLine(); nl != "" {
-		notif = m.theme.Notification.Render(nl) + "\n"
+		sections = append(sections, m.theme.Notification.Render(nl))
 	}
 
-	// /tokens overlay replaces the main content area (Task 11.15).
 	if m.showTokens {
-		overlay := m.renderTokensOverlay()
-		return strip + "\n" + overlay + "\n" + notif + statusLine + sbar
+		sections = append(sections, m.renderTokensOverlay())
+		sections = append(sections, m.statusBar())
+		return strings.Join(sections, "\n")
 	}
 
-	if m.vpReady {
-		return strip + "\n" + m.vp.View() + "\n" + notif + statusLine + m.inputRegion() + "\n" + sbar
+	// Chat area
+	chatH := m.winH - editorMinHeight - 2 - stripHeight - statusHeight - 2
+	if chatH < 1 {
+		chatH = 1
 	}
-	// Viewport not yet sized (no WindowSizeMsg received); fall back to plain text.
+	m.chat.SetMaxHeight(chatH)
 	sv, ok := m.sessions[m.focused]
-	if !ok {
-		return strip + "\ngohome\n" + notif + statusLine + m.inputRegion() + "\n" + sbar
+	if ok {
+		m.chat.SetTimeline(&sv.Timeline)
 	}
-	content := renderTimeline(sv, -1)
-	if content == "" {
-		content = "gohome\n"
+	chatLines := m.chat.Render(m.winW)
+	if len(chatLines) > 0 {
+		sections = append(sections, strings.Join(chatLines, "\n"))
 	}
-	return strip + "\n" + content + notif + statusLine + m.inputRegion() + "\n" + sbar
+
+	// Spinner
+	spinnerLines := m.spinner.Render(m.winW)
+	if len(spinnerLines) > 0 {
+		sections = append(sections, strings.Join(spinnerLines, "\n"))
+	}
+
+	// Status message
+	if m.statusMsg != "" {
+		sections = append(sections, m.statusMsg)
+	}
+
+	// Input region
+	if m.activeApproval != nil {
+		sections = append(sections, renderApprovalOverlay(m.activeApproval, m.winW))
+	} else {
+		palette := m.slashPalette()
+		if palette != "" {
+			sections = append(sections, palette)
+		}
+		m.editor.SetTermHeight(m.winH)
+		editorLines := m.editor.Render(m.winW)
+		sections = append(sections, strings.Join(editorLines, "\n"))
+	}
+
+	sections = append(sections, m.statusBar())
+
+	return strings.Join(sections, "\n")
 }
 
 // Yolo returns current yolo mode state (exported for tests).

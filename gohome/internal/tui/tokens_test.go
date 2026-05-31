@@ -54,10 +54,10 @@ func TestTokensOverlayShowsUsage(t *testing.T) {
 	// Press Esc to close overlay.
 	tm.Send(tea.KeyMsg{Type: tea.KeyEsc})
 
-	// After Esc, the input placeholder must reappear in new output.
+	// After Esc, the editor border must reappear in new output.
 	var accumOut2 []byte
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		accumOut2 = append(accumOut2, out...)
-		return bytes.Contains(accumOut2, []byte("Type a message"))
+		return bytes.Contains(accumOut2, []byte("─"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
