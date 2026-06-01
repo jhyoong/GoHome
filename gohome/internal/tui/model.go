@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -381,6 +383,49 @@ func (m *Model) checkContextWarnings(sv *SessionView) {
 	}
 }
 
+// openExternalEditor writes the current editor content to a temp file, launches
+// the user's preferred editor ($VISUAL / $EDITOR / vi), and returns a Cmd that
+// sends an externalEditorMsg when the editor exits.
+func (m *Model) openExternalEditor() tea.Cmd {
+	content := m.editor.Value()
+
+	tmpFile, err := os.CreateTemp("", "gohome-*.md")
+	if err != nil {
+		m.statusMsg = fmt.Sprintf("editor: %v", err)
+		return nil
+	}
+	tmpPath := tmpFile.Name()
+
+	if _, err := tmpFile.WriteString(content); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpPath)
+		m.statusMsg = fmt.Sprintf("editor: %v", err)
+		return nil
+	}
+	tmpFile.Close()
+
+	editorCmd := os.Getenv("VISUAL")
+	if editorCmd == "" {
+		editorCmd = os.Getenv("EDITOR")
+	}
+	if editorCmd == "" {
+		editorCmd = "vi"
+	}
+
+	c := exec.Command(editorCmd, tmpPath)
+	return tea.ExecProcess(c, func(err error) tea.Msg {
+		defer os.Remove(tmpPath)
+		if err != nil {
+			return externalEditorMsg{Err: err}
+		}
+		data, readErr := os.ReadFile(tmpPath)
+		if readErr != nil {
+			return externalEditorMsg{Err: readErr}
+		}
+		return externalEditorMsg{Content: string(data)}
+	})
+}
+
 // Update implements tea.Model.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
@@ -470,6 +515,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, tea.Batch(cmds...)
+		case tea.KeyCtrlE:
+			return m, m.openExternalEditor()
 		default:
 			cmd := m.editor.HandleInput(msg)
 			if cmd != nil {
@@ -480,6 +527,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case agentEventMsg:
 		if cmd := m.handleAgentEvent(msg); cmd != nil {
 			cmds = append(cmds, cmd)
+		}
+
+	case externalEditorMsg:
+		if msg.Err != nil {
+			m.statusMsg = fmt.Sprintf("editor: %v", msg.Err)
+		} else {
+			m.editor.SetValue(msg.Content)
 		}
 
 	}

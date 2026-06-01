@@ -28,6 +28,15 @@ type AgentEventMsg struct {
 // We use AgentEventMsg everywhere; this line ensures the switch in Update works.
 type agentEventMsg = AgentEventMsg
 
+// ExternalEditorMsg is sent when the external editor process exits.
+type ExternalEditorMsg struct {
+	Content string
+	Err     error
+}
+
+// externalEditorMsg is an internal alias.
+type externalEditorMsg = ExternalEditorMsg
+
 // Frontend bridges the agent layer and the Bubble Tea program.
 // It implements agent.Frontend.
 type Frontend struct {
