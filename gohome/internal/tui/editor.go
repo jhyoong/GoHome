@@ -287,6 +287,12 @@ func (e *EditorComponent) clampScroll() {
 
 // HandleInput handles keyboard input and returns a tea.Cmd.
 func (e *EditorComponent) HandleInput(msg tea.KeyMsg) tea.Cmd {
+	// Bracketed paste: insert all runes as text block.
+	if msg.Paste {
+		e.InsertText(string(msg.Runes))
+		return nil
+	}
+
 	switch msg.Type {
 	case tea.KeyEnter:
 		if msg.Alt {
