@@ -1,6 +1,6 @@
 # Future work
 
-Items explicitly out of v1 scope. Each entry notes the seam or hook the v1
+Items explicitly out of v0.2 scope. Each entry notes the seam or hook the v0.2
 design preserves so the feature can be added later without a rewrite.
 
 ---

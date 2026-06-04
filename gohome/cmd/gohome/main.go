@@ -26,11 +26,14 @@ import (
 	"github.com/jhyoong/GoHome/gohome/internal/tui"
 )
 
+var version = "dev"
+
 var (
 	endpointName = flag.String("endpoint", "", "endpoint name override")
 	modelName    = flag.String("model", "", "model override")
 	yolo         = flag.Bool("yolo", false, "disable all approval prompts")
 	resume       = flag.Bool("resume", false, "resume a past session")
+	showVersion  = flag.Bool("version", false, "print version and exit")
 )
 
 // newSessionID generates an 8-char lowercase base32 session ID using crypto/rand.
@@ -93,6 +96,11 @@ func pickResume(home, cwd string) (*session.Session, []common.Message, string, e
 
 func main() {
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("gohome " + version)
+		return
+	}
 
 	// Resolve home and cwd before anything else.
 	userHome, err := os.UserHomeDir()

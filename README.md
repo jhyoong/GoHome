@@ -11,7 +11,7 @@ The source tree lives under `gohome/` at the repo root. Because the module layou
 ```sh
 git clone https://github.com/jhyoong/GoHome
 cd GoHome
-go build -o bin/gohome ./gohome/cmd/gohome
+go build -ldflags "-X main.version=v0.2.0" -o bin/gohome ./gohome/cmd/gohome
 ```
 
 ### Run
@@ -93,11 +93,11 @@ Project-level settings live in `./.gohome/settings.json` and are merged on top o
 | `/yolo` | Implemented — toggles yolo mode (skip all approval prompts) |
 | `/tokens` | Implemented — opens token usage detail overlay |
 | `/quit` | Implemented — exits the process |
-| `/new` | Not implemented in v1 (shows "not implemented") |
-| `/resume` | Not implemented in v1 (shows "not implemented") |
-| `/endpoint <name>` | Not implemented in v1 (shows "not implemented") |
-| `/model <name>` | Not implemented in v1 (shows "not implemented") |
-| `/cancel [message]` | Not implemented in v1 (shows "not implemented") |
+| `/new` | Not implemented in v0.2 (shows "not implemented") |
+| `/resume` | Not implemented in v0.2 (shows "not implemented") |
+| `/endpoint <name>` | Not implemented in v0.2 (shows "not implemented") |
+| `/model <name>` | Not implemented in v0.2 (shows "not implemented") |
+| `/cancel [message]` | Not implemented in v0.2 (shows "not implemented") |
 
 ---
 
@@ -136,7 +136,7 @@ The `subagent` tool spawns a fresh, isolated agent session from within the agent
 
 ---
 
-## What is not in v1 / future work
+## What is not in v0.2 / future work
 
 - Context compaction (automatic or manual).
 - Reasoning/thinking tokens as first-class blocks.
@@ -153,4 +153,4 @@ The `subagent` tool spawns a fresh, isolated agent session from within the agent
 - SSE-parser fuzzing, benchmark suite, coverage gates.
 - Daemon mode (JSON-RPC `Frontend` over a Unix socket).
 
-See `gohome/FUTURE.md` for notes on how the v1 design preserves hooks for each of these.
+See `gohome/FUTURE.md` for notes on how the v0.2 design preserves hooks for each of these.
