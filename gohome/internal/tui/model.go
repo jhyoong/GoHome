@@ -60,6 +60,9 @@ type Model struct {
 	fileSearch    *FileSearchPopup
 	fileSearching bool
 
+	pendingMessages []string
+	pending         *PendingMessagesComponent
+
 	// cursor indexes the focused session's Timeline. When input is empty,
 	// Up/Down move the cursor; Enter on a tool entry toggles expansion.
 	cursor int
@@ -129,6 +132,7 @@ func New(fe *Frontend, sessionID string) *Model {
 		fileSearch:       NewFileSearchPopup(),
 	}
 	m.chat = NewChat(&main.Timeline, 20)
+	m.pending = NewPendingMessages(&m.pendingMessages)
 	return m
 }
 
@@ -207,9 +211,11 @@ func (m *Model) rebuildViewport() {
 func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 	ev := msg.Ev
 	sv := m.getOrCreateSession(msg.SessionID, 1)
+	var dequeuedCmd tea.Cmd
 
 	switch ev.Kind {
 	case agent.EventThinkingDelta:
+		sv.InFlight = true
 		n := len(sv.Timeline)
 		if n > 0 && sv.Timeline[n-1].Kind == "thinking" {
 			sv.Timeline[n-1].Text += ev.ThinkingDelta
@@ -225,6 +231,7 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 
 	case agent.EventTokenDelta:
 		// Append to the last assistant entry if it is in-progress, else add new.
+		sv.InFlight = true
 		n := len(sv.Timeline)
 		if n > 0 && sv.Timeline[n-1].Kind == "assistant" {
 			sv.Timeline[n-1].Text += ev.TextDelta
@@ -284,6 +291,17 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 
 	case agent.EventTurnDone:
 		sv.InFlight = false
+		if msg.SessionID == m.focused && len(m.pendingMessages) > 0 {
+			text := m.pendingMessages[0]
+			m.pendingMessages = m.pendingMessages[1:]
+			sv.Timeline = append(sv.Timeline, TimelineEntry{
+				Kind: "user",
+				Text: text,
+			})
+			sv.InFlight = true
+			m.cursor = len(sv.Timeline) - 1
+			dequeuedCmd = m.sendInputCmd(text)
+		}
 
 	case agent.EventSessionStarted:
 		// Subagent session — depth 1, add to order if not already present.
@@ -317,13 +335,18 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 			m.spinner.SetMessage("Generating...")
 		}
 	case agent.EventTurnDone, agent.EventSessionEnded, agent.EventError:
-		m.spinner.Stop()
+		if !sv.InFlight {
+			m.spinner.Stop()
+		}
 	}
 
 	if msg.SessionID == m.focused {
 		m.rebuildViewport()
 	}
 
+	if dequeuedCmd != nil {
+		return dequeuedCmd
+	}
 	if (ev.Kind == agent.EventTokenDelta || ev.Kind == agent.EventThinkingDelta) && m.spinner.Active() {
 		return SpinnerTickCmd()
 	}
@@ -537,15 +560,24 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				} else {
 					sv := m.getOrCreateSession(m.focused, 0)
-					sv.Timeline = append(sv.Timeline, TimelineEntry{
-						Kind: "user",
-						Text: text,
-					})
-					sv.InFlight = true
-					m.editor.SetValue("")
-					m.cursor = len(sv.Timeline) - 1
-					m.rebuildViewport()
-					cmds = append(cmds, m.sendInputCmd(text))
+					if sv.InFlight {
+						if len(m.pendingMessages) >= 10 {
+							m.statusMsg = "Message queue full (10)"
+						} else {
+							m.pendingMessages = append(m.pendingMessages, text)
+							m.editor.SetValue("")
+						}
+					} else {
+						sv.Timeline = append(sv.Timeline, TimelineEntry{
+							Kind: "user",
+							Text: text,
+						})
+						sv.InFlight = true
+						m.editor.SetValue("")
+						m.cursor = len(sv.Timeline) - 1
+						m.rebuildViewport()
+						cmds = append(cmds, m.sendInputCmd(text))
+					}
 				}
 			}
 			return m, tea.Batch(cmds...)
@@ -786,6 +818,7 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 		sv := m.getOrCreateSession(m.focused, 0)
 		sv.InFlight = false
 		sv.Timeline = append(sv.Timeline, TimelineEntry{Kind: "notice", Text: "Cancelled."})
+		m.pendingMessages = m.pendingMessages[:0]
 		m.statusMsg = "Cancelled"
 	case "/new":
 		if m.slashCB.NewSession != nil {
@@ -937,6 +970,12 @@ func (m *Model) View() string {
 		if len(popupLines) > 0 {
 			sections = append(sections, strings.Join(popupLines, "\n"))
 		}
+	}
+
+	// Pending messages
+	pendingLines := m.pending.Render(m.winW)
+	if len(pendingLines) > 0 {
+		sections = append(sections, strings.Join(pendingLines, "\n"))
 	}
 
 	// Status message
