@@ -30,7 +30,7 @@ func serveFixture(t *testing.T, fixture string) *httptest.Server {
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
-		w.Write(data)
+		_, _ = w.Write(data)
 	}))
 }
 
@@ -129,7 +129,7 @@ func TestClientStream_CustomHeaders(t *testing.T) {
 		// Return minimal valid SSE so the stream can finish.
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"))
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"))
 	}))
 	defer srv.Close()
 

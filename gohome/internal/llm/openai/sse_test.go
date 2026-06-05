@@ -12,7 +12,7 @@ func TestParseSSE_Fixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open fixture: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	frames := parseSSE(context.Background(), f)
 

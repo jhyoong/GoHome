@@ -9,16 +9,14 @@ import (
 	"testing"
 )
 
-func boolPtr(b bool) *bool { return &b }
-
 func mustWriteTemp(t *testing.T, content string) string {
 	t.Helper()
 	f, err := os.CreateTemp(t.TempDir(), "edit_test_*.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.WriteString(content)
-	f.Close()
+	_, _ = f.WriteString(content)
+	_ = f.Close()
 	return f.Name()
 }
 

@@ -164,9 +164,7 @@ func (e *EditorComponent) InsertText(s string) {
 	// Middle parts are new lines.
 	newLines := make([]string, 0, len(e.lines)+len(parts)-1)
 	newLines = append(newLines, e.lines[:e.cursorLine+1]...)
-	for _, p := range parts[1 : len(parts)-1] {
-		newLines = append(newLines, p)
-	}
+	newLines = append(newLines, parts[1:len(parts)-1]...)
 
 	// Last part gets the suffix from the original line.
 	lastPart := parts[len(parts)-1]
@@ -243,9 +241,6 @@ func (e *EditorComponent) Render(width int) []string {
 	}
 	// Pad to at least editorMinHeight content lines.
 	for len(out)-1 < editorMinHeight {
-		if len(out)-1 == 0 && e.cursorLine == 0 && len(e.lines) == 1 {
-			// Already rendered cursor line above; add empty lines.
-		}
 		out = append(out, "")
 	}
 	out = append(out, botBorder)

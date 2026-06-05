@@ -397,12 +397,12 @@ func (m *Model) openExternalEditor() tea.Cmd {
 	tmpPath := tmpFile.Name()
 
 	if _, err := tmpFile.WriteString(content); err != nil {
-		tmpFile.Close()
-		os.Remove(tmpPath)
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpPath)
 		m.statusMsg = fmt.Sprintf("editor: %v", err)
 		return nil
 	}
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	editorCmd := os.Getenv("VISUAL")
 	if editorCmd == "" {
@@ -414,7 +414,7 @@ func (m *Model) openExternalEditor() tea.Cmd {
 
 	c := exec.Command(editorCmd, tmpPath)
 	return tea.ExecProcess(c, func(err error) tea.Msg {
-		defer os.Remove(tmpPath)
+		defer func() { _ = os.Remove(tmpPath) }()
 		if err != nil {
 			return externalEditorMsg{Err: err}
 		}
@@ -799,13 +799,13 @@ func (m *Model) renderTokensOverlay() string {
 		modelName = "?"
 	}
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Token usage -- %s -- %s\n", sv.ID, modelName))
-	sb.WriteString(fmt.Sprintf("  Input tokens    %d\n", u.InputTokens))
-	sb.WriteString(fmt.Sprintf("  Output tokens   %d\n", u.OutputTokens))
-	sb.WriteString(fmt.Sprintf("  Cache reads     %d\n", u.CacheReadTokens))
-	sb.WriteString(fmt.Sprintf("  Cache writes    %d\n", u.CacheWriteTokens))
+	fmt.Fprintf(&sb, "Token usage -- %s -- %s\n", sv.ID, modelName)
+	fmt.Fprintf(&sb, "  Input tokens    %d\n", u.InputTokens)
+	fmt.Fprintf(&sb, "  Output tokens   %d\n", u.OutputTokens)
+	fmt.Fprintf(&sb, "  Cache reads     %d\n", u.CacheReadTokens)
+	fmt.Fprintf(&sb, "  Cache writes    %d\n", u.CacheWriteTokens)
 	sb.WriteString("  --------------------\n")
-	sb.WriteString(fmt.Sprintf("  Total           %d / %d (%d%%)\n", used, total, pct))
+	fmt.Fprintf(&sb, "  Total           %d / %d (%d%%)\n", used, total, pct)
 	sb.WriteString("  Esc to close")
 	return sb.String()
 }

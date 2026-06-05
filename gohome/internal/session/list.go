@@ -63,7 +63,7 @@ func parseListing(path string) (Listing, error) {
 	if err != nil {
 		return Listing{}, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var listing Listing
 	listing.Path = path

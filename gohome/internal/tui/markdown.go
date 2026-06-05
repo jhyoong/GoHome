@@ -78,10 +78,7 @@ func renderNode(node ast.Node, src []byte, width, listDepth int, bold, italic bo
 		}
 		code := strings.Join(codeLines, "")
 		highlighted := highlightCode(code, lang)
-		// split highlighted output into individual lines
-		for _, hl := range strings.Split(strings.TrimRight(highlighted, "\n"), "\n") {
-			*out = append(*out, hl)
-		}
+		*out = append(*out, strings.Split(strings.TrimRight(highlighted, "\n"), "\n")...)
 		*out = append(*out, "")
 
 	case *ast.CodeBlock:
@@ -92,9 +89,7 @@ func renderNode(node ast.Node, src []byte, width, listDepth int, bold, italic bo
 		}
 		code := strings.Join(codeLines, "")
 		highlighted := highlightCode(code, "")
-		for _, hl := range strings.Split(strings.TrimRight(highlighted, "\n"), "\n") {
-			*out = append(*out, hl)
-		}
+		*out = append(*out, strings.Split(strings.TrimRight(highlighted, "\n"), "\n")...)
 		*out = append(*out, "")
 
 	case *ast.Blockquote:

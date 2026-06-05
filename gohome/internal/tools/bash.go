@@ -100,13 +100,13 @@ func (BashTool) Execute(ctx context.Context, in json.RawMessage, sink ProgressSi
 			sink.Update(line)
 		}
 		if err := scanner.Err(); err != nil {
-			captureBuf.WriteString(fmt.Sprintf("\n[bash: scanner error: %v]\n", err))
+			fmt.Fprintf(&captureBuf, "\n[bash: scanner error: %v]\n", err)
 		}
 	}()
 
 	startErr := cmd.Start()
 	if startErr != nil {
-		pw.Close()
+		_ = pw.Close()
 		wg.Wait()
 		// If the context was already cancelled/timed-out before start, report that.
 		if ctx.Err() == context.DeadlineExceeded {

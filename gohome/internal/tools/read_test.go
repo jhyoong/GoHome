@@ -17,13 +17,11 @@ func mustTempFile(t *testing.T, lines int) string {
 		t.Fatal(err)
 	}
 	for i := 1; i <= lines; i++ {
-		fmt.Fprintf(f, "line %d\n", i)
+		_, _ = fmt.Fprintf(f, "line %d\n", i)
 	}
-	f.Close()
+	_ = f.Close()
 	return f.Name()
 }
-
-func intPtr(n int) *int { return &n }
 
 func execRead(t *testing.T, input any) Result {
 	t.Helper()
@@ -121,7 +119,7 @@ func TestRead_RelativePath(t *testing.T) {
 	// Write a temp file in the temp dir, then verify we can reach it via absolute path.
 	dir := t.TempDir()
 	path := filepath.Join(dir, "rel.txt")
-	os.WriteFile(path, []byte("hello\n"), 0644)
+	_ = os.WriteFile(path, []byte("hello\n"), 0644)
 
 	res := execRead(t, map[string]any{"path": path})
 	if res.IsError {

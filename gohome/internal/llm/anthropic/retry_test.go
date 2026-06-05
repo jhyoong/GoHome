@@ -30,7 +30,7 @@ func TestClientStream_RetryOn5xx(t *testing.T) {
 		// third attempt: success
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
-		w.Write(fixtureData)
+		_, _ = w.Write(fixtureData)
 	}))
 	defer srv.Close()
 

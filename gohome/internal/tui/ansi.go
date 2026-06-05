@@ -207,7 +207,6 @@ func WrapText(s string, maxWidth int) []string {
 				// Force-break: take as many graphemes as fit.
 				chunk, rest2 := takeWidth(wordText, remaining)
 				currentLine.WriteString(chunk)
-				currentWidth += VisualWidth(StripAnsi(chunk))
 				activeSGR = updateActiveSGR(activeSGR, chunk)
 
 				// Flush this line.

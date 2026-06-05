@@ -43,7 +43,7 @@ func TestWrite_NewFile(t *testing.T) {
 func TestWrite_OverwriteExisting(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "existing.txt")
-	os.WriteFile(path, []byte("old content"), 0644)
+	_ = os.WriteFile(path, []byte("old content"), 0644)
 
 	res := execWrite(t, map[string]any{"path": path, "content": "new content"})
 	if res.IsError {

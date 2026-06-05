@@ -60,7 +60,7 @@ func DoWithRetry(ctx context.Context, hc *http.Client, backoff []time.Duration, 
 		// Retry on 5xx: drain and close body before next attempt.
 		if resp.StatusCode >= 500 {
 			body, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			lastErr = fmt.Errorf("http %d: %s", resp.StatusCode, body)
 			continue
 		}

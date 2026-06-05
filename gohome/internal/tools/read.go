@@ -58,7 +58,7 @@ func (rt ReadTool) Execute(ctx context.Context, in json.RawMessage, sink Progres
 	if err != nil {
 		return Result{IsError: true, Content: fmt.Sprintf("read: cannot open %q: %v", inp.Path, err)}, nil
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)

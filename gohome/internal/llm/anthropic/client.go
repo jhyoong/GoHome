@@ -68,14 +68,14 @@ func (c *Client) Stream(ctx context.Context, req common.Request) (<-chan common.
 	}
 
 	if resp.StatusCode >= 400 {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		errBody, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("anthropic %d: %s", resp.StatusCode, errBody)
 	}
 
 	out := make(chan common.StreamEvent, 16)
 	go func() {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		defer close(out)
 
 		frames := parseSSE(ctx, resp.Body)

@@ -72,7 +72,7 @@ func readJSONLEvents(t *testing.T, w *session.Writer, path string) []map[string]
 	if err != nil {
 		t.Fatalf("open session file: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var out []map[string]json.RawMessage
 	scanner := bufio.NewScanner(f)

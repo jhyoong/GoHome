@@ -82,10 +82,10 @@ func TestProgressBarColorThresholds(t *testing.T) {
 	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
 
 	tests := []struct {
-		name     string
-		used     int
-		total    int
-		wantSeq  string // ANSI escape sequence fragment
+		name    string
+		used    int
+		total   int
+		wantSeq string // ANSI escape sequence fragment
 	}{
 		{"50% is green", 50, 100, "[32m"},
 		{"79% is green", 79, 100, "[32m"},

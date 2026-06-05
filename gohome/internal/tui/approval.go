@@ -84,25 +84,25 @@ var approvalBoxStyle = lipgloss.NewStyle().
 func renderApprovalOverlay(ap *approvalPrompt, width int) string {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("Approve tool call -- %s\n", ap.req.SessionID))
-	sb.WriteString(fmt.Sprintf("Tool: %s\n", ap.req.Tool))
+	fmt.Fprintf(&sb, "Approve tool call -- %s\n", ap.req.SessionID)
+	fmt.Fprintf(&sb, "Tool: %s\n", ap.req.Tool)
 
 	if cmd := bashCommand(ap); cmd != "" {
-		sb.WriteString(fmt.Sprintf("Command: %s\n", cmd))
+		fmt.Fprintf(&sb, "Command: %s\n", cmd)
 	}
 
 	if ap.steering {
 		sb.WriteString("\nSteer message (Enter to send, Esc to cancel):\n")
 		sb.WriteString(ap.steerInput.View())
 	} else if ap.editing {
-		sb.WriteString(fmt.Sprintf("\n[1] Allow once\n"))
-		sb.WriteString(fmt.Sprintf("[2] Allow always   pattern: %s\n", ap.patternInput.View()))
+		sb.WriteString("\n[1] Allow once\n")
+		fmt.Fprintf(&sb, "[2] Allow always   pattern: %s\n", ap.patternInput.View())
 		sb.WriteString("[3] Deny\n")
 		sb.WriteString("[4] Deny + steer\n")
 		sb.WriteString("(Enter to confirm pattern, Esc to cancel edit)")
 	} else {
-		sb.WriteString(fmt.Sprintf("\n[1] Allow once\n"))
-		sb.WriteString(fmt.Sprintf("[2] Allow always   pattern: %s  (e to edit)\n", ap.pattern))
+		sb.WriteString("\n[1] Allow once\n")
+		fmt.Fprintf(&sb, "[2] Allow always   pattern: %s  (e to edit)\n", ap.pattern)
 		sb.WriteString("[3] Deny\n")
 		sb.WriteString("[4] Deny + steer\n")
 		sb.WriteString("Esc: deny")

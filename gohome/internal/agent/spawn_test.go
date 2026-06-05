@@ -428,7 +428,7 @@ func readJSONLLines(t *testing.T, path string) []map[string]json.RawMessage {
 	if err != nil {
 		t.Fatalf("open %s: %v", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var out []map[string]json.RawMessage
 	sc := bufio.NewScanner(f)

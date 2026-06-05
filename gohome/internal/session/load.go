@@ -26,7 +26,7 @@ func Load(path string) (*Session, []common.Message, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("session: load %s: %w", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var sess *Session
 	var history []common.Message

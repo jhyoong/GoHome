@@ -18,7 +18,7 @@ func TestDoWithRetry_503TwiceThen200(t *testing.T) {
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	}))
 	defer srv.Close()
 
@@ -30,7 +30,7 @@ func TestDoWithRetry_503TwiceThen200(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DoWithRetry error: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status: got %d, want 200", resp.StatusCode)
@@ -55,7 +55,7 @@ func TestDoWithRetry_NoRetryOn4xx(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DoWithRetry error: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("status: got %d, want 400", resp.StatusCode)

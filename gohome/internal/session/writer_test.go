@@ -31,7 +31,7 @@ func TestWriter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open file: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	wantTypes := []string{"session_start", "user_message", "session_end"}
 	scanner := bufio.NewScanner(f)

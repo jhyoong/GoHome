@@ -24,7 +24,7 @@ func serveFixture(t *testing.T, fixture string) *httptest.Server {
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
-		w.Write(data)
+		_, _ = w.Write(data)
 	}))
 }
 
