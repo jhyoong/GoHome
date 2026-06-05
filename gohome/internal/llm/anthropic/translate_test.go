@@ -185,6 +185,58 @@ func TestTranslateEvents_UnknownEventIgnored(t *testing.T) {
 	}
 }
 
+func TestTranslateEvents_ThinkingBlock(t *testing.T) {
+	frames := []sseFrame{
+		{event: "content_block_start", data: `{"type":"content_block_start","index":0,"content_block":{"type":"thinking"}}`},
+		{event: "content_block_delta", data: `{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Let me reason about this"}}`},
+		{event: "content_block_delta", data: `{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" step by step."}}`},
+		{event: "content_block_stop", data: `{"type":"content_block_stop","index":0}`},
+		{event: "content_block_start", data: `{"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}`},
+		{event: "content_block_delta", data: `{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"The answer is 42."}}`},
+		{event: "content_block_stop", data: `{"type":"content_block_stop","index":1}`},
+		{event: "message_delta", data: `{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":20}}`},
+		{event: "message_stop", data: `{"type":"message_stop"}`},
+	}
+
+	events := collectEvents(translateEvents(context.Background(), makeFrames(frames)))
+
+	var thinkingDeltas, textDeltas, thinkingDones, turnDones int
+	var thinkingText, textText string
+	for _, e := range events {
+		switch e.Kind {
+		case common.EventThinkingDelta:
+			thinkingDeltas++
+			thinkingText += e.ThinkingDelta
+		case common.EventThinkingDone:
+			thinkingDones++
+		case common.EventTextDelta:
+			textDeltas++
+			textText += e.TextDelta
+		case common.EventTurnDone:
+			turnDones++
+		}
+	}
+
+	if thinkingDeltas != 2 {
+		t.Errorf("expected 2 thinking deltas, got %d", thinkingDeltas)
+	}
+	if thinkingText != "Let me reason about this step by step." {
+		t.Errorf("thinking text: got %q", thinkingText)
+	}
+	if thinkingDones != 1 {
+		t.Errorf("expected 1 thinking done, got %d", thinkingDones)
+	}
+	if textDeltas != 1 {
+		t.Errorf("expected 1 text delta, got %d", textDeltas)
+	}
+	if textText != "The answer is 42." {
+		t.Errorf("text: got %q", textText)
+	}
+	if turnDones != 1 {
+		t.Errorf("expected 1 turn done, got %d", turnDones)
+	}
+}
+
 // TestTranslateEvents_MessageStopWithoutMessageDelta verifies that a message_stop
 // with no preceding message_delta still emits exactly one EventTurnDone with a
 // non-nil Usage (zero-valued tokens are acceptable).
