@@ -205,6 +205,20 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 	sv := m.getOrCreateSession(msg.SessionID, 1)
 
 	switch ev.Kind {
+	case agent.EventThinkingDelta:
+		n := len(sv.Timeline)
+		if n > 0 && sv.Timeline[n-1].Kind == "thinking" {
+			sv.Timeline[n-1].Text += ev.ThinkingDelta
+		} else {
+			sv.Timeline = append(sv.Timeline, TimelineEntry{
+				Kind: "thinking",
+				Text: ev.ThinkingDelta,
+			})
+		}
+
+	case agent.EventThinkingDone:
+		// No-op: the thinking entry is already complete.
+
 	case agent.EventTokenDelta:
 		// Append to the last assistant entry if it is in-progress, else add new.
 		n := len(sv.Timeline)
@@ -286,11 +300,17 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 		sv.InFlight = false
 	}
 
-	// Spinner: start on first token delta, stop on completion/error.
+	// Spinner: start on thinking/token delta, stop on completion/error.
 	switch ev.Kind {
-	case agent.EventTokenDelta:
+	case agent.EventThinkingDelta:
 		if !m.spinner.Active() {
 			m.spinner.Start("Thinking...")
+		}
+	case agent.EventTokenDelta:
+		if !m.spinner.Active() {
+			m.spinner.Start("Generating...")
+		} else {
+			m.spinner.SetMessage("Generating...")
 		}
 	case agent.EventTurnDone, agent.EventSessionEnded, agent.EventError:
 		m.spinner.Stop()
@@ -300,7 +320,7 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 		m.rebuildViewport()
 	}
 
-	if ev.Kind == agent.EventTokenDelta && m.spinner.Active() {
+	if (ev.Kind == agent.EventTokenDelta || ev.Kind == agent.EventThinkingDelta) && m.spinner.Active() {
 		return SpinnerTickCmd()
 	}
 	return nil

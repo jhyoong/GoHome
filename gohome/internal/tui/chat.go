@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -98,6 +99,25 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 				} else {
 					entryLines = append(entryLines, "  "+l)
 				}
+			}
+
+		case "thinking":
+			if e.Expanded {
+				mdLines := RenderMarkdown(e.Text, maxWidth-4)
+				if len(mdLines) == 0 {
+					mdLines = WrapText(e.Text, maxWidth-4)
+				}
+				entryLines = append(entryLines, marker+ansiDim+ansiItalic+"Thinking..."+ansiReset)
+				for _, l := range mdLines {
+					entryLines = append(entryLines, "    "+ansiDim+ansiItalic+l+ansiReset)
+				}
+			} else {
+				label := "Thinking..."
+				lines := strings.Split(strings.TrimSpace(e.Text), "\n")
+				if len(lines) > 1 {
+					label = fmt.Sprintf("Thinking... (%d lines)", len(lines))
+				}
+				entryLines = append(entryLines, marker+ansiDim+ansiItalic+label+ansiReset)
 			}
 
 		case "tool":

@@ -92,6 +92,24 @@ func TestInputTextareaSubmit(t *testing.T) {
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
 
+func TestAgentEventThinkingDelta(t *testing.T) {
+	m := tui.New(nil, "")
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() {
+		_ = tm.Quit()
+	})
+
+	tm.Send(tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind:          agent.EventThinkingDelta,
+		SessionID:     "main",
+		ThinkingDelta: "reasoning about the problem",
+	}})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Thinking..."))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
+
 func TestViewportScrollback(t *testing.T) {
 	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))

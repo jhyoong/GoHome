@@ -106,3 +106,26 @@ func TestToolStatusError(t *testing.T) {
 		t.Errorf("error prefix not found: %q", joined)
 	}
 }
+
+func TestChatRenderThinkingCollapsed(t *testing.T) {
+	entries := []TimelineEntry{{Kind: "thinking", Text: "Let me reason\nabout this\nstep by step."}}
+	c := NewChat(&entries, 20)
+	lines := c.Render(80)
+	joined := StripAnsi(strings.Join(lines, "\n"))
+	if !strings.Contains(joined, "Thinking...") {
+		t.Errorf("collapsed thinking label missing: %q", joined)
+	}
+	if !strings.Contains(joined, "3 lines") {
+		t.Errorf("line count indicator missing: %q", joined)
+	}
+}
+
+func TestChatRenderThinkingExpanded(t *testing.T) {
+	entries := []TimelineEntry{{Kind: "thinking", Text: "Step 1: analyze\nStep 2: solve", Expanded: true}}
+	c := NewChat(&entries, 20)
+	lines := c.Render(80)
+	joined := StripAnsi(strings.Join(lines, "\n"))
+	if !strings.Contains(joined, "Step 1") {
+		t.Errorf("expanded thinking content missing: %q", joined)
+	}
+}
