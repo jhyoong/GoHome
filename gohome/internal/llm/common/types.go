@@ -19,6 +19,7 @@ const (
 	BlockText       BlockKind = "text"
 	BlockToolUse    BlockKind = "tool_use"
 	BlockToolResult BlockKind = "tool_result"
+	BlockThinking   BlockKind = "thinking"
 )
 
 type Block struct {
@@ -44,6 +45,8 @@ const (
 	EventToolCallDone    EventKind = "tool_call_done"
 	EventTurnDone        EventKind = "turn_done"
 	EventError           EventKind = "error"
+	EventThinkingDelta   EventKind = "thinking_delta"
+	EventThinkingDone    EventKind = "thinking_done"
 )
 
 type Usage struct {
@@ -54,14 +57,15 @@ type Usage struct {
 }
 
 type StreamEvent struct {
-	Kind       EventKind
-	TextDelta  string
-	ToolCallID string
-	ToolName   string
-	InputJSON  string
-	StopReason string
-	Usage      *Usage
-	Err        error
+	Kind          EventKind
+	TextDelta     string
+	ThinkingDelta string
+	ToolCallID    string
+	ToolName      string
+	InputJSON     string
+	StopReason    string
+	Usage         *Usage
+	Err           error
 }
 
 type ToolDef struct {
