@@ -63,6 +63,19 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, error)
 					TextDelta: ev.TextDelta,
 				})
 
+			case common.EventThinkingDelta:
+				a.Frontend.Emit(sess.ID, Event{
+					Kind:          EventThinkingDelta,
+					SessionID:     sess.ID,
+					ThinkingDelta: ev.ThinkingDelta,
+				})
+
+			case common.EventThinkingDone:
+				a.Frontend.Emit(sess.ID, Event{
+					Kind:      EventThinkingDone,
+					SessionID: sess.ID,
+				})
+
 			case common.EventToolCallDone:
 				toolBlocks = append(toolBlocks, common.Block{
 					Kind:      common.BlockToolUse,
