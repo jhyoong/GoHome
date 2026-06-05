@@ -136,21 +136,3 @@ The `subagent` tool spawns a fresh, isolated agent session from within the agent
 
 ---
 
-## What is not in v0.2 / future work
-
-- Context compaction (automatic or manual).
-- Reasoning/thinking tokens as first-class blocks.
-- Denylist alongside the whitelist.
-- In-flight subagent steering without cancelling it.
-- Cross-session history search.
-- Markdown export of session transcripts.
-- Custom themes.
-- Per-subagent independent whitelist.
-- Per-session model selection from within the TUI.
-- Mouse support.
-- Image rendering (sixel/kitty).
-- Audit log of approval decisions.
-- SSE-parser fuzzing, benchmark suite, coverage gates.
-- Daemon mode (JSON-RPC `Frontend` over a Unix socket).
-
-See `gohome/FUTURE.md` for notes on how the v0.2 design preserves hooks for each of these.
