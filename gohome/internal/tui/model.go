@@ -57,6 +57,9 @@ type Model struct {
 	winW    int
 	winH    int
 
+	fileSearch    *FileSearchPopup
+	fileSearching bool
+
 	// cursor indexes the focused session's Timeline. When input is empty,
 	// Up/Down move the cursor; Enter on a tool entry toggles expansion.
 	cursor int
@@ -123,6 +126,7 @@ func New(fe *Frontend, sessionID string) *Model {
 		pendingApprovals: make(map[string]*approvalPrompt),
 		editor:           NewEditor(80, 24),
 		spinner:          NewSpinner(),
+		fileSearch:       NewFileSearchPopup(),
 	}
 	m.chat = NewChat(&main.Timeline, 20)
 	return m
@@ -505,6 +509,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.Alt {
 				m.editor.InsertNewline()
 			} else {
+				// File search: confirm selection.
+				if m.fileSearching && m.fileSearch.visible {
+					path := m.fileSearch.SelectedPath()
+					if path != "" {
+						m.replaceAtQuery(path)
+					}
+					m.fileSearching = false
+					m.fileSearch.Hide()
+					return m, tea.Batch(cmds...)
+				}
 				text := strings.TrimSpace(m.editor.Value())
 				if text == "" {
 					sv, ok := m.sessions[m.focused]
@@ -538,10 +552,41 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyCtrlE:
 			return m, m.openExternalEditor()
 		default:
+			// File search navigation intercepts arrow keys and Esc.
+			if m.fileSearching && m.fileSearch.visible {
+				if msg.Type == tea.KeyUp {
+					m.fileSearch.MoveUp()
+					return m, nil
+				}
+				if msg.Type == tea.KeyDown {
+					m.fileSearch.MoveDown()
+					return m, nil
+				}
+				if msg.Type == tea.KeyEsc {
+					m.fileSearching = false
+					m.fileSearch.Hide()
+					return m, nil
+				}
+			}
 			cmd := m.editor.HandleInput(msg)
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}
+			// Check for @-prefix file search.
+			if q, ok := m.extractAtQuery(); ok && q != m.fileSearch.query {
+				m.fileSearching = true
+				m.fileSearch.query = q
+				m.fileSearch.selected = 0
+				cmds = append(cmds, searchFilesCmd(q))
+			} else if !ok && m.fileSearching {
+				m.fileSearching = false
+				m.fileSearch.Hide()
+			}
+		}
+
+	case FileSearchResultMsg:
+		if m.fileSearching {
+			m.fileSearch.SetResults(msg.Query, msg.Results)
 		}
 
 	case agentEventMsg:
@@ -886,6 +931,14 @@ func (m *Model) View() string {
 		sections = append(sections, strings.Join(spinnerLines, "\n"))
 	}
 
+	// File search popup
+	if m.fileSearching {
+		popupLines := m.fileSearch.Render(m.winW)
+		if len(popupLines) > 0 {
+			sections = append(sections, strings.Join(popupLines, "\n"))
+		}
+	}
+
 	// Status message
 	if m.statusMsg != "" {
 		sections = append(sections, m.statusMsg)
@@ -907,6 +960,42 @@ func (m *Model) View() string {
 	sections = append(sections, m.statusBar())
 
 	return strings.Join(sections, "\n")
+}
+
+// extractAtQuery returns the word following the last '@' in the editor when that
+// '@' is at the start of the input or preceded by whitespace. Returns ("", false)
+// when the pattern is absent or the query contains whitespace.
+func (m *Model) extractAtQuery() (string, bool) {
+	val := m.editor.Value()
+	idx := strings.LastIndex(val, "@")
+	if idx < 0 {
+		return "", false
+	}
+	if idx > 0 {
+		prev := val[idx-1]
+		if prev != ' ' && prev != '\t' && prev != '\n' {
+			return "", false
+		}
+	}
+	query := val[idx+1:]
+	if strings.ContainsAny(query, " \t\n") {
+		return "", false
+	}
+	if query == "" {
+		return "", false
+	}
+	return query, true
+}
+
+// replaceAtQuery replaces the @<word> fragment in the editor with replacement.
+func (m *Model) replaceAtQuery(replacement string) {
+	val := m.editor.Value()
+	idx := strings.LastIndex(val, "@")
+	if idx < 0 {
+		return
+	}
+	newVal := val[:idx] + replacement
+	m.editor.SetValue(newVal)
 }
 
 // Yolo returns current yolo mode state (exported for tests).

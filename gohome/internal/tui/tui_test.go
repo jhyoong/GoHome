@@ -110,6 +110,26 @@ func TestAgentEventThinkingDelta(t *testing.T) {
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
 
+func TestFileSearchResultMsgShowsPopup(t *testing.T) {
+	m := tui.New(nil, "")
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() {
+		_ = tm.Quit()
+	})
+
+	// Type @mod to activate file search mode.
+	// The real find/fd command will run in the background.
+	// We wait until the popup appears (which it will when the real command returns
+	// results for "mod" — go.mod and model.go are both in this repo).
+	tm.Type("@mod")
+
+	// Wait for the popup to appear with any file-search result.
+	// The real find command will return ./go.mod and ./gohome/internal/tui/model.go.
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("model.go")) || bytes.Contains(out, []byte("go.mod"))
+	}, teatest.WithDuration(3*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
+
 func TestViewportScrollback(t *testing.T) {
 	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
