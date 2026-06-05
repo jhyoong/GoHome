@@ -52,10 +52,16 @@ jobs:
         with:
           path: dist/
           merge-multiple: true
-      - name: create release
+      - name: upload or create draft release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ github.ref_name }}" dist/* \
-            --title "${{ github.ref_name }}" \
-            --notes-file CHANGELOG.md
+          tag="${{ github.ref_name }}"
+          if gh release view "$tag" &>/dev/null; then
+            gh release upload "$tag" dist/* --clobber
+          else
+            gh release create "$tag" dist/* \
+              --draft \
+              --title "$tag" \
+              --notes-file CHANGELOG.md
+          fi
