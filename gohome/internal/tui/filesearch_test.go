@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -48,5 +49,62 @@ func TestScoreResults_EmptyQuery(t *testing.T) {
 	results := scoreResults("", []string{"a.go", "b.go"})
 	if len(results) != 0 {
 		t.Errorf("empty query should return no results, got %d", len(results))
+	}
+}
+
+func TestFileSearchPopup_Render_Empty(t *testing.T) {
+	p := NewFileSearchPopup()
+	lines := p.Render(80)
+	if len(lines) != 0 {
+		t.Errorf("empty popup should render 0 lines, got %d", len(lines))
+	}
+}
+
+func TestFileSearchPopup_Render_WithResults(t *testing.T) {
+	p := NewFileSearchPopup()
+	p.results = []ScoredResult{
+		{Path: "src/main.go", Score: 0},
+		{Path: "src/util.go", Score: 20},
+		{Path: "test/main_test.go", Score: 50},
+	}
+	p.visible = true
+	lines := p.Render(80)
+	if len(lines) == 0 {
+		t.Fatal("expected non-empty render")
+	}
+	joined := StripAnsi(strings.Join(lines, "\n"))
+	if !strings.Contains(joined, "src/main.go") {
+		t.Errorf("first result missing: %q", joined)
+	}
+}
+
+func TestFileSearchPopup_SelectionWrap(t *testing.T) {
+	p := NewFileSearchPopup()
+	p.results = []ScoredResult{
+		{Path: "a.go", Score: 0},
+		{Path: "b.go", Score: 20},
+	}
+	p.visible = true
+	p.MoveDown()
+	if p.selected != 1 {
+		t.Errorf("after MoveDown: selected=%d, want 1", p.selected)
+	}
+	p.MoveDown()
+	if p.selected != 0 {
+		t.Errorf("after second MoveDown (wrap): selected=%d, want 0", p.selected)
+	}
+}
+
+func TestFileSearchPopup_SelectedPath(t *testing.T) {
+	p := NewFileSearchPopup()
+	p.results = []ScoredResult{
+		{Path: "a.go", Score: 0},
+		{Path: "b.go", Score: 20},
+	}
+	p.visible = true
+	p.selected = 1
+	got := p.SelectedPath()
+	if got != "b.go" {
+		t.Errorf("SelectedPath: got %q, want %q", got, "b.go")
 	}
 }
