@@ -1,0 +1,10 @@
+Session:  main done 
+Token usage -- main -- claude-3-5-sonnet
+  Input tokens    5000
+  Output tokens   1000
+  Cache reads     200
+  Cache writes    50
+  --------------------
+  Total           6000 / 100000 (6%)
+  Esc to close
+main · claude-3-5-sonnet · ░░░░░░░░░░ 6.0k/100.0k (6%)

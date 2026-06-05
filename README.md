@@ -1,133 +1,138 @@
-# GoHome
+# gohome
 
-A single-binary Go server that runs a local AI chat interface in your browser. It connects to any OpenAI-compatible LLM endpoint, executes tools (shell, file read/write) with your approval, and persists sessions in SQLite.
+`gohome` is a lightweight, single-binary coding agent and terminal UI written in Go. It targets custom LLM endpoints — both Anthropic-wire and OpenAI-compatible formats — and provides two features absent from most agents: tool-call guardrails with human approval (plus a skip/"yolo" mode) and built-in sequential subagents you can focus into, steer, and approve independently. The entire stack compiles to a single small binary with no external runtime dependencies.
 
-### Why?
+---
 
-I just wanted to vibe code some tools for myself. There are many existing CLI agent tools that are great, but I'm building this just for my own locally hosted LLM usage, and dealing with terminal UI is really difficult. The aim is to keep this project simple with what I use most anyway. The frontend is explicity set to just be a monolith single page app, no npm installs whatsoever. npm in this project is purely just for testing.
+## Build and install
 
-## Requirements
+The source tree lives under `gohome/` at the repo root. Because the module layout places source in a subdirectory named `gohome/`, the binary **must** be built with an explicit `-o` flag; a bare `go build ./gohome/cmd/gohome` would collide with that directory name.
 
-- Go 1.25.6 (to build from source)
-- A local OpenAI-compatible LLM endpoint (e.g. llama.cpp, Ollama)
-
-## Quick Start
-
-### From source
-
-```bash
-# Build binary
-make build
-
-# Run with defaults (connects to http://localhost:8080/v1)
-./gohome
-
-# Open http://localhost:3000 in your browser
+```sh
+git clone https://github.com/jhyoong/GoHome
+cd GoHome
+go build -ldflags "-X main.version=v0.2.0" -o bin/gohome ./gohome/cmd/gohome
 ```
 
-### Docker
+### Run
 
-```bash
-# Pull and run the latest release
-docker run -p 3000:3000 \
-  -v ~/.gohome:/home/gohome/.gohome \
-  ghcr.io/jhyoong/gohome:latest
-
-# Or pin to a specific version
-docker run -p 3000:3000 \
-  -v ~/.gohome:/home/gohome/.gohome \
-  ghcr.io/jhyoong/gohome:v0.1.1
-
-# Open http://localhost:3000 in your browser
+```sh
+./bin/gohome --endpoint <name>
 ```
 
-The config file at `~/.gohome/config.yaml` is mounted into the container so your settings persist across restarts.
+Override the model for a single run:
 
-## Configuration
-
-Create `~/.gohome/config.yaml`:
-
-```yaml
-endpoint:
-  url: "http://localhost:8080/v1"
-  api_key: ""              # optional API key
-  model: "my-model"
-  max_tokens: 4096
-  temperature: 0.7
-  context_window: 131072   # context window size (default: 131072)
-  thinking_tokens: 0       # thinking tokens for o1 models (default: 0)
-
-server:
-  host: "127.0.0.1"
-  port: 3000
-
-storage:
-  path: "~/.gohome/data.db"
-
-system_prompt: "You are a helpful assistant."
-
-approval:
-  default_timeout: 300   # seconds to wait for user approval
-  auto_approve_all: false
-  whitelist:
-    - tool: "file_read"
-      allow: "always"    # always | never | ask
-    - tool: "shell"
-      command_pattern: "ls*"  # optional command pattern for shell tools
-
-mcp_servers:
-  - name: "my-server"
-    transport: "stdio"   # stdio | sse
-    command: "my-mcp-server"
-    args: ["--flag"]
-    url: ""              # optional URL for SSE transport
+```sh
+./bin/gohome --endpoint local-anthropic --model claude-haiku-4-5
 ```
 
-All fields are optional — defaults are used if the config file is missing.
+---
 
-## CLI Flags
+## Quickstart
 
-```
---config   Path to config file (default: ~/.gohome/config.yaml)
---port     Override server port
---host     Override server host
---db       Override database path
---verbose  Enable debug logging
---version  Print version and exit
-```
+### 1. Create `~/.gohome/settings.json`
 
-## Make Targets
-
-```
-make build     Build binary
-make test      Run all tests
-make run       Build and run
-make clean     Remove build artifacts
-```
-
-## Architecture
-
-```
-cmd/agent/          Binary entry point
-embed.go            Embeds web/static into the binary
-internal/
-  config/           YAML config loader with tilde expansion
-  session/          SQLite store (sessions, messages, tool results)
-  tools/            Tool interface, registry, shell/file_read/file_write
-  approval/         Per-connection approval broker (whitelist, timeout)
-  llm/              OpenAI-compatible client (streaming SSE)
-  mcp/              MCP client (stdio and SSE transports)
-  agent/            Agentic loop — streams LLM, executes tools, loops back
-  server/           HTTP REST + WebSocket (4-goroutine model per connection)
-web/static/         Vanilla JS frontend (no build step)
+```json
+{
+  "endpoints": {
+    "local-anthropic": {
+      "wire": "anthropic",
+      "baseURL": "http://localhost:8080",
+      "apiKeyEnv": "GOHOME_API_KEY",
+      "defaultModel": "claude-opus-4-7",
+      "contextWindow": 200000
+    },
+    "local-openai": {
+      "wire": "openai",
+      "baseURL": "http://localhost:8081/v1",
+      "apiKeyEnv": "GOHOME_API_KEY",
+      "defaultModel": "gpt-4o",
+      "contextWindow": 128000
+    }
+  },
+  "defaultEndpoint": "local-anthropic"
+}
 ```
 
-Each WebSocket connection runs 4 goroutines: reader, writer, pingLoop, dispatcher. The agent loop streams tokens to the browser and pauses for user approval before executing any tool.
+Both `"anthropic"` and `"openai"` wires are supported. Set `apiKey` for a literal key or `apiKeyEnv` to read from an environment variable.
 
-## Tests
+### 2. Run
 
-Run all tests:
-
-```bash
-go test ./...
+```sh
+export GOHOME_API_KEY=<your-key>
+./bin/gohome --endpoint local-anthropic
 ```
+
+Project-level settings live in `./.gohome/settings.json` and are merged on top of global settings at startup.
+
+---
+
+## Keybindings
+
+| Key | Action |
+|---|---|
+| `Enter` | Submit input |
+| `Shift+Enter` | Insert newline |
+| `Ctrl+C` (once) | Cancel current LLM turn or close approval prompt |
+| `Ctrl+C` (twice) | Quit |
+| `Ctrl+]` | Focus next session |
+| `Ctrl+[` | Focus previous session |
+| `Ctrl+L` | Clear viewport (history preserved in memory) |
+| `PgUp` / `PgDn` | Scroll viewport |
+| `/` | Open slash command with inline autocomplete |
+| `1`–`4` | Pick option in approval prompt |
+| `e` | Edit suggested bash pattern in approval prompt |
+| `Esc` | Deny / close overlay |
+
+---
+
+## Slash commands
+
+| Command | Status |
+|---|---|
+| `/yolo` | Implemented — toggles yolo mode (skip all approval prompts) |
+| `/tokens` | Implemented — opens token usage detail overlay |
+| `/quit` | Implemented — exits the process |
+| `/new` | Not implemented in v0.2 (shows "not implemented") |
+| `/resume` | Not implemented in v0.2 (shows "not implemented") |
+| `/endpoint <name>` | Not implemented in v0.2 (shows "not implemented") |
+| `/model <name>` | Not implemented in v0.2 (shows "not implemented") |
+| `/cancel [message]` | Not implemented in v0.2 (shows "not implemented") |
+
+---
+
+## File layout
+
+```
+~/.gohome/
+  settings.json          # global endpoint config
+  whitelist.json         # global auto-approve rules
+  sessions/              # JSONL session transcripts, grouped by project
+  logs/                  # structured log files (one per day)
+
+./.gohome/               # project-level overrides (in the working directory)
+  settings.json          # project endpoint/model overrides
+  whitelist.json         # project whitelist; "Allow always" entries land here
+```
+
+---
+
+## Guardrails and approval
+
+Before every tool call, `gohome` checks the whitelist. If no rule covers the call, it pauses and shows an approval prompt with four options:
+
+- **Allow once** — permit this call only.
+- **Allow always** — write an auto-approve rule to `./.gohome/whitelist.json`.
+- **Deny** — block the call and return an error to the agent.
+- **Deny + steer** — block the call and inject a message into the agent's context.
+
+`/yolo` skips all prompts without writing whitelist entries.
+
+---
+
+## Subagents
+
+The `subagent` tool spawns a fresh, isolated agent session from within the agent loop. The subagent shares the parent's guard and tool registry (but cannot itself spawn subagents), runs synchronously, and returns its final text as a tool result to the parent. The TUI shows each session in a strip at the top; `Ctrl+]` / `Ctrl+[` switches focus.
+
+---
+

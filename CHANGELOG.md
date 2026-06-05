@@ -1,31 +1,33 @@
 # Changelog
 
-## v0.1.1 (2026-05-16)
+## v0.2.0
 
-### Features
-- **Thinking blocks**: Model reasoning is now displayed when `thinking_tokens` is configured. Thinking blocks are always visible and collapsible in the chat UI.
-- **Context window tracker**: Token usage and context window percentage are shown below the input bar, updating in real time as the conversation grows.
-- **Dark mode**: Toggle between light and dark themes via the sidebar button. Preference persists across sessions via localStorage.
-- **Multi-line input**: The input field is now a textarea that auto-resizes up to 5 lines. Use Shift+Enter to insert a newline; Enter submits.
+Complete rewrite from web-based agent to a single-binary terminal UI (TUI) built with [Bubble Tea](https://github.com/charmbracelet/bubbletea). The old web server, SQLite session store, and browser frontend have been removed.
 
-### Bug Fixes
-- Fixed division by zero when context window size is zero in usage calculation.
-- Fixed a race condition where context window data could be read while being updated.
-- Fixed textarea not resizing correctly on initial render.
-- Fixed theme colors not applying to the input field background and text.
+### Added
 
----
+- **TUI** -- Bubble Tea app with markdown rendering, syntax highlighting, input editor with history, token progress bar, slash command palette, bracketed paste, and external editor support (`Ctrl+E`)
+- **Dual LLM adapters** -- Anthropic-wire and OpenAI-compatible SSE streaming with shared retry logic
+- **Tool-call guardrails** -- whitelist-based auto-approve, four-option approval prompt (allow once / allow always / deny / deny + steer), `/yolo` toggle
+- **Subagents** -- spawn isolated child agent sessions from within the agent loop, with per-session TUI strips and focus cycling
+- **JSONL sessions** -- file-based session persistence with `--resume` to continue the most recent session
+- **Config** -- global (`~/.gohome/settings.json`) and project-level (`./.gohome/settings.json`) endpoint configuration
+- **CLI flags** -- `--version`, `--endpoint`, `--model`, `--yolo`, `--resume`
+- **CI** -- cross-platform test matrix, lint, cross-build (linux/amd64, darwin/arm64, darwin/amd64, windows/amd64), binary size guard
 
-## v0.1.0 (2026-05-08)
+### Removed
 
-Initial release.
+- Web server, browser frontend, SQLite session store, MCP client, Goreleaser config, Dockerfile
 
-- Single Go binary with embedded vanilla JS frontend (no build step)
-- Connects to any OpenAI-compatible local LLM endpoint
-- Tool execution with per-tool approval: shell, file_read, file_write
-- Approval whitelist: always allow, never allow, or ask per tool/pattern
-- Always-allow persists to config on disk
-- MCP server support (stdio and SSE transports)
-- Session persistence in SQLite
-- Multi-session sidebar
-- Streaming token output via WebSocket
+## v0.1.1
+
+- File edit tool
+- Documentation updates
+
+## v0.1.0
+
+- Initial release with web-based agent UI
+- Anthropic LLM client with thinking blocks
+- File read, file write, and shell tools
+- SQLite-backed session persistence
+- MCP client support

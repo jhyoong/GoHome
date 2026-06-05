@@ -1,0 +1,70 @@
+name: gohome-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: go vet
+        run: go vet ./gohome/...
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          args: ./gohome/...
+      - name: go test
+        run: go test ./gohome/...
+
+  build:
+    name: cross-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: build linux/amd64
+        env:
+          GOOS: linux
+          GOARCH: amd64
+        run: go build -o dist/gohome-linux-amd64 ./gohome/cmd/gohome
+      - name: binary size guard (linux/amd64 <= 25 MB)
+        run: |
+          size=$(du -k dist/gohome-linux-amd64 | cut -f1)
+          echo "size=${size}KB"
+          if [ "$size" -gt 25600 ]; then
+            echo "binary too large: ${size}KB > 25600KB"
+            exit 1
+          fi
+      - name: build darwin/arm64
+        env:
+          GOOS: darwin
+          GOARCH: arm64
+        run: go build -o dist/gohome-darwin-arm64 ./gohome/cmd/gohome
+      - name: build darwin/amd64
+        env:
+          GOOS: darwin
+          GOARCH: amd64
+        run: go build -o dist/gohome-darwin-amd64 ./gohome/cmd/gohome
+      - name: build windows/amd64
+        env:
+          GOOS: windows
+          GOARCH: amd64
+        run: go build -o dist/gohome-windows-amd64.exe ./gohome/cmd/gohome
+      - name: upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: gohome-binaries
+          path: dist/
+          retention-days: 7

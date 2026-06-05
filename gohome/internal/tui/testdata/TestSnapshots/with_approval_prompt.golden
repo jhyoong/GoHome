@@ -1,0 +1,13 @@
+Session:  main done 
+╭────────────────────────────────────────────────────────────────────────────╮
+│ Approve tool call -- main                                                  │
+│ Tool: bash                                                                 │
+│ Command: ls -la                                                            │
+│                                                                            │
+│ [1] Allow once                                                             │
+│ [2] Allow always   pattern: ls*  (e to edit)                               │
+│ [3] Deny                                                                   │
+│ [4] Deny + steer                                                           │
+│ Esc: deny                                                                  │
+╰────────────────────────────────────────────────────────────────────────────╯
+main · ? · ░░░░░░░░░░ 0/128.0k (0%)
