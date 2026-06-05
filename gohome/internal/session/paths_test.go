@@ -1,6 +1,7 @@
 package session
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -63,7 +64,8 @@ func TestSessionPath(t *testing.T) {
 		t.Errorf("SessionPath: expected .jsonl suffix, got %q", path)
 	}
 	// Should be under home/sessions/<slug>/
-	if !strings.HasPrefix(path, home+"/sessions/") {
-		t.Errorf("SessionPath: expected prefix %q, got %q", home+"/sessions/", path)
+	wantPrefix := filepath.Join(home, "sessions") + string(filepath.Separator)
+	if !strings.HasPrefix(path, wantPrefix) {
+		t.Errorf("SessionPath: expected prefix %q, got %q", wantPrefix, path)
 	}
 }
