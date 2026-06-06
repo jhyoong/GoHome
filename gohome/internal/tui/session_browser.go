@@ -88,6 +88,10 @@ func (sb *SessionBrowserComponent) HandleInput(msg tea.KeyMsg) tea.Cmd {
 	return sb.list.HandleInput(msg)
 }
 
+func (sb *SessionBrowserComponent) SetFilter(q string) {
+	sb.list.SetQuery(q)
+}
+
 func relativeTime(t time.Time) string {
 	if t.IsZero() {
 		return ""

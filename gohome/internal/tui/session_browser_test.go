@@ -88,6 +88,19 @@ func TestSessionBrowserRelativeTime(t *testing.T) {
 	}
 }
 
+func TestSessionBrowserSetFilter(t *testing.T) {
+	sb := NewSessionBrowser(sampleListings())
+	sb.SetFilter("login")
+	lines := sb.Render(80)
+	joined := StripAnsi(strings.Join(lines, "\n"))
+	if !strings.Contains(joined, "fix the login bug") {
+		t.Error("filtered list should contain 'fix the login bug'")
+	}
+	if strings.Contains(joined, "refactor the TUI") {
+		t.Error("filtered list should not contain 'refactor the TUI'")
+	}
+}
+
 func TestRelativeTime(t *testing.T) {
 	tests := []struct {
 		dur    time.Duration
