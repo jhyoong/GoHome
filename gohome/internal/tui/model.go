@@ -933,10 +933,12 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 			m.browsing = false
 			m.sessionBrowser = nil
 			if m.slashCB.ResumeSession != nil {
-				if err := m.slashCB.ResumeSession(id); err != nil {
+				history, err := m.slashCB.ResumeSession(id)
+				if err != nil {
 					m.statusMsg = fmt.Sprintf("/resume: %v", err)
 					return
 				}
+				_ = history
 			}
 			m.getOrCreateSession(id, 0)
 			m.focused = id

@@ -279,10 +279,10 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		ListSessions: func() ([]session.Listing, error) {
 			return session.List(home, cwd)
 		},
-		ResumeSession: func(id string) error {
+		ResumeSession: func(id string) ([]common.Message, error) {
 			listings, err := session.List(home, cwd)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			var path string
 			for _, l := range listings {
@@ -292,24 +292,24 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 				}
 			}
 			if path == "" {
-				return fmt.Errorf("session %q not found", id)
+				return nil, fmt.Errorf("session %q not found", id)
 			}
-			loaded, _, err := session.Load(path)
+			loaded, history, err := session.Load(path)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			writer.Emit(session.SessionEnd{Reason: "switch"})
 			_ = writer.Close()
 
 			newWriter, err := session.OpenWriter(path)
 			if err != nil {
-				return fmt.Errorf("open writer: %w", err)
+				return nil, fmt.Errorf("open writer: %w", err)
 			}
 			sess = loaded
 			writer = newWriter
 			a.Session = sess
 			a.Writer = writer
-			return nil
+			return history, nil
 		},
 		NewSession: func() (string, error) {
 			id := newSessionID()
