@@ -27,6 +27,10 @@ type approvalPrompt struct {
 	reply   chan guard.ApprovalDecision
 	pattern string // current (possibly edited) pattern
 
+	// selected is the currently highlighted menu item (0=Allow once, 1=Allow always,
+	// 2=Deny, 3=Deny+steer). Zero-init gives us "Allow once" as the default.
+	selected int
+
 	// edit sub-mode: user pressed 'e' to edit the pattern
 	editing      bool
 	patternInput textinput.Model
