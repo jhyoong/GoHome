@@ -130,10 +130,11 @@ func TestTabCompletesSlashCommand(t *testing.T) {
 
 	tm.Type("/mo")
 	tm.Send(tea.KeyMsg{Type: tea.KeyTab})
+	tm.Type("x")
 
-	// After Tab, editor should show "/model " and the palette should reflect it.
+	// If Tab completed, editor is "/model x". If not, editor is "/mox".
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("/model"))
+		return bytes.Contains(out, []byte("/model x"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
 
@@ -186,8 +187,10 @@ func TestTabCompletesFirstMatchFromSlash(t *testing.T) {
 	// "/" matches all commands; first in list is "/new"
 	tm.Type("/")
 	tm.Send(tea.KeyMsg{Type: tea.KeyTab})
+	tm.Type("x")
 
+	// If Tab completed, editor is "/new x". If not, editor is "/x".
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("/new"))
+		return bytes.Contains(out, []byte("/new x"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
