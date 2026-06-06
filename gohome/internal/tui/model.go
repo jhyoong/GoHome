@@ -612,6 +612,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyPgDown:
 			m.chat.ScrollDown(5)
 		case tea.KeyTab:
+			if m.completeSlash() {
+				return m, tea.Batch(cmds...)
+			}
 			if m.confirmFileSearch() {
 				return m, tea.Batch(cmds...)
 			}
@@ -1038,6 +1041,21 @@ func (m *Model) renderTokensOverlay() string {
 	fmt.Fprintf(&sb, "  Total           %d / %d (%d%%)\n", used, total, pct)
 	sb.WriteString("  Esc to close")
 	return sb.String()
+}
+
+// completeSlash fills the editor with the first matching slash command + space.
+// Returns true if a completion was applied.
+func (m *Model) completeSlash() bool {
+	val := m.editor.Value()
+	if !strings.HasPrefix(val, "/") {
+		return false
+	}
+	matches := slashComplete(val)
+	if len(matches) == 0 {
+		return false
+	}
+	m.editor.SetValue(matches[0] + " ")
+	return true
 }
 
 // slashPalette renders the autocomplete list when input starts with '/'.

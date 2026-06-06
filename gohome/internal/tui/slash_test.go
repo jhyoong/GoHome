@@ -118,3 +118,76 @@ func TestSlashPaletteSuggestsCommands(t *testing.T) {
 		return bytes.Contains(out, []byte("/new"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
+
+func TestTabCompletesSlashCommand(t *testing.T) {
+	m := tui.New(nil, "")
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("─"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	tm.Type("/mo")
+	tm.Send(tea.KeyMsg{Type: tea.KeyTab})
+
+	// After Tab, editor should show "/model " and the palette should reflect it.
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("/model"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
+
+func TestTabNoMatchDoesNothing(t *testing.T) {
+	m := tui.New(nil, "")
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("─"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	tm.Type("/xyz")
+	tm.Send(tea.KeyMsg{Type: tea.KeyTab})
+
+	// Editor should still show "/xyz" — no completion happened.
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("/xyz"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
+
+func TestTabAlreadyCompleteDoesNothing(t *testing.T) {
+	m := tui.New(nil, "")
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("─"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// Type a complete command followed by a space.
+	tm.Type("/model ")
+	tm.Send(tea.KeyMsg{Type: tea.KeyTab})
+
+	// Editor should still show "/model " — no change.
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("/model"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
+
+func TestTabCompletesFirstMatchFromSlash(t *testing.T) {
+	m := tui.New(nil, "")
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("─"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// "/" matches all commands; first in list is "/new"
+	tm.Type("/")
+	tm.Send(tea.KeyMsg{Type: tea.KeyTab})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("/new"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
