@@ -9,8 +9,10 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
+	"github.com/jhyoong/GoHome/gohome/internal/config"
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
+	"github.com/jhyoong/GoHome/gohome/internal/session"
 	"github.com/jhyoong/GoHome/gohome/internal/tui/style"
 )
 
@@ -60,6 +62,15 @@ type Model struct {
 
 	fileSearch    *FileSearchPopup
 	fileSearching bool
+
+	homeDir        string
+	cwd            string
+	sessionBrowser *SessionBrowserComponent
+	browsing       bool
+
+	settings       config.Settings
+	modelSelector  *ModelSelectorComponent
+	selectingModel bool
 
 	pendingMessages []string
 	pending         *PendingMessagesComponent
@@ -163,6 +174,10 @@ func (m *Model) SetYoloCallback(fn func(bool)) {
 func (m *Model) SetSlashCallbacks(cb SlashCallbacks) {
 	m.slashCB = cb
 }
+
+func (m *Model) SetHomeDir(dir string) { m.homeDir = dir }
+func (m *Model) SetCWD(dir string)     { m.cwd = dir }
+func (m *Model) SetSettings(s config.Settings) { m.settings = s }
 
 // SetContextWindow sets the total context window size used in the token bar.
 // If size <= 0 the default 128000 is used.
@@ -571,8 +586,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(cmds...)
 		}
 
-		if msg.Type == tea.KeyEsc && m.spinner.Active() {
+		if msg.Type == tea.KeyEsc && m.spinner.Active() &&
+			!m.browsing && !m.selectingModel {
 			m.spinner.HandleInput(msg)
+			return m, tea.Batch(cmds...)
+		}
+
+		if m.browsing && m.sessionBrowser != nil {
+			m.sessionBrowser.HandleInput(msg)
+			return m, tea.Batch(cmds...)
+		}
+
+		if m.selectingModel && m.modelSelector != nil {
+			m.modelSelector.HandleInput(msg)
 			return m, tea.Batch(cmds...)
 		}
 
@@ -827,7 +853,7 @@ func (m *Model) clampCursor() {
 
 // slashCommands is the static list of available slash commands.
 var slashCommands = []string{
-	"/new", "/resume", "/yolo", "/endpoint", "/model", "/cancel", "/tokens", "/quit",
+	"/new", "/resume", "/sessions", "/yolo", "/endpoint", "/model", "/cancel", "/tokens", "/quit",
 }
 
 // slashComplete returns all commands in slashCommands that have prefix as a prefix.
@@ -907,23 +933,86 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 		} else {
 			m.statusMsg = "/resume: not configured"
 		}
+	case "/sessions":
+		if m.slashCB.ListSessions == nil {
+			m.statusMsg = "/sessions: not configured"
+			break
+		}
+		listings, err := m.slashCB.ListSessions()
+		if err != nil {
+			m.statusMsg = fmt.Sprintf("/sessions: %v", err)
+			break
+		}
+		if len(listings) == 0 {
+			m.statusMsg = "No sessions found"
+			break
+		}
+		sb := NewSessionBrowser(listings)
+		sb.SetOnSelect(func(id string) {
+			m.browsing = false
+			m.sessionBrowser = nil
+			if m.slashCB.ResumeSession != nil {
+				if err := m.slashCB.ResumeSession(id); err != nil {
+					m.statusMsg = fmt.Sprintf("/sessions: %v", err)
+					return
+				}
+			}
+			m.getOrCreateSession(id, 0)
+			m.focused = id
+			m.cursor = 0
+			m.statusMsg = "Resumed: " + id
+			m.rebuildViewport()
+		})
+		sb.SetOnCancel(func() {
+			m.browsing = false
+			m.sessionBrowser = nil
+		})
+		sb.SetOnDelete(func(l session.Listing) {
+			_ = os.Remove(l.Path)
+			m.statusMsg = "Deleted session: " + l.ID
+		})
+		m.sessionBrowser = sb
+		m.browsing = true
 	case "/model":
-		if len(fields) < 2 {
+		if len(fields) >= 2 {
+			name := fields[1]
+			if m.slashCB.SetModel != nil {
+				err := m.slashCB.SetModel(name)
+				if err != nil {
+					m.statusMsg = fmt.Sprintf("/model: %v", err)
+				} else {
+					m.modelName = name
+					m.statusMsg = "Model set to " + name
+				}
+			} else {
+				m.statusMsg = "/model: not configured"
+			}
+			break
+		}
+		if len(m.settings.Endpoints) == 0 {
 			m.statusMsg = fmt.Sprintf("Current model: %s", m.modelName)
 			break
 		}
-		name := fields[1]
-		if m.slashCB.SetModel != nil {
-			err := m.slashCB.SetModel(name)
-			if err != nil {
-				m.statusMsg = fmt.Sprintf("/model: %v", err)
-			} else {
-				m.modelName = name
-				m.statusMsg = "Model set to " + name
+		ms := NewModelSelector(m.settings.Endpoints, m.settings.DefaultEndpoint)
+		ms.SetOnSelect(func(endpoint, model string) {
+			m.selectingModel = false
+			m.modelSelector = nil
+			if m.slashCB.SetModel != nil {
+				if err := m.slashCB.SetModel(model); err != nil {
+					m.statusMsg = fmt.Sprintf("/model: %v", err)
+					return
+				}
 			}
-		} else {
-			m.statusMsg = "/model: not configured"
-		}
+			m.modelName = model
+			m.settings.DefaultEndpoint = endpoint
+			m.statusMsg = "Model set to " + model
+		})
+		ms.SetOnCancel(func() {
+			m.selectingModel = false
+			m.modelSelector = nil
+		})
+		m.modelSelector = ms
+		m.selectingModel = true
 	default:
 		m.statusMsg = cmd + ": unknown command"
 	}
@@ -1037,9 +1126,15 @@ func (m *Model) View() string {
 		sections = append(sections, m.statusMsg)
 	}
 
-	// Input region
+	// Input region (swappable slot).
 	if m.activeApproval != nil {
 		sections = append(sections, renderApprovalOverlay(m.activeApproval, m.winW))
+	} else if m.browsing && m.sessionBrowser != nil {
+		browserLines := m.sessionBrowser.Render(m.winW)
+		sections = append(sections, strings.Join(browserLines, "\n"))
+	} else if m.selectingModel && m.modelSelector != nil {
+		selectorLines := m.modelSelector.Render(m.winW)
+		sections = append(sections, strings.Join(selectorLines, "\n"))
 	} else {
 		palette := m.slashPalette()
 		if palette != "" {
