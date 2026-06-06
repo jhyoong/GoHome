@@ -332,10 +332,12 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 	case agent.EventThinkingDelta:
 		if !m.spinner.Active() {
 			m.spinner.Start("Thinking...")
+			m.spinner.SetOnCancel(m.cancelFocusedSession)
 		}
 	case agent.EventTokenDelta:
 		if !m.spinner.Active() {
 			m.spinner.Start("Generating...")
+			m.spinner.SetOnCancel(m.cancelFocusedSession)
 		} else {
 			m.spinner.SetMessage("Generating...")
 		}
@@ -356,6 +358,21 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 		return SpinnerTickCmd()
 	}
 	return nil
+}
+
+func (m *Model) cancelFocusedSession() {
+	if m.slashCB.CancelSession != nil {
+		m.slashCB.CancelSession(m.focused)
+	}
+	sv := m.sessions[m.focused]
+	if sv != nil {
+		sv.InFlight = false
+		sv.Timeline = append(sv.Timeline, TimelineEntry{Kind: "notice", Text: "Cancelled."})
+	}
+	m.pendingMessages = m.pendingMessages[:0]
+	m.spinner.Stop()
+	m.statusMsg = "Cancelled"
+	m.rebuildViewport()
 }
 
 // sendInputCmd returns a Cmd that delivers text to the input channel
@@ -551,6 +568,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.Type == tea.KeyEsc {
 				m.showTokens = false
 			}
+			return m, tea.Batch(cmds...)
+		}
+
+		if msg.Type == tea.KeyEsc && m.spinner.Active() {
+			m.spinner.HandleInput(msg)
 			return m, tea.Batch(cmds...)
 		}
 
