@@ -11,6 +11,9 @@ import (
 	chromastyles "github.com/alecthomas/chroma/v2/styles"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/extension"
+	east "github.com/yuin/goldmark/extension/ast"
+	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
 )
 
@@ -23,6 +26,13 @@ const (
 	ansiReset     = "\x1b[0m"
 )
 
+var mdParser parser.Parser
+
+func init() {
+	md := goldmark.New(goldmark.WithExtensions(extension.Table))
+	mdParser = md.Parser()
+}
+
 // RenderMarkdown parses markdown source and returns terminal-ready lines
 // styled with ANSI escape sequences, wrapped to fit within width columns.
 func RenderMarkdown(source string, width int) []string {
@@ -32,8 +42,7 @@ func RenderMarkdown(source string, width int) []string {
 
 	src := []byte(source)
 	reader := text.NewReader(src)
-	parser := goldmark.DefaultParser()
-	doc := parser.Parse(reader)
+	doc := mdParser.Parse(reader)
 
 	var lines []string
 	renderNode(doc, src, width, 0, false, false, &lines)
@@ -111,6 +120,10 @@ func renderNode(node ast.Node, src []byte, width, listDepth int, bold, italic bo
 		*out = append(*out, "")
 
 	default:
+		if node.Kind() == east.KindTable {
+			renderTable(node, src, width, bold, italic, out)
+			break
+		}
 		// For unrecognized block nodes, recurse into children
 		renderChildren(node, src, width, listDepth, bold, italic, out)
 	}
@@ -176,6 +189,76 @@ func renderList(list *ast.List, src []byte, width, listDepth int, bold, italic b
 		}
 	}
 	// blank line after list
+	*out = append(*out, "")
+}
+
+// renderTable handles GFM table nodes, rendering them with box-drawing borders.
+func renderTable(node ast.Node, src []byte, width int, bold, italic bool, out *[]string) {
+	var rows [][]string
+	headerCount := 0
+
+	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+		isHeader := child.Kind() == east.KindTableHeader
+		var cells []string
+		for cell := child.FirstChild(); cell != nil; cell = cell.NextSibling() {
+			cells = append(cells, extractInline(cell, src, bold, italic))
+		}
+		rows = append(rows, cells)
+		if isHeader {
+			headerCount++
+		}
+	}
+
+	if len(rows) == 0 {
+		return
+	}
+
+	// Determine number of columns and measure widths.
+	numCols := 0
+	for _, row := range rows {
+		if len(row) > numCols {
+			numCols = len(row)
+		}
+	}
+	colWidths := make([]int, numCols)
+	for _, row := range rows {
+		for c, cell := range row {
+			w := VisualWidth(StripAnsi(cell))
+			if w > colWidths[c] {
+				colWidths[c] = w
+			}
+		}
+	}
+
+	// Build separator line.
+	var sepParts []string
+	for _, w := range colWidths {
+		sepParts = append(sepParts, strings.Repeat("─", w+2))
+	}
+	sep := ansiDim + "├" + strings.Join(sepParts, "┼") + "┤" + ansiReset
+	topBorder := ansiDim + "┌" + strings.Join(sepParts, "┬") + "┐" + ansiReset
+	bottomBorder := ansiDim + "└" + strings.Join(sepParts, "┴") + "┘" + ansiReset
+
+	*out = append(*out, topBorder)
+	for i, row := range rows {
+		var parts []string
+		for c := 0; c < numCols; c++ {
+			cell := ""
+			if c < len(row) {
+				cell = row[c]
+			}
+			padded := cell + strings.Repeat(" ", colWidths[c]-VisualWidth(StripAnsi(cell)))
+			if i < headerCount {
+				padded = ansiBold + padded + ansiReset
+			}
+			parts = append(parts, " "+padded+" ")
+		}
+		*out = append(*out, ansiDim+"│"+ansiReset+strings.Join(parts, ansiDim+"│"+ansiReset)+ansiDim+"│"+ansiReset)
+		if i < headerCount {
+			*out = append(*out, sep)
+		}
+	}
+	*out = append(*out, bottomBorder)
 	*out = append(*out, "")
 }
 

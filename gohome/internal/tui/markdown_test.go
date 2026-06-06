@@ -55,3 +55,30 @@ func TestRenderMarkdownEmpty(t *testing.T) {
 		t.Errorf("empty input should return empty slice, got %d lines", len(lines))
 	}
 }
+
+func TestRenderMarkdownTable(t *testing.T) {
+	md := "| Name | Status |\n|---|---|\n| foo | ok |\n| bar | fail |"
+	lines := RenderMarkdown(md, 80)
+	joined := StripAnsi(strings.Join(lines, "\n"))
+	if !strings.Contains(joined, "foo") {
+		t.Errorf("table cell 'foo' missing: %q", joined)
+	}
+	if !strings.Contains(joined, "bar") {
+		t.Errorf("table cell 'bar' missing: %q", joined)
+	}
+	if !strings.Contains(joined, "┌") {
+		t.Errorf("table top border missing: %q", joined)
+	}
+	if !strings.Contains(joined, "└") {
+		t.Errorf("table bottom border missing: %q", joined)
+	}
+}
+
+func TestRenderMarkdownTableAlignment(t *testing.T) {
+	md := "| Left | Center | Right |\n|:---|:---:|---:|\n| a | b | c |"
+	lines := RenderMarkdown(md, 80)
+	joined := StripAnsi(strings.Join(lines, "\n"))
+	if !strings.Contains(joined, "Left") || !strings.Contains(joined, "Center") || !strings.Contains(joined, "Right") {
+		t.Errorf("table headers missing: %q", joined)
+	}
+}

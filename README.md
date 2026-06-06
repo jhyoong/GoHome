@@ -26,6 +26,16 @@ Override the model for a single run:
 ./bin/gohome --endpoint local-anthropic --model claude-haiku-4-5
 ```
 
+### CLI flags
+
+| Flag | Description |
+|---|---|
+| `--endpoint <name>` | Select a configured endpoint by name |
+| `--model <name>` | Override the default model for this run |
+| `--yolo` | Start with all approval prompts disabled |
+| `--resume` | Resume the most recent session for the current working directory |
+| `--version` | Print version and exit |
+
 ---
 
 ## Quickstart
@@ -71,18 +81,20 @@ Project-level settings live in `./.gohome/settings.json` and are merged on top o
 
 | Key | Action |
 |---|---|
-| `Enter` | Submit input |
+| `Enter` | Submit input (or toggle tool expansion when input is empty) |
 | `Shift+Enter` | Insert newline |
 | `Ctrl+C` (once) | Cancel current LLM turn or close approval prompt |
 | `Ctrl+C` (twice) | Quit |
+| `Ctrl+E` | Open current input in external editor (`$VISUAL` / `$EDITOR` / `vi`) |
 | `Ctrl+]` | Focus next session |
 | `Ctrl+[` | Focus previous session |
-| `Ctrl+L` | Clear viewport (history preserved in memory) |
 | `PgUp` / `PgDn` | Scroll viewport |
+| `@` | Trigger file search popup (type a query after `@`) |
 | `/` | Open slash command with inline autocomplete |
+| `Tab` | Confirm file search selection |
 | `1`–`4` | Pick option in approval prompt |
 | `e` | Edit suggested bash pattern in approval prompt |
-| `Esc` | Deny / close overlay |
+| `Esc` | Deny / close overlay / dismiss file search |
 
 ---
 
@@ -90,14 +102,14 @@ Project-level settings live in `./.gohome/settings.json` and are merged on top o
 
 | Command | Status |
 |---|---|
-| `/yolo` | Implemented — toggles yolo mode (skip all approval prompts) |
-| `/tokens` | Implemented — opens token usage detail overlay |
-| `/quit` | Implemented — exits the process |
-| `/new` | Not implemented in v0.2 (shows "not implemented") |
-| `/resume` | Not implemented in v0.2 (shows "not implemented") |
-| `/endpoint <name>` | Not implemented in v0.2 (shows "not implemented") |
-| `/model <name>` | Not implemented in v0.2 (shows "not implemented") |
-| `/cancel [message]` | Not implemented in v0.2 (shows "not implemented") |
+| `/yolo` | Toggles yolo mode (skip all approval prompts) |
+| `/tokens` | Opens token usage detail overlay |
+| `/quit` | Exits the process |
+| `/cancel` | Cancels the current LLM turn, clears pending message queue |
+| `/new` | Starts a new session (requires backend callback via `SetSlashCallbacks`; shows "not configured" until wired) |
+| `/resume <id>` | Resumes a previous session by ID (requires backend callback; shows "not configured" until wired) |
+| `/model <name>` | Switches the active model (requires backend callback; shows "not configured" until wired). Without arguments, shows the current model name |
+| `/endpoint` | Listed in autocomplete but not yet implemented |
 
 ---
 

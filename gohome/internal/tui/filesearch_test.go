@@ -108,3 +108,58 @@ func TestFileSearchPopup_SelectedPath(t *testing.T) {
 		t.Errorf("SelectedPath: got %q, want %q", got, "b.go")
 	}
 }
+
+func TestReplaceAtQuery_RetainsAtPrefix(t *testing.T) {
+	m := New(nil, "")
+	m.editor.SetValue("please read @mod")
+	m.replaceAtQuery("src/model.go")
+	got := m.editor.Value()
+	want := "@src/model.go "
+	if !strings.HasSuffix(got, want) {
+		t.Errorf("replaceAtQuery: got %q, want suffix %q", got, want)
+	}
+	wantFull := "please read @src/model.go "
+	if got != wantFull {
+		t.Errorf("replaceAtQuery: got %q, want %q", got, wantFull)
+	}
+}
+
+func TestReplaceAtQuery_TrailingSpacePreventsRetrigger(t *testing.T) {
+	m := New(nil, "")
+	m.editor.SetValue("@mod")
+	m.replaceAtQuery("model.go")
+	// After replacement, extractAtQuery should return false because of trailing space.
+	_, ok := m.extractAtQuery()
+	if ok {
+		t.Error("extractAtQuery should return false after replaceAtQuery (trailing space)")
+	}
+}
+
+func TestConfirmFileSearch_Tab(t *testing.T) {
+	m := New(nil, "")
+	m.editor.SetValue("@main")
+	m.fileSearching = true
+	m.fileSearch.query = "main"
+	m.fileSearch.results = []ScoredResult{
+		{Path: "cmd/main.go", Score: 0},
+		{Path: "main_test.go", Score: 20},
+	}
+	m.fileSearch.visible = true
+	m.fileSearch.selected = 0
+
+	ok := m.confirmFileSearch()
+	if !ok {
+		t.Fatal("confirmFileSearch should return true")
+	}
+	got := m.editor.Value()
+	want := "@cmd/main.go "
+	if got != want {
+		t.Errorf("after confirmFileSearch: got %q, want %q", got, want)
+	}
+	if m.fileSearching {
+		t.Error("fileSearching should be false after confirm")
+	}
+	if m.fileSearch.visible {
+		t.Error("popup should be hidden after confirm")
+	}
+}

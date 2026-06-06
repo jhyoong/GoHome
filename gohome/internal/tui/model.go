@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
@@ -92,6 +93,10 @@ type Model struct {
 	// Context warning tracking per session (Task 11.16).
 	// warned80/warned95 are set in handleAgentEvent to fire once per session.
 	contextNotice string // most recent context warning for the notification line
+
+	// lastCtrlC records the time of the most recent Ctrl+C press.
+	// A second press within 500ms quits; a single press cancels the current turn.
+	lastCtrlC time.Time
 
 	// slashCB holds optional callbacks wired to slash commands (/new, /resume,
 	// /model, /cancel). Set via SetSlashCallbacks.
@@ -500,9 +505,39 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.KeyMsg:
-		// Ctrl+C always quits.
 		if msg.Type == tea.KeyCtrlC {
-			return m, tea.Quit
+			now := time.Now()
+			doubleTap := now.Sub(m.lastCtrlC) < 500*time.Millisecond
+			m.lastCtrlC = now
+
+			if doubleTap {
+				return m, tea.Quit
+			}
+
+			// Close approval prompt if one is active.
+			if m.activeApproval != nil {
+				m.resolveApproval(guard.ApprovalDecision{Outcome: guard.Deny})
+				m.statusMsg = "Approval dismissed"
+				return m, tea.Batch(cmds...)
+			}
+
+			// Cancel in-flight LLM turn for the focused session.
+			sv := m.sessions[m.focused]
+			if sv != nil && sv.InFlight {
+				if m.slashCB.CancelSession != nil {
+					m.slashCB.CancelSession(m.focused)
+				}
+				sv.InFlight = false
+				sv.Timeline = append(sv.Timeline, TimelineEntry{Kind: "notice", Text: "Cancelled."})
+				m.pendingMessages = m.pendingMessages[:0]
+				m.spinner.Stop()
+				m.statusMsg = "Cancelled — press Ctrl+C again to quit"
+				return m, tea.Batch(cmds...)
+			}
+
+			// Nothing active — treat as first tap toward quit.
+			m.statusMsg = "Press Ctrl+C again to quit"
+			return m, tea.Batch(cmds...)
 		}
 
 		// When an approval is active, route keys to the approval handler.
@@ -528,18 +563,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.chat.ScrollUp(5)
 		case tea.KeyPgDown:
 			m.chat.ScrollDown(5)
+		case tea.KeyTab:
+			if m.confirmFileSearch() {
+				return m, tea.Batch(cmds...)
+			}
 		case tea.KeyEnter:
 			if msg.Alt {
 				m.editor.InsertNewline()
 			} else {
-				// File search: confirm selection.
-				if m.fileSearching && m.fileSearch.visible {
-					path := m.fileSearch.SelectedPath()
-					if path != "" {
-						m.replaceAtQuery(path)
-					}
-					m.fileSearching = false
-					m.fileSearch.Hide()
+				if m.confirmFileSearch() {
 					return m, tea.Batch(cmds...)
 				}
 				text := strings.TrimSpace(m.editor.Value())
@@ -1001,6 +1033,21 @@ func (m *Model) View() string {
 	return strings.Join(sections, "\n")
 }
 
+// confirmFileSearch applies the selected file search result to the editor
+// and closes the popup. Returns true if a selection was made.
+func (m *Model) confirmFileSearch() bool {
+	if !m.fileSearching || !m.fileSearch.visible {
+		return false
+	}
+	path := m.fileSearch.SelectedPath()
+	if path != "" {
+		m.replaceAtQuery(path)
+	}
+	m.fileSearching = false
+	m.fileSearch.Hide()
+	return true
+}
+
 // extractAtQuery returns the word following the last '@' in the editor when that
 // '@' is at the start of the input or preceded by whitespace. Returns ("", false)
 // when the pattern is absent or the query contains whitespace.
@@ -1026,14 +1073,15 @@ func (m *Model) extractAtQuery() (string, bool) {
 	return query, true
 }
 
-// replaceAtQuery replaces the @<word> fragment in the editor with replacement.
+// replaceAtQuery replaces the @<word> fragment in the editor with @replacement
+// followed by a trailing space (to prevent re-triggering the search).
 func (m *Model) replaceAtQuery(replacement string) {
 	val := m.editor.Value()
 	idx := strings.LastIndex(val, "@")
 	if idx < 0 {
 		return
 	}
-	newVal := val[:idx] + replacement
+	newVal := val[:idx] + "@" + replacement + " "
 	m.editor.SetValue(newVal)
 }
 
