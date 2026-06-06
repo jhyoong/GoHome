@@ -23,11 +23,12 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, error)
 		maxTokens = a.MaxTokens
 	}
 	req := common.Request{
-		Model:     sess.Model,
-		System:    a.System,
-		Messages:  sess.History,
-		Tools:     a.Tools.Schemas(),
-		MaxTokens: maxTokens,
+		Model:          sess.Model,
+		System:         a.System,
+		Messages:       sess.History,
+		Tools:          a.Tools.Schemas(),
+		MaxTokens:      maxTokens,
+		ThinkingBudget: a.ThinkingBudget,
 	}
 
 	events, err := a.Client.Stream(ctx, req)

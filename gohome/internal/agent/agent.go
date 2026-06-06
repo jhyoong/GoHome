@@ -18,7 +18,8 @@ type Agent struct {
 	Frontend  Frontend
 	Writer    *session.Writer
 	System    string
-	MaxTokens int // if > 0, overrides the default 4096 per-turn token limit
+	MaxTokens      int // if > 0, overrides the default 4096 per-turn token limit
+	ThinkingBudget int // if > 0, enable extended thinking with this token budget
 
 	// Session is the session currently running inside Run. It is set at the
 	// start of Run and used by Spawn to build the child session.

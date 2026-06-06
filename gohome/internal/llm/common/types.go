@@ -75,11 +75,12 @@ type ToolDef struct {
 }
 
 type Request struct {
-	Model     string
-	System    string
-	Messages  []Message
-	Tools     []ToolDef
-	MaxTokens int
+	Model              string
+	System             string
+	Messages           []Message
+	Tools              []ToolDef
+	MaxTokens          int
+	ThinkingBudget     int // if > 0, enable extended thinking with this token budget
 }
 
 type Client interface {

@@ -262,15 +262,16 @@ You have access to tools for reading and writing files, running bash commands, a
 Be concise and precise. Ask for clarification when requirements are ambiguous.`
 
 	a := &agent.Agent{
-		Client:    client,
-		Tools:     registry,
-		Guard:     g,
-		Frontend:  fe,
-		Writer:    writer,
-		System:    systemPrompt,
-		MaxTokens: 4096,
-		Home:      home,
-		Session:   sess,
+		Client:         client,
+		Tools:          registry,
+		Guard:          g,
+		Frontend:       fe,
+		Writer:         writer,
+		System:         systemPrompt,
+		MaxTokens:      16384,
+		ThinkingBudget: 10240,
+		Home:           home,
+		Session:        sess,
 	}
 	a.RegisterSubagentTool()
 
