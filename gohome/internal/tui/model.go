@@ -853,7 +853,7 @@ func (m *Model) clampCursor() {
 
 // slashCommands is the static list of available slash commands.
 var slashCommands = []string{
-	"/new", "/resume", "/sessions", "/yolo", "/endpoint", "/model", "/cancel", "/tokens", "/quit",
+	"/new", "/resume", "/yolo", "/endpoint", "/model", "/cancel", "/tokens", "/quit",
 }
 
 // slashComplete returns all commands in slashCommands that have prefix as a prefix.
@@ -915,32 +915,13 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 			m.statusMsg = "/new: not configured"
 		}
 	case "/resume":
-		if len(fields) < 2 {
-			m.statusMsg = "/resume: provide a session ID"
-			break
-		}
-		sid := fields[1]
-		if m.slashCB.ResumeSession != nil {
-			err := m.slashCB.ResumeSession(sid)
-			if err != nil {
-				m.statusMsg = fmt.Sprintf("/resume: %v", err)
-			} else {
-				m.getOrCreateSession(sid, 0)
-				m.focused = sid
-				m.cursor = 0
-				m.statusMsg = "Resumed: " + sid
-			}
-		} else {
-			m.statusMsg = "/resume: not configured"
-		}
-	case "/sessions":
 		if m.slashCB.ListSessions == nil {
-			m.statusMsg = "/sessions: not configured"
+			m.statusMsg = "/resume: not configured"
 			break
 		}
 		listings, err := m.slashCB.ListSessions()
 		if err != nil {
-			m.statusMsg = fmt.Sprintf("/sessions: %v", err)
+			m.statusMsg = fmt.Sprintf("/resume: %v", err)
 			break
 		}
 		if len(listings) == 0 {
@@ -953,7 +934,7 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 			m.sessionBrowser = nil
 			if m.slashCB.ResumeSession != nil {
 				if err := m.slashCB.ResumeSession(id); err != nil {
-					m.statusMsg = fmt.Sprintf("/sessions: %v", err)
+					m.statusMsg = fmt.Sprintf("/resume: %v", err)
 					return
 				}
 			}
@@ -971,6 +952,9 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 			_ = os.Remove(l.Path)
 			m.statusMsg = "Deleted session: " + l.ID
 		})
+		if len(fields) >= 2 {
+			sb.SetFilter(fields[1])
+		}
 		m.sessionBrowser = sb
 		m.browsing = true
 	case "/model":
