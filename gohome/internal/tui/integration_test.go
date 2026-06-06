@@ -12,7 +12,7 @@ import (
 	"github.com/jhyoong/GoHome/gohome/internal/tui"
 )
 
-func TestSlashSessionsOpensAndCloses(t *testing.T) {
+func TestSlashResumeOpensAndCloses(t *testing.T) {
 	m := tui.New(nil, "")
 	m.SetSlashCallbacks(tui.SlashCallbacks{
 		ListSessions: func() ([]session.Listing, error) {
@@ -29,11 +29,43 @@ func TestSlashSessionsOpensAndCloses(t *testing.T) {
 		return bytes.Contains(out, []byte("─"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
-	tm.Type("/sessions")
+	tm.Type("/resume")
 	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("test session"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyEsc})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("─"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
+
+func TestSlashResumeWithFilterPreFills(t *testing.T) {
+	m := tui.New(nil, "")
+	m.SetSlashCallbacks(tui.SlashCallbacks{
+		ListSessions: func() ([]session.Listing, error) {
+			return []session.Listing{
+				{ID: "s1", Title: "fix login bug"},
+				{ID: "s2", Title: "refactor renderer"},
+			}, nil
+		},
+	})
+
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("─"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	tm.Type("/resume login")
+	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("fix login bug"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyEsc})
