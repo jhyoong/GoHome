@@ -266,6 +266,40 @@ func TestApprovalDenySteerEscCancels(t *testing.T) {
 	}
 }
 
+// --- Arrow key navigation ---
+
+func TestApprovalArrowRenderShowsMarker(t *testing.T) {
+	m := tui.New(nil, "")
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	msg, _ := makeApprovalReq("main", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
+	tm.Send(msg)
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("> [1]"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
+
+func TestApprovalArrowDownChangesSelection(t *testing.T) {
+	m := tui.New(nil, "")
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	msg, _ := makeApprovalReq("main", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
+	tm.Send(msg)
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("> [1]"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyDown})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("> [2]"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
+
 // --- Task 11.12: cross-session notification line ---
 
 func TestCrossSessionNotificationLine(t *testing.T) {

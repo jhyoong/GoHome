@@ -774,6 +774,29 @@ func (m *Model) handleApprovalKey(msg tea.KeyMsg) tea.Cmd {
 
 	// --- top-level approval menu ---
 	switch {
+	case msg.Type == tea.KeyUp:
+		if ap.selected > 0 {
+			ap.selected--
+		}
+	case msg.Type == tea.KeyDown:
+		if ap.selected < 3 {
+			ap.selected++
+		}
+	case msg.Type == tea.KeyEnter:
+		switch ap.selected {
+		case 0:
+			m.resolveApproval(guard.ApprovalDecision{Outcome: guard.AllowOnce})
+		case 1:
+			m.resolveApproval(guard.ApprovalDecision{
+				Outcome:      guard.AllowAlways,
+				SavedPattern: ap.pattern,
+			})
+		case 2:
+			m.resolveApproval(guard.ApprovalDecision{Outcome: guard.Deny})
+		case 3:
+			ap.steering = true
+			ap.steerInput.Focus()
+		}
 	case msg.Type == tea.KeyEsc:
 		m.resolveApproval(guard.ApprovalDecision{Outcome: guard.Deny})
 	case keyRune(msg) == '1':
