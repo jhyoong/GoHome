@@ -3,6 +3,8 @@ package tui
 import (
 	"strings"
 	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestSpinnerRenderInactive(t *testing.T) {
@@ -58,5 +60,57 @@ func TestSpinnerMessageChange(t *testing.T) {
 	}
 	if !strings.Contains(plain, "Running bash...") {
 		t.Errorf("expected message 'Running bash...' in %q", plain)
+	}
+}
+
+func TestSpinnerHandleInputEscCallsCancel(t *testing.T) {
+	s := NewSpinner()
+	s.Start("Working...")
+	called := false
+	s.SetOnCancel(func() { called = true })
+	s.HandleInput(tea.KeyMsg{Type: tea.KeyEsc})
+	if !called {
+		t.Error("Escape should call onCancel")
+	}
+}
+
+func TestSpinnerHandleInputEscNoopWithoutCallback(t *testing.T) {
+	s := NewSpinner()
+	s.Start("Working...")
+	s.HandleInput(tea.KeyMsg{Type: tea.KeyEsc})
+}
+
+func TestSpinnerHandleInputIgnoresOtherKeys(t *testing.T) {
+	s := NewSpinner()
+	s.Start("Working...")
+	called := false
+	s.SetOnCancel(func() { called = true })
+	s.HandleInput(tea.KeyMsg{Type: tea.KeyEnter})
+	if called {
+		t.Error("non-Escape keys should not trigger onCancel")
+	}
+}
+
+func TestSpinnerRenderShowsCancelHint(t *testing.T) {
+	s := NewSpinner()
+	s.Start("Working...")
+	s.SetOnCancel(func() {})
+	lines := s.Render(80)
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 line, got %d", len(lines))
+	}
+	plain := StripAnsi(lines[0])
+	if !strings.Contains(plain, "Esc to cancel") {
+		t.Errorf("expected cancel hint in %q", plain)
+	}
+}
+
+func TestSpinnerRenderNoCancelHintWithoutCallback(t *testing.T) {
+	s := NewSpinner()
+	s.Start("Working...")
+	lines := s.Render(80)
+	plain := StripAnsi(lines[0])
+	if strings.Contains(plain, "Esc to cancel") {
+		t.Errorf("should not show cancel hint when onCancel is nil: %q", plain)
 	}
 }
