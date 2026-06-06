@@ -120,6 +120,60 @@ func TestSlashResumeLoadsHistory(t *testing.T) {
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
 
+func TestStatusMsgClearedOnSend(t *testing.T) {
+	fe := tui.NewFrontend()
+	m := tui.New(fe, "")
+	m.SetSlashCallbacks(tui.SlashCallbacks{
+		ListSessions: func() ([]session.Listing, error) {
+			return []session.Listing{
+				{ID: "s1", Title: "test session"},
+			}, nil
+		},
+		ResumeSession: func(id string) ([]common.Message, error) {
+			return nil, nil
+		},
+	})
+
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	// Drain input channel so sends don't block.
+	go func() {
+		for range fe.InputCh() {
+		}
+	}()
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("─"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// Open resume browser.
+	tm.Type("/resume")
+	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("test session"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// Select the session.
+	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// "Resumed:" should appear.
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Resumed:"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// Type and send a message.
+	tm.Type("hello")
+	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// "Resumed:" should no longer appear — verify by waiting for the user
+	// message to render and checking that "Resumed:" is absent.
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("hello")) && !bytes.Contains(out, []byte("Resumed:"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
+
 func TestSlashModelOpensSelector(t *testing.T) {
 	m := tui.New(nil, "")
 	m.SetSettings(config.Settings{

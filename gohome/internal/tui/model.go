@@ -654,6 +654,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						})
 						sv.InFlight = true
 						m.editor.SetValue("")
+						m.statusMsg = ""
 						m.cursor = len(sv.Timeline) - 1
 						m.rebuildViewport()
 						cmds = append(cmds, m.sendInputCmd(text))
