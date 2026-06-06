@@ -275,6 +275,74 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 	}
 	a.RegisterSubagentTool()
 
+	m.SetSlashCallbacks(tui.SlashCallbacks{
+		ListSessions: func() ([]session.Listing, error) {
+			return session.List(home, cwd)
+		},
+		ResumeSession: func(id string) error {
+			listings, err := session.List(home, cwd)
+			if err != nil {
+				return err
+			}
+			var path string
+			for _, l := range listings {
+				if l.ID == id {
+					path = l.Path
+					break
+				}
+			}
+			if path == "" {
+				return fmt.Errorf("session %q not found", id)
+			}
+			loaded, _, err := session.Load(path)
+			if err != nil {
+				return err
+			}
+			writer.Emit(session.SessionEnd{Reason: "switch"})
+			_ = writer.Close()
+
+			newWriter, err := session.OpenWriter(path)
+			if err != nil {
+				return fmt.Errorf("open writer: %w", err)
+			}
+			sess = loaded
+			writer = newWriter
+			a.Session = sess
+			a.Writer = writer
+			return nil
+		},
+		NewSession: func() (string, error) {
+			id := newSessionID()
+			newSess := session.NewSession(id, cwd, endpoint.DefaultModel, epName)
+			wrPath := session.SessionPath(home, cwd, id, time.Now().UTC())
+
+			newWriter, err := session.OpenWriter(wrPath)
+			if err != nil {
+				return "", fmt.Errorf("open writer: %w", err)
+			}
+			newWriter.Emit(session.SessionStart{
+				ID:        newSess.ID,
+				CWD:       cwd,
+				Model:     endpoint.DefaultModel,
+				Endpoint:  epName,
+				StartedAt: newSess.StartedAt,
+			})
+
+			writer.Emit(session.SessionEnd{Reason: "switch"})
+			_ = writer.Close()
+
+			sess = newSess
+			writer = newWriter
+			a.Session = sess
+			a.Writer = writer
+			return id, nil
+		},
+		SetModel: func(name string) error {
+			sess.Model = name
+			return nil
+		},
+	})
+
 	// Shutdown ordering (Task 12.5):
 	//   1. p.Run() returns when the user quits the TUI (Ctrl+C / /quit).
 	//      OR a SIGINT/SIGTERM arrives and calls cancel() + p.Quit().
@@ -337,6 +405,12 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 	writer.Emit(session.SessionEnd{Reason: "user_quit"})
 	if err := writer.Close(); err != nil {
 		slog.Error("writer close error", "err", err)
+	}
+
+	if n, err := session.CleanBlank(home, cwd); err != nil {
+		slog.Warn("blank session cleanup failed", "err", err)
+	} else if n > 0 {
+		slog.Info("removed blank sessions", "count", n)
 	}
 
 	if logFile != nil {
