@@ -182,3 +182,8 @@ func (sl *SelectListComponent) SetItems(items []SelectItem) {
 	sl.allItems = items
 	sl.applyFilter()
 }
+
+func (sl *SelectListComponent) SetQuery(q string) {
+	sl.query = q
+	sl.applyFilter()
+}

@@ -177,3 +177,24 @@ func TestSelectListDeleteDisabledWhenNoCallback(t *testing.T) {
 		t.Errorf("query should be 'd' when delete is disabled, got %q", sl.query)
 	}
 }
+
+func TestSelectListSetQueryFilters(t *testing.T) {
+	items := []SelectItem{
+		{Value: "a", Label: "alpha"},
+		{Value: "b", Label: "beta"},
+		{Value: "c", Label: "gamma"},
+	}
+	sl := NewSelectList(items, nil)
+	sl.SetQuery("bet")
+	lines := sl.Render(80)
+	joined := strings.Join(lines, "\n")
+	if !strings.Contains(joined, "beta") {
+		t.Error("filtered list should contain 'beta'")
+	}
+	if strings.Contains(joined, "alpha") {
+		t.Error("filtered list should not contain 'alpha'")
+	}
+	if strings.Contains(joined, "gamma") {
+		t.Error("filtered list should not contain 'gamma'")
+	}
+}
