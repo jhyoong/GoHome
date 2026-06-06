@@ -300,6 +300,168 @@ func TestApprovalArrowDownChangesSelection(t *testing.T) {
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
 
+func TestApprovalEnterDispatchesAllowOnce(t *testing.T) {
+	m := tui.New(nil, "")
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	msg, ch := makeApprovalReq("main", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
+	tm.Send(msg)
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("> [1]"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// Default selection is 0 (Allow once), press Enter to confirm.
+	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+
+	select {
+	case dec := <-ch:
+		if dec.Outcome != guard.AllowOnce {
+			t.Fatalf("expected AllowOnce, got %q", dec.Outcome)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for AllowOnce decision")
+	}
+}
+
+func TestApprovalArrowDownDownEnterDenies(t *testing.T) {
+	m := tui.New(nil, "")
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	msg, ch := makeApprovalReq("main", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
+	tm.Send(msg)
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("> [1]"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// Press Down twice to reach option 2 (Deny).
+	tm.Send(tea.KeyMsg{Type: tea.KeyDown})
+	tm.Send(tea.KeyMsg{Type: tea.KeyDown})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("> [3]"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+
+	select {
+	case dec := <-ch:
+		if dec.Outcome != guard.Deny {
+			t.Fatalf("expected Deny, got %q", dec.Outcome)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for Deny decision")
+	}
+}
+
+func TestApprovalArrowUpClampsAtZero(t *testing.T) {
+	m := tui.New(nil, "")
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	msg, _ := makeApprovalReq("main", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
+	tm.Send(msg)
+
+	// Wait for initial state: selected=0, showing "> [1]".
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("> [1]"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// Press Up while already at option 0; selection should stay at 0.
+	// Then press Down to force a render; we should see "> [2]" (not "> [1]" gone to "> [2]"
+	// at selection=1 -- but we must NOT see "> [2]" after the Up, so we verify
+	// by pressing Down once and checking we reach "> [2]" (proving we started from 0, not -1).
+	tm.Send(tea.KeyMsg{Type: tea.KeyUp})
+	tm.Send(tea.KeyMsg{Type: tea.KeyDown})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("> [2]"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
+
+func TestApprovalArrowDownEnterAllowAlways(t *testing.T) {
+	m := tui.New(nil, "")
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	msg, ch := makeApprovalReq("main", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
+	tm.Send(msg)
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("> [1]"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// Press Down once to reach option 1 (Allow always).
+	tm.Send(tea.KeyMsg{Type: tea.KeyDown})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("> [2]"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+
+	select {
+	case dec := <-ch:
+		if dec.Outcome != guard.AllowAlways {
+			t.Fatalf("expected AllowAlways, got %q", dec.Outcome)
+		}
+		if dec.SavedPattern != "^ls" {
+			t.Fatalf("expected SavedPattern %q, got %q", "^ls", dec.SavedPattern)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for AllowAlways decision")
+	}
+}
+
+func TestApprovalArrowToSteerEntersSteerMode(t *testing.T) {
+	m := tui.New(nil, "")
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	msg, ch := makeApprovalReq("main", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
+	tm.Send(msg)
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("> [1]"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// Press Down 3 times to reach option 3 (Deny+steer).
+	tm.Send(tea.KeyMsg{Type: tea.KeyDown})
+	tm.Send(tea.KeyMsg{Type: tea.KeyDown})
+	tm.Send(tea.KeyMsg{Type: tea.KeyDown})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("> [4]"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// Press Enter to enter steer sub-mode.
+	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// Steer sub-mode should appear.
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Steer message"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// Type the steer message and confirm.
+	tm.Type("try another approach")
+	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+
+	select {
+	case dec := <-ch:
+		if dec.Outcome != guard.DenySteer {
+			t.Fatalf("expected DenySteer, got %q", dec.Outcome)
+		}
+		if dec.SteerMessage != "try another approach" {
+			t.Fatalf("expected SteerMessage %q, got %q", "try another approach", dec.SteerMessage)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for DenySteer decision")
+	}
+}
+
 // --- Task 11.12: cross-session notification line ---
 
 func TestCrossSessionNotificationLine(t *testing.T) {
