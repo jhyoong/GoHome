@@ -6,8 +6,10 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/jhyoong/GoHome/gohome/internal/tui"
+	"github.com/muesli/termenv"
 )
 
 // TestSlashYoloTogglesYolo types "/yolo" then Enter and asserts yolo toggled.
@@ -172,6 +174,29 @@ func TestTabAlreadyCompleteDoesNothing(t *testing.T) {
 	// Editor should still show "/model " — no change.
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("/model"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
+
+func TestSlashPaletteHighlightsFirstMatch(t *testing.T) {
+	// Force ANSI color output so lipgloss emits bold escape sequences even in
+	// a non-TTY test environment.
+	lipgloss.SetColorProfile(termenv.ANSI)
+	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
+
+	m := tui.New(nil, "")
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("─"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// Type "/re" to narrow to "/resume".
+	tm.Type("/re")
+
+	// The palette should render /resume with bold ANSI (ESC[1m).
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("\x1b[1m")) && bytes.Contains(out, []byte("/resume"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
 

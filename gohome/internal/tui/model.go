@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
 	"github.com/jhyoong/GoHome/gohome/internal/config"
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
@@ -1058,6 +1059,8 @@ func (m *Model) completeSlash() bool {
 	return true
 }
 
+var slashHighlight = lipgloss.NewStyle().Bold(true)
+
 // slashPalette renders the autocomplete list when input starts with '/'.
 // Returns "" when not applicable.
 func (m *Model) slashPalette() string {
@@ -1069,7 +1072,12 @@ func (m *Model) slashPalette() string {
 	if len(matches) == 0 {
 		return ""
 	}
-	return strings.Join(matches, "  ")
+	parts := make([]string, len(matches))
+	parts[0] = slashHighlight.Render(matches[0])
+	for i := 1; i < len(matches); i++ {
+		parts[i] = matches[i]
+	}
+	return strings.Join(parts, "  ")
 }
 
 // View implements tea.Model.
