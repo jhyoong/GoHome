@@ -1,6 +1,7 @@
 package session
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -143,5 +144,95 @@ func TestListPath(t *testing.T) {
 	wantAbs, _ := filepath.Abs(expectedPath)
 	if gotAbs != wantAbs {
 		t.Errorf("listings[0].Path = %q, want %q", listings[0].Path, expectedPath)
+	}
+}
+
+// writeBlankJSONL writes a JSONL session file with no user_message events.
+func writeBlankJSONL(t *testing.T, home, cwd, id string, startedAt time.Time) string {
+	t.Helper()
+	path := SessionPath(home, cwd, id, startedAt)
+	w, err := OpenWriter(path)
+	if err != nil {
+		t.Fatalf("OpenWriter: %v", err)
+	}
+	w.Emit(SessionStart{ID: id, CWD: cwd, Model: "m", Endpoint: "e", Depth: 0, StartedAt: startedAt})
+	w.Emit(SessionEnd{Reason: "user_quit"})
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	return path
+}
+
+func TestIsBlankTrue(t *testing.T) {
+	home := t.TempDir()
+	cwd := "/test/project"
+	now := time.Now().UTC()
+	path := writeBlankJSONL(t, home, cwd, "blank1", now)
+	blank, err := IsBlank(path)
+	if err != nil {
+		t.Fatalf("IsBlank: %v", err)
+	}
+	if !blank {
+		t.Error("expected blank session to be blank")
+	}
+}
+
+func TestIsBlankFalse(t *testing.T) {
+	home := t.TempDir()
+	cwd := "/test/project"
+	now := time.Now().UTC()
+	path := writeTestJSONL(t, home, cwd, "used1", now, "hello world")
+	blank, err := IsBlank(path)
+	if err != nil {
+		t.Fatalf("IsBlank: %v", err)
+	}
+	if blank {
+		t.Error("expected session with user_message to not be blank")
+	}
+}
+
+func TestCleanBlank(t *testing.T) {
+	home := t.TempDir()
+	cwd := "/test/project"
+	now := time.Now().UTC()
+
+	writeBlankJSONL(t, home, cwd, "blank1", now)
+	writeBlankJSONL(t, home, cwd, "blank2", now.Add(-time.Hour))
+	usedPath := writeTestJSONL(t, home, cwd, "used1", now, "hello")
+
+	removed, err := CleanBlank(home, cwd)
+	if err != nil {
+		t.Fatalf("CleanBlank: %v", err)
+	}
+	if removed != 2 {
+		t.Errorf("expected 2 removed, got %d", removed)
+	}
+
+	// The used session should still exist.
+	if _, err := os.Stat(usedPath); err != nil {
+		t.Errorf("used session should still exist: %v", err)
+	}
+
+	// Listing should only show the used session.
+	listings, err := List(home, cwd)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(listings) != 1 {
+		t.Fatalf("expected 1 listing after cleanup, got %d", len(listings))
+	}
+	if listings[0].ID != "used1" {
+		t.Errorf("remaining listing ID = %q, want %q", listings[0].ID, "used1")
+	}
+}
+
+func TestCleanBlankNoDir(t *testing.T) {
+	home := t.TempDir()
+	removed, err := CleanBlank(home, "/nonexistent/project")
+	if err != nil {
+		t.Fatalf("CleanBlank should not error on missing dir: %v", err)
+	}
+	if removed != 0 {
+		t.Errorf("expected 0 removed, got %d", removed)
 	}
 }
