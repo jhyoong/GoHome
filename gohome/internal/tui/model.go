@@ -932,17 +932,19 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 		sb.SetOnSelect(func(id string) {
 			m.browsing = false
 			m.sessionBrowser = nil
+			var history []common.Message
 			if m.slashCB.ResumeSession != nil {
-				history, err := m.slashCB.ResumeSession(id)
+				var err error
+				history, err = m.slashCB.ResumeSession(id)
 				if err != nil {
 					m.statusMsg = fmt.Sprintf("/resume: %v", err)
 					return
 				}
-				_ = history
 			}
-			m.getOrCreateSession(id, 0)
+			sv := m.getOrCreateSession(id, 0)
+			sv.Timeline = historyToTimeline(history)
 			m.focused = id
-			m.cursor = 0
+			m.cursor = len(sv.Timeline) - 1
 			m.statusMsg = "Resumed: " + id
 			m.rebuildViewport()
 		})

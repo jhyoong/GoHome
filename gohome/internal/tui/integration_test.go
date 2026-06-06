@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/jhyoong/GoHome/gohome/internal/config"
+	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 	"github.com/jhyoong/GoHome/gohome/internal/session"
 	"github.com/jhyoong/GoHome/gohome/internal/tui"
 )
@@ -72,6 +73,50 @@ func TestSlashResumeWithFilterPreFills(t *testing.T) {
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("─"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
+
+func TestSlashResumeLoadsHistory(t *testing.T) {
+	m := tui.New(nil, "")
+	m.SetSlashCallbacks(tui.SlashCallbacks{
+		ListSessions: func() ([]session.Listing, error) {
+			return []session.Listing{
+				{ID: "s1", Title: "test session"},
+			}, nil
+		},
+		ResumeSession: func(id string) ([]common.Message, error) {
+			return []common.Message{
+				{Role: common.RoleUser, Content: []common.Block{
+					{Kind: common.BlockText, Text: "previous question"},
+				}},
+				{Role: common.RoleAssistant, Content: []common.Block{
+					{Kind: common.BlockText, Text: "previous answer"},
+				}},
+			}, nil
+		},
+	})
+
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("─"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	tm.Type("/resume")
+	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("test session"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// Select the session (Enter on the first item).
+	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// Historical messages should appear in the rendered output.
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("previous question")) &&
+			bytes.Contains(out, []byte("previous answer"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
 
