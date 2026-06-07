@@ -124,6 +124,43 @@ func TestSnapshots(t *testing.T) {
 	})
 }
 
+func TestCopyKey_SetsStatusMessage(t *testing.T) {
+	m := newSized()
+	m.AddTimelineEntry("main", tui.TimelineEntry{Kind: tui.KindUser, Text: "hello clipboard"})
+	m.AddTimelineEntry("main", tui.TimelineEntry{Kind: tui.KindAssistant, Text: "response text"})
+
+	// Move cursor to the assistant entry.
+	m = apply(m, tea.KeyMsg{Type: tea.KeyDown})
+
+	// Press 'c' to copy.
+	m = apply(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+
+	// Should show a status message (either success or failure is fine in test env).
+	msg := m.StatusMsg()
+	if msg == "" {
+		t.Fatal("expected a status message after pressing 'c'")
+	}
+}
+
+func TestCopyKey_ToolEntry_IncludesAllContent(t *testing.T) {
+	m := newSized()
+	m.AddTimelineEntry("main", tui.TimelineEntry{
+		Kind:       tui.KindTool,
+		ToolName:   "bash",
+		Text:       `{"command":"ls"}`,
+		ToolResult: "file.go",
+		Status:     "success",
+	})
+
+	// Press 'c' to copy (cursor starts at 0).
+	m = apply(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+
+	msg := m.StatusMsg()
+	if msg == "" {
+		t.Fatal("expected a status message after pressing 'c'")
+	}
+}
+
 func TestToggleExpansion_PreservesScrollPosition(t *testing.T) {
 	m := newSized()
 

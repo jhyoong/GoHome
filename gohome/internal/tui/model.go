@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
@@ -751,6 +752,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			// Timeline cursor navigation when editor is empty.
 			if strings.TrimSpace(m.editor.Value()) == "" {
+				if keyRune(msg) == 'c' {
+					sv, ok := m.sessions[m.focused]
+					if ok && m.cursor >= 0 && m.cursor < len(sv.Timeline) {
+						text := timelineEntryText(sv.Timeline[m.cursor])
+						if err := clipboard.WriteAll(text); err != nil {
+							m.statusMsg = fmt.Sprintf("Copy failed: %v", err)
+						} else {
+							m.statusMsg = "Copied to clipboard"
+						}
+					}
+					return m, nil
+				}
 				if msg.Type == tea.KeyUp {
 					if m.cursor > 0 {
 						m.cursor--
@@ -900,6 +913,27 @@ func (m *Model) handleApprovalKey(msg tea.KeyMsg) tea.Cmd {
 		ap.patternInput.CursorEnd()
 	}
 	return tea.Batch(cmds...)
+}
+
+// timelineEntryText returns the plain-text content of a TimelineEntry for
+// clipboard purposes.
+func timelineEntryText(e TimelineEntry) string {
+	switch e.Kind {
+	case KindUser, KindAssistant, KindThinking, KindNotice:
+		return e.Text
+	case KindTool:
+		var sb strings.Builder
+		fmt.Fprintf(&sb, "[tool] %s", e.ToolName)
+		if e.Text != "" {
+			fmt.Fprintf(&sb, "\nargs: %s", e.Text)
+		}
+		if e.ToolResult != "" {
+			fmt.Fprintf(&sb, "\nresult: %s", e.ToolResult)
+		}
+		return sb.String()
+	default:
+		return e.Text
+	}
 }
 
 // keyRune returns the single rune for a KeyRunes message, or 0 if the message

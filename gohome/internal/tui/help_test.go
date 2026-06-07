@@ -125,6 +125,16 @@ func TestHelpOverlay_EndIndicator_WhenFits(t *testing.T) {
 	}
 }
 
+func TestHelpOverlay_ShowsCopyKeybinding(t *testing.T) {
+	m := newSized()
+	m.OpenHelpOverlay()
+
+	view := m.View()
+	if !strings.Contains(view, "Copy entry to clipboard") {
+		t.Fatal("expected copy keybinding in help overlay")
+	}
+}
+
 func TestHelpOverlay_EndIndicator_WhenScrolledToBottom(t *testing.T) {
 	m := tui.New(nil, "")
 	m = apply(m, tea.WindowSizeMsg{Width: 80, Height: 10})

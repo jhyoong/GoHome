@@ -8,6 +8,7 @@ Keyboard shortcuts
   PgUp/PgDown   Scroll chat (or this help)
   Up/Down       Scroll this help
   Enter         Submit input / toggle tool detail
+  c             Copy entry to clipboard (when browsing)
   Alt+Enter     Insert newline
   Tab           Autocomplete / confirm file search
   Esc           Close overlay / cancel
@@ -17,6 +18,5 @@ Slash commands
   /help         Show this help
   /new          Start a new session
   /resume       Resume a past session
-  /yolo         Toggle YOLO mode (skip approvals)
 Esc to close · Press down for more
 main · ? · ░░░░░░░░░░ 0/128.0k (0%)

@@ -12,6 +12,7 @@ var helpLines = []string{
 	"  PgUp/PgDown   Scroll chat (or this help)",
 	"  Up/Down       Scroll this help",
 	"  Enter         Submit input / toggle tool detail",
+	"  c             Copy entry to clipboard (when browsing)",
 	"  Alt+Enter     Insert newline",
 	"  Tab           Autocomplete / confirm file search",
 	"  Esc           Close overlay / cancel",
