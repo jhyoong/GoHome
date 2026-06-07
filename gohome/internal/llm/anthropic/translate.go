@@ -166,13 +166,14 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 					send(common.StreamEvent{Kind: common.EventError, Err: err})
 					return
 				}
-				if blockTypes[raw.Index] == "thinking" {
+				switch blockTypes[raw.Index] {
+				case "thinking":
 					if !send(common.StreamEvent{
 						Kind: common.EventThinkingDone,
 					}) {
 						return
 					}
-				} else if blockTypes[raw.Index] == "tool_use" {
+				case "tool_use":
 					tb := toolBlocks[raw.Index]
 					if tb != nil {
 						if !send(common.StreamEvent{

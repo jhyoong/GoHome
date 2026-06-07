@@ -12,12 +12,12 @@ import (
 // Agent drives a single agentic session: it owns the LLM client, tools,
 // guardrail, frontend, and session writer, and orchestrates the turn loop.
 type Agent struct {
-	Client    common.Client
-	Tools     *tools.Registry
-	Guard     *guard.Guard
-	Frontend  Frontend
-	Writer    *session.Writer
-	System    string
+	Client         common.Client
+	Tools          *tools.Registry
+	Guard          *guard.Guard
+	Frontend       Frontend
+	Writer         *session.Writer
+	System         string
 	MaxTokens      int // if > 0, overrides the default 4096 per-turn token limit
 	ThinkingBudget int // if > 0, enable extended thinking with this token budget
 

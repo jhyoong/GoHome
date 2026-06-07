@@ -33,14 +33,14 @@ type ToolResult struct {
 
 // Event is the unit the agent sends to its Frontend.
 type Event struct {
-	Kind       EventKind
-	SessionID  string
-	TextDelta  string
-	ToolCallID string
-	ToolName   string
-	InputJSON  string
-	Result     *ToolResult
-	Usage      *common.Usage
+	Kind          EventKind
+	SessionID     string
+	TextDelta     string
+	ToolCallID    string
+	ToolName      string
+	InputJSON     string
+	Result        *ToolResult
+	Usage         *common.Usage
 	StopReason    string
 	Err           error
 	ThinkingDelta string
