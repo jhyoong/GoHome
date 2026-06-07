@@ -293,7 +293,13 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 		}
 
 	case agent.EventThinkingDone:
-		// No-op: the thinking entry is already complete.
+		n := len(sv.Timeline)
+		for i := n - 1; i >= 0; i-- {
+			if sv.Timeline[i].Kind == KindThinking {
+				sv.Timeline[i].Expanded = false
+				break
+			}
+		}
 
 	case agent.EventTokenDelta:
 		// Append to the last assistant entry if it is in-progress, else add new.
