@@ -13,24 +13,32 @@ type SessionBrowserComponent struct {
 	listings []session.Listing
 }
 
-func NewSessionBrowser(listings []session.Listing) *SessionBrowserComponent {
+func listingToItem(l session.Listing) SelectItem {
+	label := l.Title
+	if label == "" {
+		label = l.ID
+	}
+	if VisualWidth(label) > 40 {
+		label = TruncateText(label, 40)
+	}
+	return SelectItem{
+		Value:       l.ID,
+		Label:       label,
+		Description: relativeTime(l.LastActive),
+	}
+}
+
+func listingsToItems(listings []session.Listing) []SelectItem {
 	items := make([]SelectItem, len(listings))
 	for i, l := range listings {
-		label := l.Title
-		if label == "" {
-			label = l.ID
-		}
-		if len([]rune(label)) > 40 {
-			label = string([]rune(label)[:40])
-		}
-		items[i] = SelectItem{
-			Value:       l.ID,
-			Label:       label,
-			Description: relativeTime(l.LastActive),
-		}
+		items[i] = listingToItem(l)
 	}
+	return items
+}
+
+func NewSessionBrowser(listings []session.Listing) *SessionBrowserComponent {
 	sb := &SessionBrowserComponent{
-		list:     NewSelectList(items, nil),
+		list:     NewSelectList(listingsToItems(listings), nil),
 		listings: listings,
 	}
 	return sb
@@ -61,22 +69,7 @@ func (sb *SessionBrowserComponent) SetOnDelete(fn func(listing session.Listing))
 			}
 		}
 		sb.listings = remaining
-		items := make([]SelectItem, len(remaining))
-		for i, l := range remaining {
-			label := l.Title
-			if label == "" {
-				label = l.ID
-			}
-			if len([]rune(label)) > 40 {
-				label = string([]rune(label)[:40])
-			}
-			items[i] = SelectItem{
-				Value:       l.ID,
-				Label:       label,
-				Description: relativeTime(l.LastActive),
-			}
-		}
-		sb.list.SetItems(items)
+		sb.list.SetItems(listingsToItems(remaining))
 	}
 }
 

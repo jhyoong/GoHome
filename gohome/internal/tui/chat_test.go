@@ -6,7 +6,7 @@ import (
 )
 
 func TestChatRenderUserMessage(t *testing.T) {
-	entries := []TimelineEntry{{Kind: "user", Text: "hello world"}}
+	entries := []TimelineEntry{{Kind: KindUser, Text: "hello world"}}
 	c := NewChat(&entries, 20)
 	lines := c.Render(80)
 	joined := StripAnsi(strings.Join(lines, "\n"))
@@ -16,7 +16,7 @@ func TestChatRenderUserMessage(t *testing.T) {
 }
 
 func TestChatRenderAssistantMarkdown(t *testing.T) {
-	entries := []TimelineEntry{{Kind: "assistant", Text: "# Hello\n\nThis is **bold**."}}
+	entries := []TimelineEntry{{Kind: KindAssistant, Text: "# Hello\n\nThis is **bold**."}}
 	c := NewChat(&entries, 20)
 	lines := c.Render(80)
 	joined := strings.Join(lines, "\n")
@@ -30,7 +30,7 @@ func TestChatRenderAssistantMarkdown(t *testing.T) {
 }
 
 func TestChatRenderToolCollapsed(t *testing.T) {
-	entries := []TimelineEntry{{Kind: "tool", ToolName: "bash", Text: `{"command":"ls"}`, ToolResult: "file.txt"}}
+	entries := []TimelineEntry{{Kind: KindTool, ToolName: "bash", Text: `{"command":"ls"}`, ToolResult: "file.txt"}}
 	c := NewChat(&entries, 20)
 	lines := c.Render(80)
 	joined := StripAnsi(strings.Join(lines, "\n"))
@@ -51,7 +51,7 @@ func TestChatRenderEmpty(t *testing.T) {
 func TestChatScrolling(t *testing.T) {
 	var entries []TimelineEntry
 	for i := 0; i < 50; i++ {
-		entries = append(entries, TimelineEntry{Kind: "user", Text: "message"})
+		entries = append(entries, TimelineEntry{Kind: KindUser, Text: "message"})
 	}
 	c := NewChat(&entries, 10)
 	lines := c.Render(80)
@@ -62,7 +62,7 @@ func TestChatScrolling(t *testing.T) {
 
 func TestToolStatusPending(t *testing.T) {
 	entries := []TimelineEntry{{
-		Kind:     "tool",
+		Kind:     KindTool,
 		ToolName: "bash",
 		Text:     `{"command":"ls"}`,
 		Status:   "pending",
@@ -77,7 +77,7 @@ func TestToolStatusPending(t *testing.T) {
 
 func TestToolStatusSuccess(t *testing.T) {
 	entries := []TimelineEntry{{
-		Kind:       "tool",
+		Kind:       KindTool,
 		ToolName:   "bash",
 		Text:       `{"command":"ls"}`,
 		ToolResult: "file.txt",
@@ -93,7 +93,7 @@ func TestToolStatusSuccess(t *testing.T) {
 
 func TestToolStatusError(t *testing.T) {
 	entries := []TimelineEntry{{
-		Kind:       "tool",
+		Kind:       KindTool,
 		ToolName:   "bash",
 		Text:       `{"command":"rm /"}`,
 		ToolResult: "permission denied",
@@ -108,7 +108,7 @@ func TestToolStatusError(t *testing.T) {
 }
 
 func TestChatRenderThinkingCollapsed(t *testing.T) {
-	entries := []TimelineEntry{{Kind: "thinking", Text: "Let me reason\nabout this\nstep by step."}}
+	entries := []TimelineEntry{{Kind: KindThinking, Text: "Let me reason\nabout this\nstep by step."}}
 	c := NewChat(&entries, 20)
 	lines := c.Render(80)
 	joined := StripAnsi(strings.Join(lines, "\n"))
@@ -121,7 +121,7 @@ func TestChatRenderThinkingCollapsed(t *testing.T) {
 }
 
 func TestChatRenderThinkingExpanded(t *testing.T) {
-	entries := []TimelineEntry{{Kind: "thinking", Text: "Step 1: analyze\nStep 2: solve", Expanded: true}}
+	entries := []TimelineEntry{{Kind: KindThinking, Text: "Step 1: analyze\nStep 2: solve", Expanded: true}}
 	c := NewChat(&entries, 20)
 	lines := c.Render(80)
 	joined := StripAnsi(strings.Join(lines, "\n"))

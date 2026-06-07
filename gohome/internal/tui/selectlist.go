@@ -15,6 +15,8 @@ type SelectItem struct {
 	Value       string
 	Label       string
 	Description string
+	labelLower  string
+	descLower   string
 }
 
 type SelectListComponent struct {
@@ -29,7 +31,16 @@ type SelectListComponent struct {
 	onDelete      func(SelectItem)
 }
 
+func initSelectItems(items []SelectItem) []SelectItem {
+	for i := range items {
+		items[i].labelLower = strings.ToLower(items[i].Label)
+		items[i].descLower = strings.ToLower(items[i].Description)
+	}
+	return items
+}
+
 func NewSelectList(items []SelectItem, onSelect func(SelectItem)) *SelectListComponent {
+	items = initSelectItems(items)
 	sl := &SelectListComponent{
 		allItems:      items,
 		filtered:      append([]SelectItem{}, items...),
@@ -169,8 +180,8 @@ func (sl *SelectListComponent) applyFilter() {
 	q := strings.ToLower(sl.query)
 	var out []SelectItem
 	for _, item := range sl.allItems {
-		if strings.Contains(strings.ToLower(item.Label), q) ||
-			strings.Contains(strings.ToLower(item.Description), q) {
+		if strings.Contains(item.labelLower, q) ||
+			strings.Contains(item.descLower, q) {
 			out = append(out, item)
 		}
 	}
@@ -179,7 +190,7 @@ func (sl *SelectListComponent) applyFilter() {
 }
 
 func (sl *SelectListComponent) SetItems(items []SelectItem) {
-	sl.allItems = items
+	sl.allItems = initSelectItems(items)
 	sl.applyFilter()
 }
 

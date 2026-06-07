@@ -27,7 +27,7 @@ func TestSkeletonRender(t *testing.T) {
 func TestSessionViewTimelineRender(t *testing.T) {
 	m := tui.New(nil, "")
 	// Add a user entry to the focused "main" session.
-	m.AddTimelineEntry("main", tui.TimelineEntry{Kind: "user", Text: "hello"})
+	m.AddTimelineEntry("main", tui.TimelineEntry{Kind: tui.KindUser, Text: "hello"})
 
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() {

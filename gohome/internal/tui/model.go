@@ -17,9 +17,17 @@ import (
 	"github.com/jhyoong/GoHome/gohome/internal/tui/style"
 )
 
+const (
+	KindUser      = "user"
+	KindAssistant = "assistant"
+	KindThinking  = "thinking"
+	KindTool      = "tool"
+	KindNotice    = "notice"
+)
+
 // TimelineEntry is a single item in a session's conversation history.
 type TimelineEntry struct {
-	Kind       string // "user" | "assistant" | "tool" | "notice"
+	Kind       string // KindUser | KindAssistant | KindTool | KindNotice
 	Text       string
 	ToolName   string
 	ToolResult string
@@ -238,11 +246,11 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 	case agent.EventThinkingDelta:
 		sv.InFlight = true
 		n := len(sv.Timeline)
-		if n > 0 && sv.Timeline[n-1].Kind == "thinking" {
+		if n > 0 && sv.Timeline[n-1].Kind == KindThinking {
 			sv.Timeline[n-1].Text += ev.ThinkingDelta
 		} else {
 			sv.Timeline = append(sv.Timeline, TimelineEntry{
-				Kind: "thinking",
+				Kind: KindThinking,
 				Text: ev.ThinkingDelta,
 			})
 		}
@@ -254,18 +262,18 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 		// Append to the last assistant entry if it is in-progress, else add new.
 		sv.InFlight = true
 		n := len(sv.Timeline)
-		if n > 0 && sv.Timeline[n-1].Kind == "assistant" {
+		if n > 0 && sv.Timeline[n-1].Kind == KindAssistant {
 			sv.Timeline[n-1].Text += ev.TextDelta
 		} else {
 			sv.Timeline = append(sv.Timeline, TimelineEntry{
-				Kind: "assistant",
+				Kind: KindAssistant,
 				Text: ev.TextDelta,
 			})
 		}
 
 	case agent.EventToolCallDone:
 		sv.Timeline = append(sv.Timeline, TimelineEntry{
-			Kind:     "tool",
+			Kind:     KindTool,
 			ToolName: ev.ToolName,
 			Text:     ev.InputJSON,
 			Status:   "pending",
@@ -281,7 +289,7 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 		}
 		set := false
 		for i := len(sv.Timeline) - 1; i >= 0; i-- {
-			if sv.Timeline[i].Kind == "tool" && sv.Timeline[i].ToolResult == "" {
+			if sv.Timeline[i].Kind == KindTool && sv.Timeline[i].ToolResult == "" {
 				sv.Timeline[i].ToolResult = content
 				if isErr {
 					sv.Timeline[i].Status = "error"
@@ -298,7 +306,7 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 				status = "error"
 			}
 			sv.Timeline = append(sv.Timeline, TimelineEntry{
-				Kind:       "tool",
+				Kind:       KindTool,
 				ToolResult: content,
 				Status:     status,
 			})
@@ -316,7 +324,7 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 			text := m.pendingMessages[0]
 			m.pendingMessages = m.pendingMessages[1:]
 			sv.Timeline = append(sv.Timeline, TimelineEntry{
-				Kind: "user",
+				Kind: KindUser,
 				Text: text,
 			})
 			sv.InFlight = true
@@ -337,7 +345,7 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 			errText = ev.Err.Error()
 		}
 		sv.Timeline = append(sv.Timeline, TimelineEntry{
-			Kind: "notice",
+			Kind: KindNotice,
 			Text: errText,
 		})
 		sv.InFlight = false
@@ -377,17 +385,21 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 }
 
 func (m *Model) cancelFocusedSession() {
+	m.cancelFocusedSessionWith("Cancelled")
+}
+
+func (m *Model) cancelFocusedSessionWith(statusMsg string) {
 	if m.slashCB.CancelSession != nil {
 		m.slashCB.CancelSession(m.focused)
 	}
 	sv := m.sessions[m.focused]
 	if sv != nil {
 		sv.InFlight = false
-		sv.Timeline = append(sv.Timeline, TimelineEntry{Kind: "notice", Text: "Cancelled."})
+		sv.Timeline = append(sv.Timeline, TimelineEntry{Kind: KindNotice, Text: "Cancelled."})
 	}
 	m.pendingMessages = m.pendingMessages[:0]
 	m.spinner.Stop()
-	m.statusMsg = "Cancelled"
+	m.statusMsg = statusMsg
 	m.rebuildViewport()
 }
 
@@ -557,14 +569,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Cancel in-flight LLM turn for the focused session.
 			sv := m.sessions[m.focused]
 			if sv != nil && sv.InFlight {
-				if m.slashCB.CancelSession != nil {
-					m.slashCB.CancelSession(m.focused)
-				}
-				sv.InFlight = false
-				sv.Timeline = append(sv.Timeline, TimelineEntry{Kind: "notice", Text: "Cancelled."})
-				m.pendingMessages = m.pendingMessages[:0]
-				m.spinner.Stop()
-				m.statusMsg = "Cancelled — press Ctrl+C again to quit"
+				m.cancelFocusedSessionWith("Cancelled — press Ctrl+C again to quit")
 				return m, tea.Batch(cmds...)
 			}
 
@@ -631,7 +636,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					sv, ok := m.sessions[m.focused]
 					if ok && m.cursor >= 0 && m.cursor < len(sv.Timeline) {
 						entry := &sv.Timeline[m.cursor]
-						if entry.Kind == "tool" {
+						if entry.Kind == KindTool {
 							entry.Expanded = !entry.Expanded
 						}
 					}
@@ -653,7 +658,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 					} else {
 						sv.Timeline = append(sv.Timeline, TimelineEntry{
-							Kind: "user",
+							Kind: KindUser,
 							Text: text,
 						})
 						sv.InFlight = true
@@ -920,14 +925,7 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 		m.showTokens = true
 		m.statusMsg = ""
 	case "/cancel":
-		if m.slashCB.CancelSession != nil {
-			m.slashCB.CancelSession(m.focused)
-		}
-		sv := m.getOrCreateSession(m.focused, 0)
-		sv.InFlight = false
-		sv.Timeline = append(sv.Timeline, TimelineEntry{Kind: "notice", Text: "Cancelled."})
-		m.pendingMessages = m.pendingMessages[:0]
-		m.statusMsg = "Cancelled"
+		m.cancelFocusedSession()
 	case "/new":
 		if m.slashCB.NewSession != nil {
 			id, err := m.slashCB.NewSession()

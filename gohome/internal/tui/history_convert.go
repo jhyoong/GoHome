@@ -19,7 +19,7 @@ func historyToTimeline(msgs []common.Message) []TimelineEntry {
 			}
 			if len(parts) > 0 {
 				entries = append(entries, TimelineEntry{
-					Kind: "user",
+					Kind: KindUser,
 					Text: strings.Join(parts, "\n"),
 				})
 			}
@@ -29,17 +29,17 @@ func historyToTimeline(msgs []common.Message) []TimelineEntry {
 				switch b.Kind {
 				case common.BlockThinking:
 					entries = append(entries, TimelineEntry{
-						Kind: "thinking",
+						Kind: KindThinking,
 						Text: b.Text,
 					})
 				case common.BlockText:
 					entries = append(entries, TimelineEntry{
-						Kind: "assistant",
+						Kind: KindAssistant,
 						Text: b.Text,
 					})
 				case common.BlockToolUse:
 					entries = append(entries, TimelineEntry{
-						Kind:     "tool",
+						Kind:     KindTool,
 						ToolName: b.ToolName,
 						Text:     b.InputJSON,
 						Status:   "success",
@@ -58,7 +58,7 @@ func historyToTimeline(msgs []common.Message) []TimelineEntry {
 				}
 				merged := false
 				for i := len(entries) - 1; i >= 0; i-- {
-					if entries[i].Kind == "tool" && entries[i].ToolResult == "" {
+					if entries[i].Kind == KindTool && entries[i].ToolResult == "" {
 						entries[i].ToolResult = b.ResultText
 						entries[i].Status = status
 						merged = true
@@ -67,7 +67,7 @@ func historyToTimeline(msgs []common.Message) []TimelineEntry {
 				}
 				if !merged {
 					entries = append(entries, TimelineEntry{
-						Kind:       "tool",
+						Kind:       KindTool,
 						ToolResult: b.ResultText,
 						Status:     status,
 					})

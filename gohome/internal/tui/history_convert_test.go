@@ -16,7 +16,7 @@ func TestHistoryToTimeline_UserMessage(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("len = %d, want 1", len(got))
 	}
-	if got[0].Kind != "user" || got[0].Text != "hello world" {
+	if got[0].Kind != KindUser || got[0].Text != "hello world" {
 		t.Errorf("got %+v", got[0])
 	}
 }
@@ -32,10 +32,10 @@ func TestHistoryToTimeline_AssistantTextAndThinking(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("len = %d, want 2", len(got))
 	}
-	if got[0].Kind != "thinking" || got[0].Text != "let me think" {
+	if got[0].Kind != KindThinking || got[0].Text != "let me think" {
 		t.Errorf("thinking entry: %+v", got[0])
 	}
-	if got[1].Kind != "assistant" || got[1].Text != "here is the answer" {
+	if got[1].Kind != KindAssistant || got[1].Text != "here is the answer" {
 		t.Errorf("assistant entry: %+v", got[1])
 	}
 }
@@ -53,7 +53,7 @@ func TestHistoryToTimeline_ToolUseAndResult(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("len = %d, want 1 (tool use + result merged)", len(got))
 	}
-	if got[0].Kind != "tool" || got[0].ToolName != "bash" {
+	if got[0].Kind != KindTool || got[0].ToolName != "bash" {
 		t.Errorf("tool entry: %+v", got[0])
 	}
 	if got[0].Text != `{"cmd":"ls"}` {
@@ -134,7 +134,7 @@ func TestHistoryToTimeline_FullConversation(t *testing.T) {
 	for i, e := range got {
 		kinds[i] = e.Kind
 	}
-	want := []string{"user", "thinking", "assistant", "tool", "assistant"}
+	want := []string{KindUser, KindThinking, KindAssistant, KindTool, KindAssistant}
 	for i := range want {
 		if kinds[i] != want[i] {
 			t.Errorf("entry[%d].Kind = %q, want %q", i, kinds[i], want[i])
