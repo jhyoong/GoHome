@@ -157,6 +157,8 @@ func translateAssistantMessage(m common.Message) (any, error) {
 		switch b.Kind {
 		case common.BlockText:
 			textParts = append(textParts, b.Text)
+		case common.BlockThinking:
+			// OpenAI does not support thinking blocks; silently skip.
 		case common.BlockToolUse:
 			args := b.InputJSON
 			if args == "" {
