@@ -5,12 +5,25 @@
 ### Added
 
 - **Thinking blocks** -- Anthropic thinking/reasoning blocks are parsed from the SSE stream, forwarded through the agent event pipeline, and rendered in the TUI as collapsible entries with line counts. Spinner shows "Thinking..." during reasoning and "Generating..." during token output.
-- **File search popup** -- Type `@` followed by a query to search project files using `fd` (with `find` fallback). Results are scored and ranked (exact filename > prefix > substring). Navigate with Up/Down, confirm with Enter to insert the path.
+- **File search popup** -- Type `@` followed by a query to search project files using `fd` (with `find` fallback). Results are scored and ranked (exact filename > prefix > substring). Navigate with Up/Down or Tab, confirm with Enter to insert the path.
 - **Pending message queue** -- Messages typed while the agent is streaming are queued and automatically sent when the current turn completes. Queue is cleared on `/cancel`.
+- **Ctrl+C cancellation** -- Ctrl+C cancels in-flight turns or dismisses approval prompts; double-tap quits the app. Escape also cancels the spinner.
+- **Table rendering** -- GFM tables are rendered with box-drawing borders in markdown output.
+- **Tab completion for slash commands** -- Tab auto-completes slash commands with first-match highlighting in the palette.
+- **Session browser** -- `/resume` now shows an interactive session browser with filtering and search via a new SelectListComponent.
+- **Model selector** -- New `/model` command with interactive ModelSelectorComponent for switching LLM models at runtime.
+- **Resume with history** -- When resuming a session, prior conversation history is loaded and displayed in the TUI.
+- **Approval prompt navigation** -- Up/Down arrows navigate approval options with selection markers, Enter confirms. Press `e` to edit allow-always patterns, `4` for deny+steer with steering message input.
+- **Blank session cleanup** -- Empty JSONL session files (no user messages) are automatically removed on shutdown.
+- **Token usage overlay** -- `/tokens` overlay shows token usage breakdown and context window percentage.
+- **Context fullness warnings** -- Warnings displayed at 80% and 95% context window thresholds.
+- **Tool status colors** -- Tool execution results shown with pending/success/error color indicators.
+- **Status bar** -- Session ID, model name, token progress bar, and YOLO mode indicator.
 
 ### Fixed
 
 - CI release workflow now creates draft releases and handles pre-existing releases correctly.
+- Anthropic API requests now include the `thinking` parameter so thinking blocks are actually returned.
 
 ## v0.2.0
 
