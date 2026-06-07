@@ -117,14 +117,14 @@ func TestFileSearchResultMsgShowsPopup(t *testing.T) {
 		_ = tm.Quit()
 	})
 
-	// Type @mod to activate file search mode.
-	// The real find/fd command will run in the background.
-	// We wait until the popup appears (which it will when the real command returns
-	// results for "mod" — go.mod and model.go are both in this repo).
+	// Type @mod to activate file search mode, then send results directly
+	// so the test does not depend on platform-specific find/fd commands.
 	tm.Type("@mod")
+	tm.Send(tui.FileSearchResultMsg{
+		Query:   "mod",
+		Results: []tui.ScoredResult{{Path: "go.mod", Score: 0}, {Path: "internal/tui/model.go", Score: 50}},
+	})
 
-	// Wait for the popup to appear with any file-search result.
-	// The real find command will return ./go.mod and ./gohome/internal/tui/model.go.
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("model.go")) || bytes.Contains(out, []byte("go.mod"))
 	}, teatest.WithDuration(3*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
