@@ -37,10 +37,11 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, error)
 	}
 
 	var (
-		textBuf    string
-		toolBlocks []common.Block // tool_use blocks in arrival order
-		stopReason string
-		usage      *common.Usage
+		textBuf     string
+		thinkingBuf string
+		toolBlocks  []common.Block // tool_use blocks in arrival order
+		stopReason  string
+		usage       *common.Usage
 	)
 
 	for {
@@ -65,6 +66,7 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, error)
 				})
 
 			case common.EventThinkingDelta:
+				thinkingBuf += ev.ThinkingDelta
 				a.Frontend.Emit(sess.ID, Event{
 					Kind:          EventThinkingDelta,
 					SessionID:     sess.ID,
@@ -114,8 +116,11 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, error)
 	}
 
 done:
-	// Build the assistant message: text block first, then tool_use blocks.
+	// Build the assistant message: thinking block first, then text, then tool_use blocks.
 	var blocks []common.Block
+	if thinkingBuf != "" {
+		blocks = append(blocks, common.Block{Kind: common.BlockThinking, Text: thinkingBuf})
+	}
 	if textBuf != "" {
 		blocks = append(blocks, common.Block{Kind: common.BlockText, Text: textBuf})
 	}

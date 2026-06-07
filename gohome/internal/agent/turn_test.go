@@ -313,12 +313,25 @@ func TestTurn_ThinkingThenText(t *testing.T) {
 		t.Errorf("thinking delta: got %q", fe.events[0].ThinkingDelta)
 	}
 
-	// History should have one assistant message with text only (thinking is not persisted).
+	// History should have one assistant message with thinking + text.
 	if len(sess.History) != 1 {
 		t.Fatalf("history: got %d", len(sess.History))
 	}
-	if sess.History[0].Content[0].Text != "The answer" {
-		t.Errorf("text: got %q", sess.History[0].Content[0].Text)
+	blocks := sess.History[0].Content
+	if len(blocks) != 2 {
+		t.Fatalf("blocks count: got %d, want 2", len(blocks))
+	}
+	if blocks[0].Kind != common.BlockThinking {
+		t.Errorf("blocks[0].Kind: got %v, want BlockThinking", blocks[0].Kind)
+	}
+	if blocks[0].Text != "reasoning..." {
+		t.Errorf("thinking text: got %q, want %q", blocks[0].Text, "reasoning...")
+	}
+	if blocks[1].Kind != common.BlockText {
+		t.Errorf("blocks[1].Kind: got %v, want BlockText", blocks[1].Kind)
+	}
+	if blocks[1].Text != "The answer" {
+		t.Errorf("text: got %q, want %q", blocks[1].Text, "The answer")
 	}
 }
 
