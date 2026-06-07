@@ -42,6 +42,12 @@ type anthropicMessage struct {
 	Content []any  `json:"content"`
 }
 
+// anthropicThinking is the Anthropic wire shape for the thinking parameter.
+type anthropicThinking struct {
+	Type         string `json:"type"`
+	BudgetTokens int    `json:"budget_tokens"`
+}
+
 // anthropicBody is the Anthropic wire shape for a messages request body.
 type anthropicBody struct {
 	Model     string             `json:"model"`
@@ -50,6 +56,7 @@ type anthropicBody struct {
 	Tools     []anthropicTool    `json:"tools,omitempty"`
 	MaxTokens int                `json:"max_tokens"`
 	Stream    bool               `json:"stream"`
+	Thinking  *anthropicThinking `json:"thinking,omitempty"`
 }
 
 // buildAnthropicBody translates a common.Request to Anthropic wire-format JSON.
@@ -81,6 +88,12 @@ func buildAnthropicBody(req common.Request) ([]byte, error) {
 	}
 	if len(tools) > 0 {
 		body.Tools = tools
+	}
+	if req.ThinkingBudget > 0 {
+		body.Thinking = &anthropicThinking{
+			Type:         "enabled",
+			BudgetTokens: req.ThinkingBudget,
+		}
 	}
 
 	return json.Marshal(body)

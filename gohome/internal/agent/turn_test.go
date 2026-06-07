@@ -279,6 +279,49 @@ func TestTurn_StreamError(t *testing.T) {
 	_ = sess
 }
 
+func TestTurn_ThinkingThenText(t *testing.T) {
+	usage := &common.Usage{InputTokens: 5, OutputTokens: 3}
+	events := []common.StreamEvent{
+		{Kind: common.EventThinkingDelta, ThinkingDelta: "reasoning..."},
+		{Kind: common.EventThinkingDone},
+		{Kind: common.EventTextDelta, TextDelta: "The answer"},
+		{Kind: common.EventTurnDone, StopReason: "end_turn", Usage: usage},
+	}
+	client := &fakeClient{sequences: [][]common.StreamEvent{events}}
+	fe := &fakeRecorder{}
+	a, sess, _ := newTestAgent(t, client, fe)
+
+	stopReason, err := a.Turn(context.Background(), sess)
+	if err != nil {
+		t.Fatalf("Turn: %v", err)
+	}
+	if stopReason != "end_turn" {
+		t.Errorf("stopReason: got %q", stopReason)
+	}
+
+	// Frontend should have received thinking_delta, thinking_done, token_delta, usage, turn_done.
+	wantKinds := []EventKind{EventThinkingDelta, EventThinkingDone, EventTokenDelta, EventUsageUpdated, EventTurnDone}
+	if len(fe.events) != len(wantKinds) {
+		t.Fatalf("frontend events: got %d, want %d\nevents: %+v", len(fe.events), len(wantKinds), fe.events)
+	}
+	for i, wk := range wantKinds {
+		if fe.events[i].Kind != wk {
+			t.Errorf("fe.events[%d].Kind: got %v, want %v", i, fe.events[i].Kind, wk)
+		}
+	}
+	if fe.events[0].ThinkingDelta != "reasoning..." {
+		t.Errorf("thinking delta: got %q", fe.events[0].ThinkingDelta)
+	}
+
+	// History should have one assistant message with text only (thinking is not persisted).
+	if len(sess.History) != 1 {
+		t.Fatalf("history: got %d", len(sess.History))
+	}
+	if sess.History[0].Content[0].Text != "The answer" {
+		t.Errorf("text: got %q", sess.History[0].Content[0].Text)
+	}
+}
+
 // TestTurn_TextOnlyNoToolUse verifies no tool_use block produces a pure-text assistant message.
 func TestTurn_TextOnlyNoToolUse(t *testing.T) {
 	events := []common.StreamEvent{

@@ -20,6 +20,8 @@ const (
 	EventSessionStarted EventKind = "session_started"
 	EventSessionEnded   EventKind = "session_ended"
 	EventError          EventKind = "error"
+	EventThinkingDelta  EventKind = "thinking_delta"
+	EventThinkingDone   EventKind = "thinking_done"
 )
 
 // ToolResult carries the result of a single tool execution.
@@ -31,16 +33,17 @@ type ToolResult struct {
 
 // Event is the unit the agent sends to its Frontend.
 type Event struct {
-	Kind       EventKind
-	SessionID  string
-	TextDelta  string
-	ToolCallID string
-	ToolName   string
-	InputJSON  string
-	Result     *ToolResult
-	Usage      *common.Usage
-	StopReason string
-	Err        error
+	Kind          EventKind
+	SessionID     string
+	TextDelta     string
+	ToolCallID    string
+	ToolName      string
+	InputJSON     string
+	Result        *ToolResult
+	Usage         *common.Usage
+	StopReason    string
+	Err           error
+	ThinkingDelta string
 }
 
 // Frontend is implemented by the TUI (or any other consumer) and receives

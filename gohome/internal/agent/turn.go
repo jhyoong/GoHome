@@ -23,11 +23,12 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, error)
 		maxTokens = a.MaxTokens
 	}
 	req := common.Request{
-		Model:     sess.Model,
-		System:    a.System,
-		Messages:  sess.History,
-		Tools:     a.Tools.Schemas(),
-		MaxTokens: maxTokens,
+		Model:          sess.Model,
+		System:         a.System,
+		Messages:       sess.History,
+		Tools:          a.Tools.Schemas(),
+		MaxTokens:      maxTokens,
+		ThinkingBudget: a.ThinkingBudget,
 	}
 
 	events, err := a.Client.Stream(ctx, req)
@@ -61,6 +62,19 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, error)
 					Kind:      EventTokenDelta,
 					SessionID: sess.ID,
 					TextDelta: ev.TextDelta,
+				})
+
+			case common.EventThinkingDelta:
+				a.Frontend.Emit(sess.ID, Event{
+					Kind:          EventThinkingDelta,
+					SessionID:     sess.ID,
+					ThinkingDelta: ev.ThinkingDelta,
+				})
+
+			case common.EventThinkingDone:
+				a.Frontend.Emit(sess.ID, Event{
+					Kind:      EventThinkingDone,
+					SessionID: sess.ID,
 				})
 
 			case common.EventToolCallDone:

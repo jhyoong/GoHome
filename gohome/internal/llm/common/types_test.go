@@ -63,6 +63,28 @@ func TestStreamEvent_KindAndNilUsage(t *testing.T) {
 	}
 }
 
+func TestThinkingBlockKind(t *testing.T) {
+	if string(common.BlockThinking) != "thinking" {
+		t.Errorf("BlockThinking: got %q, want %q", common.BlockThinking, "thinking")
+	}
+}
+
+func TestThinkingEventKinds(t *testing.T) {
+	if string(common.EventThinkingDelta) != "thinking_delta" {
+		t.Errorf("EventThinkingDelta: got %q", common.EventThinkingDelta)
+	}
+	if string(common.EventThinkingDone) != "thinking_done" {
+		t.Errorf("EventThinkingDone: got %q", common.EventThinkingDone)
+	}
+}
+
+func TestStreamEvent_ThinkingDelta(t *testing.T) {
+	ev := common.StreamEvent{Kind: common.EventThinkingDelta, ThinkingDelta: "reasoning about X"}
+	if ev.ThinkingDelta != "reasoning about X" {
+		t.Errorf("ThinkingDelta: got %q", ev.ThinkingDelta)
+	}
+}
+
 func TestMessage_JSONRoundtrip(t *testing.T) {
 	original := common.Message{
 		Role: common.RoleUser,

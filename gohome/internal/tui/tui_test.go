@@ -27,7 +27,7 @@ func TestSkeletonRender(t *testing.T) {
 func TestSessionViewTimelineRender(t *testing.T) {
 	m := tui.New(nil, "")
 	// Add a user entry to the focused "main" session.
-	m.AddTimelineEntry("main", tui.TimelineEntry{Kind: "user", Text: "hello"})
+	m.AddTimelineEntry("main", tui.TimelineEntry{Kind: tui.KindUser, Text: "hello"})
 
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() {
@@ -90,6 +90,113 @@ func TestInputTextareaSubmit(t *testing.T) {
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("world"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
+
+func TestAgentEventThinkingDelta(t *testing.T) {
+	m := tui.New(nil, "")
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() {
+		_ = tm.Quit()
+	})
+
+	tm.Send(tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind:          agent.EventThinkingDelta,
+		SessionID:     "main",
+		ThinkingDelta: "reasoning about the problem",
+	}})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Thinking..."))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
+
+func TestFileSearchResultMsgShowsPopup(t *testing.T) {
+	m := tui.New(nil, "")
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() {
+		_ = tm.Quit()
+	})
+
+	// Type @mod to activate file search mode, then send results directly
+	// so the test does not depend on platform-specific find/fd commands.
+	tm.Type("@mod")
+	tm.Send(tui.FileSearchResultMsg{
+		Query:   "mod",
+		Results: []tui.ScoredResult{{Path: "go.mod", Score: 0}, {Path: "internal/tui/model.go", Score: 50}},
+	})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("model.go")) || bytes.Contains(out, []byte("go.mod"))
+	}, teatest.WithDuration(3*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
+
+func TestPendingQueue_EnterWhileStreaming(t *testing.T) {
+	fe := tui.NewFrontend()
+	m := tui.New(fe, "")
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() {
+		_ = tm.Quit()
+	})
+
+	// Start a streaming session by sending a token delta (sets InFlight).
+	tm.Send(tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind:      agent.EventTokenDelta,
+		SessionID: "main",
+		TextDelta: "working on it...",
+	}})
+
+	// Type and submit while streaming.
+	tm.Type("fix the tests")
+	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// The message should appear in the pending queue, not be sent.
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Queued:")) && bytes.Contains(out, []byte("fix the tests"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
+
+func TestPendingQueue_DequeueOnTurnDone(t *testing.T) {
+	fe := tui.NewFrontend()
+	m := tui.New(fe, "")
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() {
+		_ = tm.Quit()
+	})
+
+	// Read input channel in background.
+	received := make(chan string, 2)
+	go func() {
+		for s := range fe.InputCh() {
+			received <- s
+		}
+	}()
+
+	// Start streaming.
+	tm.Send(tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind:      agent.EventTokenDelta,
+		SessionID: "main",
+		TextDelta: "response",
+	}})
+
+	// Queue a message.
+	tm.Type("queued msg")
+	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// End the turn -- should auto-dequeue.
+	tm.Send(tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind:      agent.EventTurnDone,
+		SessionID: "main",
+	}})
+
+	// The dequeued message should arrive on the input channel.
+	select {
+	case got := <-received:
+		if got != "queued msg" {
+			t.Errorf("dequeued message: got %q, want %q", got, "queued msg")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for dequeued message")
+	}
 }
 
 func TestViewportScrollback(t *testing.T) {

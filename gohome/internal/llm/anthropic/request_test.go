@@ -210,6 +210,65 @@ func TestBuildAnthropicBody(t *testing.T) {
 	}
 }
 
+func TestBuildAnthropicBody_Thinking(t *testing.T) {
+	req := common.Request{
+		Model:          "claude-sonnet-4-20250514",
+		Messages:       []common.Message{{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}}},
+		MaxTokens:      16384,
+		ThinkingBudget: 10240,
+	}
+
+	data, err := buildAnthropicBody(req)
+	if err != nil {
+		t.Fatalf("buildAnthropicBody error: %v", err)
+	}
+
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(data, &body); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+
+	raw, ok := body["thinking"]
+	if !ok {
+		t.Fatal("thinking field missing from request body")
+	}
+	var thinking struct {
+		Type         string `json:"type"`
+		BudgetTokens int    `json:"budget_tokens"`
+	}
+	if err := json.Unmarshal(raw, &thinking); err != nil {
+		t.Fatalf("unmarshal thinking: %v", err)
+	}
+	if thinking.Type != "enabled" {
+		t.Errorf("thinking.type: got %q, want %q", thinking.Type, "enabled")
+	}
+	if thinking.BudgetTokens != 10240 {
+		t.Errorf("thinking.budget_tokens: got %d, want %d", thinking.BudgetTokens, 10240)
+	}
+}
+
+func TestBuildAnthropicBody_NoThinkingWhenZeroBudget(t *testing.T) {
+	req := common.Request{
+		Model:     "claude-sonnet-4-20250514",
+		Messages:  []common.Message{{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}}},
+		MaxTokens: 4096,
+	}
+
+	data, err := buildAnthropicBody(req)
+	if err != nil {
+		t.Fatalf("buildAnthropicBody error: %v", err)
+	}
+
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(data, &body); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+
+	if _, ok := body["thinking"]; ok {
+		t.Error("thinking field should be omitted when budget is zero")
+	}
+}
+
 func TestBuildAnthropicBody_MaxTokensZero(t *testing.T) {
 	req := common.Request{
 		Model:     "claude-3-5-haiku-20241022",

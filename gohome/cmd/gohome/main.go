@@ -262,17 +262,86 @@ You have access to tools for reading and writing files, running bash commands, a
 Be concise and precise. Ask for clarification when requirements are ambiguous.`
 
 	a := &agent.Agent{
-		Client:    client,
-		Tools:     registry,
-		Guard:     g,
-		Frontend:  fe,
-		Writer:    writer,
-		System:    systemPrompt,
-		MaxTokens: 4096,
-		Home:      home,
-		Session:   sess,
+		Client:         client,
+		Tools:          registry,
+		Guard:          g,
+		Frontend:       fe,
+		Writer:         writer,
+		System:         systemPrompt,
+		MaxTokens:      16384,
+		ThinkingBudget: 10240,
+		Home:           home,
+		Session:        sess,
 	}
 	a.RegisterSubagentTool()
+
+	m.SetSlashCallbacks(tui.SlashCallbacks{
+		ListSessions: func() ([]session.Listing, error) {
+			return session.List(home, cwd)
+		},
+		ResumeSession: func(id string) ([]common.Message, error) {
+			listings, err := session.List(home, cwd)
+			if err != nil {
+				return nil, err
+			}
+			var path string
+			for _, l := range listings {
+				if l.ID == id {
+					path = l.Path
+					break
+				}
+			}
+			if path == "" {
+				return nil, fmt.Errorf("session %q not found", id)
+			}
+			loaded, history, err := session.Load(path)
+			if err != nil {
+				return nil, err
+			}
+			writer.Emit(session.SessionEnd{Reason: "switch"})
+			_ = writer.Close()
+
+			newWriter, err := session.OpenWriter(path)
+			if err != nil {
+				return nil, fmt.Errorf("open writer: %w", err)
+			}
+			sess = loaded
+			writer = newWriter
+			a.Session = sess
+			a.Writer = writer
+			return history, nil
+		},
+		NewSession: func() (string, error) {
+			id := newSessionID()
+			newSess := session.NewSession(id, cwd, endpoint.DefaultModel, epName)
+			wrPath := session.SessionPath(home, cwd, id, time.Now().UTC())
+
+			newWriter, err := session.OpenWriter(wrPath)
+			if err != nil {
+				return "", fmt.Errorf("open writer: %w", err)
+			}
+			newWriter.Emit(session.SessionStart{
+				ID:        newSess.ID,
+				CWD:       cwd,
+				Model:     endpoint.DefaultModel,
+				Endpoint:  epName,
+				StartedAt: newSess.StartedAt,
+			})
+
+			writer.Emit(session.SessionEnd{Reason: "switch"})
+			_ = writer.Close()
+
+			sess = newSess
+			writer = newWriter
+			a.Session = sess
+			a.Writer = writer
+			return id, nil
+		},
+		SetModel: func(name string) error {
+			sess.Model = name
+			return nil
+		},
+	})
 
 	// Shutdown ordering (Task 12.5):
 	//   1. p.Run() returns when the user quits the TUI (Ctrl+C / /quit).
@@ -336,6 +405,12 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 	writer.Emit(session.SessionEnd{Reason: "user_quit"})
 	if err := writer.Close(); err != nil {
 		slog.Error("writer close error", "err", err)
+	}
+
+	if n, err := session.CleanBlank(home, cwd); err != nil {
+		slog.Warn("blank session cleanup failed", "err", err)
+	} else if n > 0 {
+		slog.Info("removed blank sessions", "count", n)
 	}
 
 	if logFile != nil {

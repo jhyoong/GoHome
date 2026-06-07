@@ -52,6 +52,7 @@ type contentBlockDeltaData struct {
 		Type        string `json:"type"`
 		Text        string `json:"text"`         // for text_delta
 		PartialJSON string `json:"partial_json"` // for input_json_delta
+		Thinking    string `json:"thinking"`     // for thinking_delta
 	} `json:"delta"`
 }
 
@@ -143,6 +144,13 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 					}) {
 						return
 					}
+				case "thinking_delta":
+					if !send(common.StreamEvent{
+						Kind:          common.EventThinkingDelta,
+						ThinkingDelta: d.Delta.Thinking,
+					}) {
+						return
+					}
 				case "input_json_delta":
 					if tb, ok := toolBlocks[d.Index]; ok {
 						tb.inputBuf = append(tb.inputBuf, []byte(d.Delta.PartialJSON)...)
@@ -158,7 +166,14 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 					send(common.StreamEvent{Kind: common.EventError, Err: err})
 					return
 				}
-				if blockTypes[raw.Index] == "tool_use" {
+				switch blockTypes[raw.Index] {
+				case "thinking":
+					if !send(common.StreamEvent{
+						Kind: common.EventThinkingDone,
+					}) {
+						return
+					}
+				case "tool_use":
 					tb := toolBlocks[raw.Index]
 					if tb != nil {
 						if !send(common.StreamEvent{

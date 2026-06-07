@@ -47,6 +47,8 @@ func TestEventKindConstants(t *testing.T) {
 		{EventSessionStarted, "session_started"},
 		{EventSessionEnded, "session_ended"},
 		{EventError, "error"},
+		{EventThinkingDelta, "thinking_delta"},
+		{EventThinkingDone, "thinking_done"},
 	}
 	for _, tc := range cases {
 		if string(tc.kind) != tc.want {

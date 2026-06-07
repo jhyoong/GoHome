@@ -27,6 +27,10 @@ type approvalPrompt struct {
 	reply   chan guard.ApprovalDecision
 	pattern string // current (possibly edited) pattern
 
+	// selected is the currently highlighted menu item (0=Allow once, 1=Allow always,
+	// 2=Deny, 3=Deny+steer). Zero-init gives us "Allow once" as the default.
+	selected int
+
 	// edit sub-mode: user pressed 'e' to edit the pattern
 	editing      bool
 	patternInput textinput.Model
@@ -95,17 +99,23 @@ func renderApprovalOverlay(ap *approvalPrompt, width int) string {
 		sb.WriteString("\nSteer message (Enter to send, Esc to cancel):\n")
 		sb.WriteString(ap.steerInput.View())
 	} else if ap.editing {
-		sb.WriteString("\n[1] Allow once\n")
-		fmt.Fprintf(&sb, "[2] Allow always   pattern: %s\n", ap.patternInput.View())
-		sb.WriteString("[3] Deny\n")
-		sb.WriteString("[4] Deny + steer\n")
+		sb.WriteString("\n  [1] Allow once\n")
+		fmt.Fprintf(&sb, "  [2] Allow always   pattern: %s\n", ap.patternInput.View())
+		sb.WriteString("  [3] Deny\n")
+		sb.WriteString("  [4] Deny + steer\n")
 		sb.WriteString("(Enter to confirm pattern, Esc to cancel edit)")
 	} else {
-		sb.WriteString("\n[1] Allow once\n")
-		fmt.Fprintf(&sb, "[2] Allow always   pattern: %s  (e to edit)\n", ap.pattern)
-		sb.WriteString("[3] Deny\n")
-		sb.WriteString("[4] Deny + steer\n")
-		sb.WriteString("Esc: deny")
+		marker := func(i int) string {
+			if ap.selected == i {
+				return "> "
+			}
+			return "  "
+		}
+		fmt.Fprintf(&sb, "\n%s[1] Allow once\n", marker(0))
+		fmt.Fprintf(&sb, "%s[2] Allow always   pattern: %s  (e to edit)\n", marker(1), ap.pattern)
+		fmt.Fprintf(&sb, "%s[3] Deny\n", marker(2))
+		fmt.Fprintf(&sb, "%s[4] Deny + steer\n", marker(3))
+		sb.WriteString("Esc: deny | arrows to navigate")
 	}
 
 	inner := sb.String()

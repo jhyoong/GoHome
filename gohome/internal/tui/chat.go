@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -76,7 +77,7 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 
 		var entryLines []string
 		switch e.Kind {
-		case "user":
+		case KindUser:
 			prefix := userPrefix.Render("you:")
 			text := WrapText(e.Text, maxWidth-len("you: ")-2)
 			for j, l := range text {
@@ -87,7 +88,7 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 				}
 			}
 
-		case "assistant":
+		case KindAssistant:
 			mdLines := RenderMarkdown(e.Text, maxWidth-2)
 			if len(mdLines) == 0 {
 				mdLines = WrapText(e.Text, maxWidth-2)
@@ -100,7 +101,25 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 				}
 			}
 
-		case "tool":
+		case KindThinking:
+			if e.Expanded {
+				mdLines := RenderMarkdown(e.Text, maxWidth-4)
+				if len(mdLines) == 0 {
+					mdLines = WrapText(e.Text, maxWidth-4)
+				}
+				entryLines = append(entryLines, marker+ansiDim+ansiItalic+"Thinking..."+ansiReset)
+				for _, l := range mdLines {
+					entryLines = append(entryLines, "    "+ansiDim+ansiItalic+l+ansiReset)
+				}
+			} else {
+				label := "Thinking..."
+				if n := strings.Count(strings.TrimSpace(e.Text), "\n"); n > 0 {
+					label = fmt.Sprintf("Thinking... (%d lines)", n+1)
+				}
+				entryLines = append(entryLines, marker+ansiDim+ansiItalic+label+ansiReset)
+			}
+
+		case KindTool:
 			line := renderToolLine(e, maxWidth-2)
 			entryLines = append(entryLines, marker+line)
 			if e.Expanded {
@@ -117,7 +136,7 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 				}
 			}
 
-		case "notice":
+		case KindNotice:
 			line := noticeStyle.Render(fmt.Sprintf("[notice] %s", e.Text))
 			entryLines = append(entryLines, marker+line)
 		}

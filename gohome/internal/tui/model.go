@@ -5,17 +5,29 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
+	"github.com/jhyoong/GoHome/gohome/internal/config"
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
+	"github.com/jhyoong/GoHome/gohome/internal/session"
 	"github.com/jhyoong/GoHome/gohome/internal/tui/style"
+)
+
+const (
+	KindUser      = "user"
+	KindAssistant = "assistant"
+	KindThinking  = "thinking"
+	KindTool      = "tool"
+	KindNotice    = "notice"
 )
 
 // TimelineEntry is a single item in a session's conversation history.
 type TimelineEntry struct {
-	Kind       string // "user" | "assistant" | "tool" | "notice"
+	Kind       string // KindUser | KindAssistant | KindTool | KindNotice
 	Text       string
 	ToolName   string
 	ToolResult string
@@ -57,6 +69,21 @@ type Model struct {
 	winW    int
 	winH    int
 
+	fileSearch    *FileSearchPopup
+	fileSearching bool
+
+	homeDir        string
+	cwd            string
+	sessionBrowser *SessionBrowserComponent
+	browsing       bool
+
+	settings       config.Settings
+	modelSelector  *ModelSelectorComponent
+	selectingModel bool
+
+	pendingMessages []string
+	pending         *PendingMessagesComponent
+
 	// cursor indexes the focused session's Timeline. When input is empty,
 	// Up/Down move the cursor; Enter on a tool entry toggles expansion.
 	cursor int
@@ -86,6 +113,10 @@ type Model struct {
 	// Context warning tracking per session (Task 11.16).
 	// warned80/warned95 are set in handleAgentEvent to fire once per session.
 	contextNotice string // most recent context warning for the notification line
+
+	// lastCtrlC records the time of the most recent Ctrl+C press.
+	// A second press within 500ms quits; a single press cancels the current turn.
+	lastCtrlC time.Time
 
 	// slashCB holds optional callbacks wired to slash commands (/new, /resume,
 	// /model, /cancel). Set via SetSlashCallbacks.
@@ -123,8 +154,10 @@ func New(fe *Frontend, sessionID string) *Model {
 		pendingApprovals: make(map[string]*approvalPrompt),
 		editor:           NewEditor(80, 24),
 		spinner:          NewSpinner(),
+		fileSearch:       NewFileSearchPopup(),
 	}
 	m.chat = NewChat(&main.Timeline, 20)
+	m.pending = NewPendingMessages(&m.pendingMessages)
 	return m
 }
 
@@ -150,6 +183,10 @@ func (m *Model) SetYoloCallback(fn func(bool)) {
 func (m *Model) SetSlashCallbacks(cb SlashCallbacks) {
 	m.slashCB = cb
 }
+
+func (m *Model) SetHomeDir(dir string)         { m.homeDir = dir }
+func (m *Model) SetCWD(dir string)             { m.cwd = dir }
+func (m *Model) SetSettings(s config.Settings) { m.settings = s }
 
 // SetContextWindow sets the total context window size used in the token bar.
 // If size <= 0 the default 128000 is used.
@@ -203,23 +240,40 @@ func (m *Model) rebuildViewport() {
 func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 	ev := msg.Ev
 	sv := m.getOrCreateSession(msg.SessionID, 1)
+	var dequeuedCmd tea.Cmd
 
 	switch ev.Kind {
+	case agent.EventThinkingDelta:
+		sv.InFlight = true
+		n := len(sv.Timeline)
+		if n > 0 && sv.Timeline[n-1].Kind == KindThinking {
+			sv.Timeline[n-1].Text += ev.ThinkingDelta
+		} else {
+			sv.Timeline = append(sv.Timeline, TimelineEntry{
+				Kind: KindThinking,
+				Text: ev.ThinkingDelta,
+			})
+		}
+
+	case agent.EventThinkingDone:
+		// No-op: the thinking entry is already complete.
+
 	case agent.EventTokenDelta:
 		// Append to the last assistant entry if it is in-progress, else add new.
+		sv.InFlight = true
 		n := len(sv.Timeline)
-		if n > 0 && sv.Timeline[n-1].Kind == "assistant" {
+		if n > 0 && sv.Timeline[n-1].Kind == KindAssistant {
 			sv.Timeline[n-1].Text += ev.TextDelta
 		} else {
 			sv.Timeline = append(sv.Timeline, TimelineEntry{
-				Kind: "assistant",
+				Kind: KindAssistant,
 				Text: ev.TextDelta,
 			})
 		}
 
 	case agent.EventToolCallDone:
 		sv.Timeline = append(sv.Timeline, TimelineEntry{
-			Kind:     "tool",
+			Kind:     KindTool,
 			ToolName: ev.ToolName,
 			Text:     ev.InputJSON,
 			Status:   "pending",
@@ -235,7 +289,7 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 		}
 		set := false
 		for i := len(sv.Timeline) - 1; i >= 0; i-- {
-			if sv.Timeline[i].Kind == "tool" && sv.Timeline[i].ToolResult == "" {
+			if sv.Timeline[i].Kind == KindTool && sv.Timeline[i].ToolResult == "" {
 				sv.Timeline[i].ToolResult = content
 				if isErr {
 					sv.Timeline[i].Status = "error"
@@ -252,7 +306,7 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 				status = "error"
 			}
 			sv.Timeline = append(sv.Timeline, TimelineEntry{
-				Kind:       "tool",
+				Kind:       KindTool,
 				ToolResult: content,
 				Status:     status,
 			})
@@ -266,6 +320,17 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 
 	case agent.EventTurnDone:
 		sv.InFlight = false
+		if msg.SessionID == m.focused && len(m.pendingMessages) > 0 {
+			text := m.pendingMessages[0]
+			m.pendingMessages = m.pendingMessages[1:]
+			sv.Timeline = append(sv.Timeline, TimelineEntry{
+				Kind: KindUser,
+				Text: text,
+			})
+			sv.InFlight = true
+			m.cursor = len(sv.Timeline) - 1
+			dequeuedCmd = m.sendInputCmd(text)
+		}
 
 	case agent.EventSessionStarted:
 		// Subagent session — depth 1, add to order if not already present.
@@ -280,30 +345,62 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 			errText = ev.Err.Error()
 		}
 		sv.Timeline = append(sv.Timeline, TimelineEntry{
-			Kind: "notice",
+			Kind: KindNotice,
 			Text: errText,
 		})
 		sv.InFlight = false
 	}
 
-	// Spinner: start on first token delta, stop on completion/error.
+	// Spinner: start on thinking/token delta, stop on completion/error.
 	switch ev.Kind {
-	case agent.EventTokenDelta:
+	case agent.EventThinkingDelta:
 		if !m.spinner.Active() {
 			m.spinner.Start("Thinking...")
+			m.spinner.SetOnCancel(m.cancelFocusedSession)
+		}
+	case agent.EventTokenDelta:
+		if !m.spinner.Active() {
+			m.spinner.Start("Generating...")
+			m.spinner.SetOnCancel(m.cancelFocusedSession)
+		} else {
+			m.spinner.SetMessage("Generating...")
 		}
 	case agent.EventTurnDone, agent.EventSessionEnded, agent.EventError:
-		m.spinner.Stop()
+		if !sv.InFlight {
+			m.spinner.Stop()
+		}
 	}
 
 	if msg.SessionID == m.focused {
 		m.rebuildViewport()
 	}
 
-	if ev.Kind == agent.EventTokenDelta && m.spinner.Active() {
+	if dequeuedCmd != nil {
+		return dequeuedCmd
+	}
+	if (ev.Kind == agent.EventTokenDelta || ev.Kind == agent.EventThinkingDelta) && m.spinner.Active() {
 		return SpinnerTickCmd()
 	}
 	return nil
+}
+
+func (m *Model) cancelFocusedSession() {
+	m.cancelFocusedSessionWith("Cancelled")
+}
+
+func (m *Model) cancelFocusedSessionWith(statusMsg string) {
+	if m.slashCB.CancelSession != nil {
+		m.slashCB.CancelSession(m.focused)
+	}
+	sv := m.sessions[m.focused]
+	if sv != nil {
+		sv.InFlight = false
+		sv.Timeline = append(sv.Timeline, TimelineEntry{Kind: KindNotice, Text: "Cancelled."})
+	}
+	m.pendingMessages = m.pendingMessages[:0]
+	m.spinner.Stop()
+	m.statusMsg = statusMsg
+	m.rebuildViewport()
 }
 
 // sendInputCmd returns a Cmd that delivers text to the input channel
@@ -453,9 +550,32 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.KeyMsg:
-		// Ctrl+C always quits.
 		if msg.Type == tea.KeyCtrlC {
-			return m, tea.Quit
+			now := time.Now()
+			doubleTap := now.Sub(m.lastCtrlC) < 500*time.Millisecond
+			m.lastCtrlC = now
+
+			if doubleTap {
+				return m, tea.Quit
+			}
+
+			// Close approval prompt if one is active.
+			if m.activeApproval != nil {
+				m.resolveApproval(guard.ApprovalDecision{Outcome: guard.Deny})
+				m.statusMsg = "Approval dismissed"
+				return m, tea.Batch(cmds...)
+			}
+
+			// Cancel in-flight LLM turn for the focused session.
+			sv := m.sessions[m.focused]
+			if sv != nil && sv.InFlight {
+				m.cancelFocusedSessionWith("Cancelled — press Ctrl+C again to quit")
+				return m, tea.Batch(cmds...)
+			}
+
+			// Nothing active — treat as first tap toward quit.
+			m.statusMsg = "Press Ctrl+C again to quit"
+			return m, tea.Batch(cmds...)
 		}
 
 		// When an approval is active, route keys to the approval handler.
@@ -472,6 +592,22 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(cmds...)
 		}
 
+		if msg.Type == tea.KeyEsc && m.spinner.Active() &&
+			!m.browsing && !m.selectingModel {
+			m.spinner.HandleInput(msg)
+			return m, tea.Batch(cmds...)
+		}
+
+		if m.browsing && m.sessionBrowser != nil {
+			m.sessionBrowser.HandleInput(msg)
+			return m, tea.Batch(cmds...)
+		}
+
+		if m.selectingModel && m.modelSelector != nil {
+			m.modelSelector.HandleInput(msg)
+			return m, tea.Batch(cmds...)
+		}
+
 		switch msg.Type {
 		case tea.KeyCtrlCloseBracket:
 			m.focusNext()
@@ -481,16 +617,26 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.chat.ScrollUp(5)
 		case tea.KeyPgDown:
 			m.chat.ScrollDown(5)
+		case tea.KeyTab:
+			if m.completeSlash() {
+				return m, tea.Batch(cmds...)
+			}
+			if m.confirmFileSearch() {
+				return m, tea.Batch(cmds...)
+			}
 		case tea.KeyEnter:
 			if msg.Alt {
 				m.editor.InsertNewline()
 			} else {
+				if m.confirmFileSearch() {
+					return m, tea.Batch(cmds...)
+				}
 				text := strings.TrimSpace(m.editor.Value())
 				if text == "" {
 					sv, ok := m.sessions[m.focused]
 					if ok && m.cursor >= 0 && m.cursor < len(sv.Timeline) {
 						entry := &sv.Timeline[m.cursor]
-						if entry.Kind == "tool" {
+						if entry.Kind == KindTool {
 							entry.Expanded = !entry.Expanded
 						}
 					}
@@ -503,25 +649,66 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				} else {
 					sv := m.getOrCreateSession(m.focused, 0)
-					sv.Timeline = append(sv.Timeline, TimelineEntry{
-						Kind: "user",
-						Text: text,
-					})
-					sv.InFlight = true
-					m.editor.SetValue("")
-					m.cursor = len(sv.Timeline) - 1
-					m.rebuildViewport()
-					cmds = append(cmds, m.sendInputCmd(text))
+					if sv.InFlight {
+						if len(m.pendingMessages) >= 10 {
+							m.statusMsg = "Message queue full (10)"
+						} else {
+							m.pendingMessages = append(m.pendingMessages, text)
+							m.editor.SetValue("")
+						}
+					} else {
+						sv.Timeline = append(sv.Timeline, TimelineEntry{
+							Kind: KindUser,
+							Text: text,
+						})
+						sv.InFlight = true
+						m.editor.SetValue("")
+						m.statusMsg = ""
+						m.cursor = len(sv.Timeline) - 1
+						m.rebuildViewport()
+						cmds = append(cmds, m.sendInputCmd(text))
+					}
 				}
 			}
 			return m, tea.Batch(cmds...)
 		case tea.KeyCtrlE:
 			return m, m.openExternalEditor()
 		default:
+			// File search navigation intercepts arrow keys and Esc.
+			if m.fileSearching && m.fileSearch.visible {
+				if msg.Type == tea.KeyUp {
+					m.fileSearch.MoveUp()
+					return m, nil
+				}
+				if msg.Type == tea.KeyDown {
+					m.fileSearch.MoveDown()
+					return m, nil
+				}
+				if msg.Type == tea.KeyEsc {
+					m.fileSearching = false
+					m.fileSearch.Hide()
+					return m, nil
+				}
+			}
 			cmd := m.editor.HandleInput(msg)
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}
+			// Check for @-prefix file search.
+			if q, ok := m.extractAtQuery(); ok && q != m.fileSearch.query {
+				m.fileSearching = true
+				m.fileSearch.query = q
+				m.fileSearch.selected = 0
+				cmds = append(cmds, searchFilesCmd(q))
+			} else if !ok && m.fileSearching {
+				m.fileSearching = false
+				m.fileSearch.Hide()
+			}
+		}
+
+	case FileSearchResultMsg:
+		if m.fileSearching {
+			m.fileSearch.SetResults(msg.Query, msg.Results)
 		}
 
 	case agentEventMsg:
@@ -592,6 +779,29 @@ func (m *Model) handleApprovalKey(msg tea.KeyMsg) tea.Cmd {
 
 	// --- top-level approval menu ---
 	switch {
+	case msg.Type == tea.KeyUp:
+		if ap.selected > 0 {
+			ap.selected--
+		}
+	case msg.Type == tea.KeyDown:
+		if ap.selected < 3 {
+			ap.selected++
+		}
+	case msg.Type == tea.KeyEnter:
+		switch ap.selected {
+		case 0:
+			m.resolveApproval(guard.ApprovalDecision{Outcome: guard.AllowOnce})
+		case 1:
+			m.resolveApproval(guard.ApprovalDecision{
+				Outcome:      guard.AllowAlways,
+				SavedPattern: ap.pattern,
+			})
+		case 2:
+			m.resolveApproval(guard.ApprovalDecision{Outcome: guard.Deny})
+		case 3:
+			ap.steering = true
+			ap.steerInput.Focus()
+		}
 	case msg.Type == tea.KeyEsc:
 		m.resolveApproval(guard.ApprovalDecision{Outcome: guard.Deny})
 	case keyRune(msg) == '1':
@@ -715,13 +925,7 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 		m.showTokens = true
 		m.statusMsg = ""
 	case "/cancel":
-		if m.slashCB.CancelSession != nil {
-			m.slashCB.CancelSession(m.focused)
-		}
-		sv := m.getOrCreateSession(m.focused, 0)
-		sv.InFlight = false
-		sv.Timeline = append(sv.Timeline, TimelineEntry{Kind: "notice", Text: "Cancelled."})
-		m.statusMsg = "Cancelled"
+		m.cancelFocusedSession()
 	case "/new":
 		if m.slashCB.NewSession != nil {
 			id, err := m.slashCB.NewSession()
@@ -737,41 +941,92 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 			m.statusMsg = "/new: not configured"
 		}
 	case "/resume":
-		if len(fields) < 2 {
-			m.statusMsg = "/resume: provide a session ID"
+		if m.slashCB.ListSessions == nil {
+			m.statusMsg = "/resume: not configured"
 			break
 		}
-		sid := fields[1]
-		if m.slashCB.ResumeSession != nil {
-			err := m.slashCB.ResumeSession(sid)
-			if err != nil {
-				m.statusMsg = fmt.Sprintf("/resume: %v", err)
-			} else {
-				m.getOrCreateSession(sid, 0)
-				m.focused = sid
-				m.cursor = 0
-				m.statusMsg = "Resumed: " + sid
-			}
-		} else {
-			m.statusMsg = "/resume: not configured"
+		listings, err := m.slashCB.ListSessions()
+		if err != nil {
+			m.statusMsg = fmt.Sprintf("/resume: %v", err)
+			break
 		}
+		if len(listings) == 0 {
+			m.statusMsg = "No sessions found"
+			break
+		}
+		sb := NewSessionBrowser(listings)
+		sb.SetOnSelect(func(id string) {
+			m.browsing = false
+			m.sessionBrowser = nil
+			var history []common.Message
+			if m.slashCB.ResumeSession != nil {
+				var err error
+				history, err = m.slashCB.ResumeSession(id)
+				if err != nil {
+					m.statusMsg = fmt.Sprintf("/resume: %v", err)
+					return
+				}
+			}
+			sv := m.getOrCreateSession(id, 0)
+			sv.Timeline = historyToTimeline(history)
+			m.focused = id
+			m.cursor = len(sv.Timeline) - 1
+			m.statusMsg = "Resumed: " + id
+			m.rebuildViewport()
+		})
+		sb.SetOnCancel(func() {
+			m.browsing = false
+			m.sessionBrowser = nil
+		})
+		sb.SetOnDelete(func(l session.Listing) {
+			_ = os.Remove(l.Path)
+			m.statusMsg = "Deleted session: " + l.ID
+		})
+		if len(fields) >= 2 {
+			sb.SetFilter(fields[1])
+		}
+		m.sessionBrowser = sb
+		m.browsing = true
 	case "/model":
-		if len(fields) < 2 {
+		if len(fields) >= 2 {
+			name := fields[1]
+			if m.slashCB.SetModel != nil {
+				err := m.slashCB.SetModel(name)
+				if err != nil {
+					m.statusMsg = fmt.Sprintf("/model: %v", err)
+				} else {
+					m.modelName = name
+					m.statusMsg = "Model set to " + name
+				}
+			} else {
+				m.statusMsg = "/model: not configured"
+			}
+			break
+		}
+		if len(m.settings.Endpoints) == 0 {
 			m.statusMsg = fmt.Sprintf("Current model: %s", m.modelName)
 			break
 		}
-		name := fields[1]
-		if m.slashCB.SetModel != nil {
-			err := m.slashCB.SetModel(name)
-			if err != nil {
-				m.statusMsg = fmt.Sprintf("/model: %v", err)
-			} else {
-				m.modelName = name
-				m.statusMsg = "Model set to " + name
+		ms := NewModelSelector(m.settings.Endpoints, m.settings.DefaultEndpoint)
+		ms.SetOnSelect(func(endpoint, model string) {
+			m.selectingModel = false
+			m.modelSelector = nil
+			if m.slashCB.SetModel != nil {
+				if err := m.slashCB.SetModel(model); err != nil {
+					m.statusMsg = fmt.Sprintf("/model: %v", err)
+					return
+				}
 			}
-		} else {
-			m.statusMsg = "/model: not configured"
-		}
+			m.modelName = model
+			m.settings.DefaultEndpoint = endpoint
+			m.statusMsg = "Model set to " + model
+		})
+		ms.SetOnCancel(func() {
+			m.selectingModel = false
+			m.modelSelector = nil
+		})
+		m.modelSelector = ms
+		m.selectingModel = true
 	default:
 		m.statusMsg = cmd + ": unknown command"
 	}
@@ -810,6 +1065,23 @@ func (m *Model) renderTokensOverlay() string {
 	return sb.String()
 }
 
+// completeSlash fills the editor with the first matching slash command + space.
+// Returns true if a completion was applied.
+func (m *Model) completeSlash() bool {
+	val := m.editor.Value()
+	if !strings.HasPrefix(val, "/") {
+		return false
+	}
+	matches := slashComplete(val)
+	if len(matches) == 0 {
+		return false
+	}
+	m.editor.SetValue(matches[0] + " ")
+	return true
+}
+
+var slashHighlight = lipgloss.NewStyle().Bold(true)
+
 // slashPalette renders the autocomplete list when input starts with '/'.
 // Returns "" when not applicable.
 func (m *Model) slashPalette() string {
@@ -821,7 +1093,12 @@ func (m *Model) slashPalette() string {
 	if len(matches) == 0 {
 		return ""
 	}
-	return strings.Join(matches, "  ")
+	parts := make([]string, len(matches))
+	parts[0] = slashHighlight.Render(matches[0])
+	for i := 1; i < len(matches); i++ {
+		parts[i] = matches[i]
+	}
+	return strings.Join(parts, "  ")
 }
 
 // View implements tea.Model.
@@ -866,14 +1143,34 @@ func (m *Model) View() string {
 		sections = append(sections, strings.Join(spinnerLines, "\n"))
 	}
 
+	// File search popup
+	if m.fileSearching {
+		popupLines := m.fileSearch.Render(m.winW)
+		if len(popupLines) > 0 {
+			sections = append(sections, strings.Join(popupLines, "\n"))
+		}
+	}
+
+	// Pending messages
+	pendingLines := m.pending.Render(m.winW)
+	if len(pendingLines) > 0 {
+		sections = append(sections, strings.Join(pendingLines, "\n"))
+	}
+
 	// Status message
 	if m.statusMsg != "" {
 		sections = append(sections, m.statusMsg)
 	}
 
-	// Input region
+	// Input region (swappable slot).
 	if m.activeApproval != nil {
 		sections = append(sections, renderApprovalOverlay(m.activeApproval, m.winW))
+	} else if m.browsing && m.sessionBrowser != nil {
+		browserLines := m.sessionBrowser.Render(m.winW)
+		sections = append(sections, strings.Join(browserLines, "\n"))
+	} else if m.selectingModel && m.modelSelector != nil {
+		selectorLines := m.modelSelector.Render(m.winW)
+		sections = append(sections, strings.Join(selectorLines, "\n"))
 	} else {
 		palette := m.slashPalette()
 		if palette != "" {
@@ -887,6 +1184,58 @@ func (m *Model) View() string {
 	sections = append(sections, m.statusBar())
 
 	return strings.Join(sections, "\n")
+}
+
+// confirmFileSearch applies the selected file search result to the editor
+// and closes the popup. Returns true if a selection was made.
+func (m *Model) confirmFileSearch() bool {
+	if !m.fileSearching || !m.fileSearch.visible {
+		return false
+	}
+	path := m.fileSearch.SelectedPath()
+	if path != "" {
+		m.replaceAtQuery(path)
+	}
+	m.fileSearching = false
+	m.fileSearch.Hide()
+	return true
+}
+
+// extractAtQuery returns the word following the last '@' in the editor when that
+// '@' is at the start of the input or preceded by whitespace. Returns ("", false)
+// when the pattern is absent or the query contains whitespace.
+func (m *Model) extractAtQuery() (string, bool) {
+	val := m.editor.Value()
+	idx := strings.LastIndex(val, "@")
+	if idx < 0 {
+		return "", false
+	}
+	if idx > 0 {
+		prev := val[idx-1]
+		if prev != ' ' && prev != '\t' && prev != '\n' {
+			return "", false
+		}
+	}
+	query := val[idx+1:]
+	if strings.ContainsAny(query, " \t\n") {
+		return "", false
+	}
+	if query == "" {
+		return "", false
+	}
+	return query, true
+}
+
+// replaceAtQuery replaces the @<word> fragment in the editor with @replacement
+// followed by a trailing space (to prevent re-triggering the search).
+func (m *Model) replaceAtQuery(replacement string) {
+	val := m.editor.Value()
+	idx := strings.LastIndex(val, "@")
+	if idx < 0 {
+		return
+	}
+	newVal := val[:idx] + "@" + replacement + " "
+	m.editor.SetValue(newVal)
 }
 
 // Yolo returns current yolo mode state (exported for tests).

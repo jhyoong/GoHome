@@ -141,6 +141,70 @@ func parseListing(path string) (Listing, error) {
 	return listing, nil
 }
 
+// IsBlank reports whether the JSONL file at path contains no user_message events.
+func IsBlank(path string) (bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = f.Close() }()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+		var envelope struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal([]byte(line), &envelope); err != nil {
+			continue
+		}
+		if envelope.Type == "user_message" {
+			return false, nil
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// CleanBlank removes all session JSONL files under home/sessions/<slug> that
+// contain no user_message events. Returns the number of files removed.
+func CleanBlank(home, cwd string) (int, error) {
+	dir := filepath.Join(home, "sessions", ProjectSlug(cwd))
+	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+
+	removed := 0
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		if filepath.Ext(entry.Name()) != ".jsonl" {
+			continue
+		}
+		path := filepath.Join(dir, entry.Name())
+		blank, err := IsBlank(path)
+		if err != nil {
+			continue
+		}
+		if blank {
+			if err := os.Remove(path); err == nil {
+				removed++
+			}
+		}
+	}
+	return removed, nil
+}
+
 // truncate returns s truncated to at most n runes.
 func truncate(s string, n int) string {
 	runes := []rune(s)

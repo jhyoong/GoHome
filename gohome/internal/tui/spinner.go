@@ -16,9 +16,10 @@ var spinnerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 type spinnerTickMsg struct{}
 
 type SpinnerComponent struct {
-	frame   int
-	active  bool
-	message string
+	frame    int
+	active   bool
+	message  string
+	onCancel func()
 }
 
 func NewSpinner() *SpinnerComponent {
@@ -33,6 +34,17 @@ func (s *SpinnerComponent) Start(message string) {
 
 func (s *SpinnerComponent) Stop() {
 	s.active = false
+	s.ClearOnCancel()
+}
+
+func (s *SpinnerComponent) SetOnCancel(fn func()) { s.onCancel = fn }
+func (s *SpinnerComponent) ClearOnCancel()        { s.onCancel = nil }
+
+func (s *SpinnerComponent) HandleInput(msg tea.KeyMsg) tea.Cmd {
+	if msg.Type == tea.KeyEsc && s.onCancel != nil {
+		s.onCancel()
+	}
+	return nil
 }
 
 func (s *SpinnerComponent) SetMessage(msg string) {
@@ -53,6 +65,9 @@ func (s *SpinnerComponent) Render(width int) []string {
 	}
 	frame := spinnerFrames[s.frame%len(spinnerFrames)]
 	line := spinnerStyle.Render(frame) + " " + s.message
+	if s.onCancel != nil {
+		line += "  " + lipgloss.NewStyle().Faint(true).Render("(Esc to cancel)")
+	}
 	return []string{line}
 }
 

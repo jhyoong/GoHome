@@ -47,14 +47,14 @@ func TestSnapshots(t *testing.T) {
 	// (b) After a single user message.
 	t.Run("after_user_message", func(t *testing.T) {
 		m := newSized()
-		m.AddTimelineEntry("main", tui.TimelineEntry{Kind: "user", Text: "hello world"})
+		m.AddTimelineEntry("main", tui.TimelineEntry{Kind: tui.KindUser, Text: "hello world"})
 		golden.RequireEqual(t, []byte(m.View()))
 	})
 
 	// (c) After one assistant turn (token deltas + turn done).
 	t.Run("after_assistant_turn", func(t *testing.T) {
 		m := newSized()
-		m.AddTimelineEntry("main", tui.TimelineEntry{Kind: "user", Text: "what is 2+2?"})
+		m.AddTimelineEntry("main", tui.TimelineEntry{Kind: tui.KindUser, Text: "what is 2+2?"})
 		m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
 			Kind:      agent.EventTokenDelta,
 			SessionID: "main",
