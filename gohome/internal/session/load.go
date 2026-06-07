@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"time"
 
@@ -128,5 +129,6 @@ func Load(path string) (*Session, []common.Message, error) {
 	}
 
 	sess.History = history
+	ValidateHistory(slog.Default(), sess.ID, history)
 	return sess, history, nil
 }

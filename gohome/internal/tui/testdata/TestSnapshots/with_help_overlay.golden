@@ -1,0 +1,22 @@
+Session:  main done 
+Keyboard shortcuts
+  Ctrl+C        Cancel turn / double-tap to quit
+  Ctrl+E        Open external editor
+  Ctrl+H        Toggle this help
+  Ctrl+]        Focus next session
+  Ctrl+[        Focus prev session
+  PgUp/PgDown   Scroll chat (or this help)
+  Up/Down       Scroll this help
+  Enter         Submit input / toggle tool detail
+  c             Copy entry to clipboard (when browsing)
+  Alt+Enter     Insert newline
+  Tab           Autocomplete / confirm file search
+  Esc           Close overlay / cancel
+  @             File search
+
+Slash commands
+  /help         Show this help
+  /new          Start a new session
+  /resume       Resume a past session
+Esc to close · Press down for more
+main · ? · ░░░░░░░░░░ 0/128.0k (0%)

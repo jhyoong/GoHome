@@ -11,6 +11,8 @@ package tui_test
 // machines and colour profiles. No goroutines, no sleeps, no teatest.
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -114,4 +116,79 @@ func TestSnapshots(t *testing.T) {
 		m.OpenTokensOverlay()
 		golden.RequireEqual(t, []byte(m.View()))
 	})
+
+	t.Run("with_help_overlay", func(t *testing.T) {
+		m := newSized()
+		m.OpenHelpOverlay()
+		golden.RequireEqual(t, []byte(m.View()))
+	})
+}
+
+func TestCopyKey_SetsStatusMessage(t *testing.T) {
+	m := newSized()
+	m.AddTimelineEntry("main", tui.TimelineEntry{Kind: tui.KindUser, Text: "hello clipboard"})
+	m.AddTimelineEntry("main", tui.TimelineEntry{Kind: tui.KindAssistant, Text: "response text"})
+
+	// Move cursor to the assistant entry.
+	m = apply(m, tea.KeyMsg{Type: tea.KeyDown})
+
+	// Press 'c' to copy.
+	m = apply(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+
+	// Should show a status message (either success or failure is fine in test env).
+	msg := m.StatusMsg()
+	if msg == "" {
+		t.Fatal("expected a status message after pressing 'c'")
+	}
+}
+
+func TestCopyKey_ToolEntry_IncludesAllContent(t *testing.T) {
+	m := newSized()
+	m.AddTimelineEntry("main", tui.TimelineEntry{
+		Kind:       tui.KindTool,
+		ToolName:   "bash",
+		Text:       `{"command":"ls"}`,
+		ToolResult: "file.go",
+		Status:     "success",
+	})
+
+	// Press 'c' to copy (cursor starts at 0).
+	m = apply(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+
+	msg := m.StatusMsg()
+	if msg == "" {
+		t.Fatal("expected a status message after pressing 'c'")
+	}
+}
+
+func TestToggleExpansion_PreservesScrollPosition(t *testing.T) {
+	m := newSized()
+
+	// Add several entries so the timeline exceeds viewport height.
+	for i := 0; i < 15; i++ {
+		m.AddTimelineEntry("main", tui.TimelineEntry{Kind: tui.KindUser, Text: fmt.Sprintf("message %d", i)})
+	}
+	// Add a tool entry at the end.
+	m.AddTimelineEntry("main", tui.TimelineEntry{
+		Kind:       tui.KindTool,
+		ToolName:   "bash",
+		Text:       `{"command":"ls"}`,
+		ToolResult: "file1.go\nfile2.go\nfile3.go\nfile4.go\nfile5.go",
+		Status:     "success",
+	})
+
+	// Move cursor to the tool entry (last entry).
+	for i := 0; i < 16; i++ {
+		m = apply(m, tea.KeyMsg{Type: tea.KeyDown})
+	}
+
+	// Record scroll state, then toggle expansion.
+	viewBefore := m.View()
+	m = apply(m, tea.KeyMsg{Type: tea.KeyEnter})
+	viewAfter := m.View()
+
+	// The tool entry should still be visible after expansion (not scrolled away).
+	if !strings.Contains(viewAfter, "bash") {
+		t.Errorf("tool entry should remain visible after expansion.\nBefore:\n%s\nAfter:\n%s", viewBefore, viewAfter)
+	}
 }

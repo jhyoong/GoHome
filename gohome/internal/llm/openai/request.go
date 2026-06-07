@@ -157,6 +157,9 @@ func translateAssistantMessage(m common.Message) (any, error) {
 		switch b.Kind {
 		case common.BlockText:
 			textParts = append(textParts, b.Text)
+		case common.BlockThinking:
+			// OpenAI does not support thinking blocks; skip without emitting.
+			// The thinking content is preserved in session history but not sent to OpenAI.
 		case common.BlockToolUse:
 			args := b.InputJSON
 			if args == "" {

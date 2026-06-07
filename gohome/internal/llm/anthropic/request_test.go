@@ -269,6 +269,98 @@ func TestBuildAnthropicBody_NoThinkingWhenZeroBudget(t *testing.T) {
 	}
 }
 
+func TestTranslateAssistantMessage_ThinkingBlock(t *testing.T) {
+	// A session-resume scenario: assistant message contains a thinking block
+	// followed by a text block. The Anthropic adapter must emit both as content
+	// blocks in the correct order.
+	req := common.Request{
+		Model: "claude-sonnet-4-20250514",
+		Messages: []common.Message{
+			{
+				Role: common.RoleUser,
+				Content: []common.Block{
+					{Kind: common.BlockText, Text: "Think about it."},
+				},
+			},
+			{
+				Role: common.RoleAssistant,
+				Content: []common.Block{
+					{Kind: common.BlockThinking, Text: "internal reasoning here", Signature: "sig-abc123"},
+					{Kind: common.BlockText, Text: "The answer is 42."},
+				},
+			},
+		},
+		MaxTokens: 1024,
+	}
+
+	data, err := buildAnthropicBody(req)
+	if err != nil {
+		t.Fatalf("buildAnthropicBody error: %v", err)
+	}
+
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(data, &body); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+
+	var messages []json.RawMessage
+	if err := json.Unmarshal(body["messages"], &messages); err != nil {
+		t.Fatalf("messages unmarshal: %v", err)
+	}
+	if len(messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(messages))
+	}
+
+	// message 1: assistant, should have 2 content blocks: thinking then text
+	var msg1 struct {
+		Role    string            `json:"role"`
+		Content []json.RawMessage `json:"content"`
+	}
+	if err := json.Unmarshal(messages[1], &msg1); err != nil {
+		t.Fatalf("unmarshal msg1: %v", err)
+	}
+	if msg1.Role != "assistant" {
+		t.Errorf("msg1 role: got %q, want assistant", msg1.Role)
+	}
+	if len(msg1.Content) != 2 {
+		t.Fatalf("msg1 content blocks: got %d, want 2", len(msg1.Content))
+	}
+
+	// first block: thinking
+	var thinkBlock struct {
+		Type      string `json:"type"`
+		Thinking  string `json:"thinking"`
+		Signature string `json:"signature"`
+	}
+	if err := json.Unmarshal(msg1.Content[0], &thinkBlock); err != nil {
+		t.Fatalf("unmarshal thinking block: %v", err)
+	}
+	if thinkBlock.Type != "thinking" {
+		t.Errorf("thinking block type: got %q, want thinking", thinkBlock.Type)
+	}
+	if thinkBlock.Thinking != "internal reasoning here" {
+		t.Errorf("thinking block content: got %q", thinkBlock.Thinking)
+	}
+	if thinkBlock.Signature != "sig-abc123" {
+		t.Errorf("thinking block signature: got %q, want %q", thinkBlock.Signature, "sig-abc123")
+	}
+
+	// second block: text
+	var textBlock struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(msg1.Content[1], &textBlock); err != nil {
+		t.Fatalf("unmarshal text block: %v", err)
+	}
+	if textBlock.Type != "text" {
+		t.Errorf("text block type: got %q, want text", textBlock.Type)
+	}
+	if textBlock.Text != "The answer is 42." {
+		t.Errorf("text block content: got %q", textBlock.Text)
+	}
+}
+
 func TestBuildAnthropicBody_MaxTokensZero(t *testing.T) {
 	req := common.Request{
 		Model:     "claude-3-5-haiku-20241022",

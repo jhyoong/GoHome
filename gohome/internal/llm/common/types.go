@@ -25,6 +25,7 @@ const (
 type Block struct {
 	Kind       BlockKind `json:"kind"`
 	Text       string    `json:"text,omitempty"`
+	Signature  string    `json:"signature,omitempty"`
 	ToolUseID  string    `json:"toolUseId,omitempty"`
 	ToolName   string    `json:"toolName,omitempty"`
 	InputJSON  string    `json:"inputJson,omitempty"`
@@ -60,6 +61,7 @@ type StreamEvent struct {
 	Kind          EventKind
 	TextDelta     string
 	ThinkingDelta string
+	Signature     string
 	ToolCallID    string
 	ToolName      string
 	InputJSON     string

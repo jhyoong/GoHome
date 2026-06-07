@@ -29,8 +29,9 @@ func historyToTimeline(msgs []common.Message) []TimelineEntry {
 				switch b.Kind {
 				case common.BlockThinking:
 					entries = append(entries, TimelineEntry{
-						Kind: KindThinking,
-						Text: b.Text,
+						Kind:     KindThinking,
+						Text:     b.Text,
+						Expanded: false,
 					})
 				case common.BlockText:
 					entries = append(entries, TimelineEntry{

@@ -12,9 +12,10 @@ import (
 
 // chunkDelta is the delta object inside a choice.
 type chunkDelta struct {
-	Role      string          `json:"role"`
-	Content   *string         `json:"content"`
-	ToolCalls []chunkToolCall `json:"tool_calls"`
+	Role             string          `json:"role"`
+	Content          *string         `json:"content"`
+	ReasoningContent *string         `json:"reasoning_content"`
+	ToolCalls        []chunkToolCall `json:"tool_calls"`
 }
 
 // chunkToolCall is a single tool_call delta element.
@@ -85,6 +86,7 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 
 		var stopReason string
 		var usage *common.Usage
+		inReasoning := false
 
 		send := func(e common.StreamEvent) bool {
 			select {
@@ -95,8 +97,20 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 			}
 		}
 
+		// finishReasoning emits EventThinkingDone if still in reasoning phase.
+		finishReasoning := func() bool {
+			if inReasoning {
+				inReasoning = false
+				return send(common.StreamEvent{Kind: common.EventThinkingDone})
+			}
+			return true
+		}
+
 		// emitToolCalls drains accumulated tool calls in index order.
 		emitToolCalls := func() bool {
+			if !finishReasoning() {
+				return false
+			}
 			for _, idx := range toolOrder {
 				ts := tools[idx]
 				if ts == nil {
@@ -124,7 +138,9 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 			}
 			if !ok {
 				// frames channel closed without [DONE]; treat as end of stream.
-				emitToolCalls()
+				if !emitToolCalls() {
+					return
+				}
 				send(common.StreamEvent{
 					Kind:       common.EventTurnDone,
 					StopReason: stopReason,
@@ -180,8 +196,25 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 
 				delta := choice.Delta
 
+				// Reasoning content delta: emit thinking events.
+				if delta.ReasoningContent != nil && *delta.ReasoningContent != "" {
+					inReasoning = true
+					if !send(common.StreamEvent{
+						Kind:          common.EventThinkingDelta,
+						ThinkingDelta: *delta.ReasoningContent,
+					}) {
+						return
+					}
+				}
+
 				// Text delta: emit only when content is non-nil and non-empty.
 				if delta.Content != nil && *delta.Content != "" {
+					if inReasoning {
+						inReasoning = false
+						if !send(common.StreamEvent{Kind: common.EventThinkingDone}) {
+							return
+						}
+					}
 					if !send(common.StreamEvent{
 						Kind:      common.EventTextDelta,
 						TextDelta: *delta.Content,

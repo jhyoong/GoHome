@@ -190,7 +190,10 @@ func main() {
 	registry.Register(tools.ReadTool{})
 	registry.Register(tools.WriteTool{})
 	registry.Register(tools.EditTool{})
-	registry.Register(tools.BashTool{})
+	registry.Register(tools.BashTool{
+		DefaultTimeoutMs: settings.BashTimeoutMs,
+		MaxTimeoutMs:     settings.MaxBashTimeoutMs,
+	})
 
 	// Build or resume session.
 	// When --resume is set, load the most-recent session for this cwd.
@@ -247,19 +250,45 @@ func main() {
 	m.SetModelName(endpoint.DefaultModel)
 	contextWindow := endpoint.ContextWindow
 	if contextWindow <= 0 {
-		contextWindow = 128000
+		contextWindow = config.DefaultContextWindow
 	}
 	m.SetContextWindow(contextWindow)
 	m.SetYolo(*yolo)
+
+	warnPct := settings.ContextWarnPct
+	if warnPct <= 0 {
+		warnPct = config.DefaultContextWarnPct
+	}
+	critPct := settings.ContextCritPct
+	if critPct <= 0 {
+		critPct = config.DefaultContextCritPct
+	}
+	if warnPct >= critPct {
+		warnPct = config.DefaultContextWarnPct
+		critPct = config.DefaultContextCritPct
+	}
+	m.SetContextThresholds(warnPct, critPct)
 
 	// Build tea program and wire frontend.
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	fe.SetProgram(p)
 
 	// Build agent.
-	const systemPrompt = `You are gohome, an AI coding assistant. You help users with software development tasks.
+	systemPrompt := `You are gohome, an AI coding assistant. You help users with software development tasks.
 You have access to tools for reading and writing files, running bash commands, and spawning subagents for parallel work.
 Be concise and precise. Ask for clarification when requirements are ambiguous.`
+	if settings.SystemPrompt != "" {
+		systemPrompt = settings.SystemPrompt
+	}
+
+	maxTokens := endpoint.MaxTokens
+	if maxTokens <= 0 {
+		maxTokens = config.DefaultMaxTokens
+	}
+	thinkingBudget := endpoint.ThinkingBudget
+	if thinkingBudget <= 0 {
+		thinkingBudget = config.DefaultThinkingBudget
+	}
 
 	a := &agent.Agent{
 		Client:         client,
@@ -268,8 +297,8 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		Frontend:       fe,
 		Writer:         writer,
 		System:         systemPrompt,
-		MaxTokens:      16384,
-		ThinkingBudget: 10240,
+		MaxTokens:      maxTokens,
+		ThinkingBudget: thinkingBudget,
 		Home:           home,
 		Session:        sess,
 	}

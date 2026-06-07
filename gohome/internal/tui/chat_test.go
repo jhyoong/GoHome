@@ -129,3 +129,28 @@ func TestChatRenderThinkingExpanded(t *testing.T) {
 		t.Errorf("expanded thinking content missing: %q", joined)
 	}
 }
+
+func TestChatRenderToolExpanded_HasBackground(t *testing.T) {
+	entries := []TimelineEntry{{
+		Kind:       KindTool,
+		ToolName:   "bash",
+		Text:       `{"command":"ls"}`,
+		ToolResult: "file.txt",
+		Status:     "success",
+		Expanded:   true,
+	}}
+	c := NewChat(&entries, 20)
+	lines := c.Render(80)
+	// Expanded lines (args/result) should have content.
+	if len(lines) < 2 {
+		t.Fatalf("expected multiple lines for expanded tool, got %d", len(lines))
+	}
+	// Check that result content appears in expanded output.
+	joined := StripAnsi(strings.Join(lines, "\n"))
+	if !strings.Contains(joined, "file.txt") {
+		t.Errorf("expanded tool result missing: %q", joined)
+	}
+	if !strings.Contains(joined, "args:") {
+		t.Errorf("expanded tool args label missing: %q", joined)
+	}
+}

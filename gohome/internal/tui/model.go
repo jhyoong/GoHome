@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
@@ -89,9 +90,11 @@ type Model struct {
 	cursor int
 
 	// Phase 12 populates these; Phase 11 renders them.
-	modelName     string // LLM model name; "?" when empty
-	yolo          bool   // YOLO mode (skip approval)
-	contextWindow int    // context window size; defaults to 128000
+	modelName      string  // LLM model name; "?" when empty
+	yolo           bool    // YOLO mode (skip approval)
+	contextWindow  int     // context window size; defaults to 128000
+	contextWarnPct float64 // ratio at which to show 80% warning
+	contextCritPct float64 // ratio at which to show 95% critical warning
 
 	// Approval overlay state (Task 11.9+).
 	// activeApproval is the prompt currently displayed in the input region.
@@ -101,6 +104,10 @@ type Model struct {
 
 	// showTokens controls the /tokens overlay (Task 11.15).
 	showTokens bool
+
+	// showHelp controls the help overlay triggered by Ctrl+H.
+	showHelp   bool
+	helpScroll int
 
 	// statusMsg is a transient message shown near the status bar (Task 11.14).
 	statusMsg string
@@ -150,7 +157,9 @@ func New(fe *Frontend, sessionID string) *Model {
 		order:            []string{sessionID},
 		focused:          sessionID,
 		inputCh:          inputCh,
-		contextWindow:    128000,
+		contextWindow:    config.DefaultContextWindow,
+		contextWarnPct:   config.DefaultContextWarnPct,
+		contextCritPct:   config.DefaultContextCritPct,
 		pendingApprovals: make(map[string]*approvalPrompt),
 		editor:           NewEditor(80, 24),
 		spinner:          NewSpinner(),
@@ -189,12 +198,23 @@ func (m *Model) SetCWD(dir string)             { m.cwd = dir }
 func (m *Model) SetSettings(s config.Settings) { m.settings = s }
 
 // SetContextWindow sets the total context window size used in the token bar.
-// If size <= 0 the default 128000 is used.
+// If size <= 0 the default is used.
 func (m *Model) SetContextWindow(size int) {
 	if size <= 0 {
-		size = 128000
+		size = config.DefaultContextWindow
 	}
 	m.contextWindow = size
+}
+
+// SetContextThresholds sets the warn and critical context-fullness ratios.
+func (m *Model) SetContextThresholds(warn, crit float64) {
+	if warn <= 0 || crit <= 0 || warn >= crit || warn > 1 || crit > 1 {
+		m.contextWarnPct = config.DefaultContextWarnPct
+		m.contextCritPct = config.DefaultContextCritPct
+		return
+	}
+	m.contextWarnPct = warn
+	m.contextCritPct = crit
 }
 
 // Focused returns the ID of the currently focused session.
@@ -217,6 +237,22 @@ func (m *Model) getOrCreateSession(id string, depth int) *SessionView {
 		m.order = append(m.order, id)
 	}
 	return sv
+}
+
+// rebuildViewportKeepScroll refreshes the chat cursor and timeline without
+// resetting scroll position. Used after toggling block expansion.
+func (m *Model) rebuildViewportKeepScroll() {
+	sv, ok := m.sessions[m.focused]
+	if !ok {
+		return
+	}
+	cur := -1
+	if strings.TrimSpace(m.editor.Value()) == "" {
+		m.clampCursor()
+		cur = m.cursor
+	}
+	m.chat.SetTimeline(&sv.Timeline)
+	m.chat.SetCursor(cur)
 }
 
 // rebuildViewport refreshes the chat component state from the focused session.
@@ -250,13 +286,20 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 			sv.Timeline[n-1].Text += ev.ThinkingDelta
 		} else {
 			sv.Timeline = append(sv.Timeline, TimelineEntry{
-				Kind: KindThinking,
-				Text: ev.ThinkingDelta,
+				Kind:     KindThinking,
+				Text:     ev.ThinkingDelta,
+				Expanded: true,
 			})
 		}
 
 	case agent.EventThinkingDone:
-		// No-op: the thinking entry is already complete.
+		n := len(sv.Timeline)
+		for i := n - 1; i >= 0; i-- {
+			if sv.Timeline[i].Kind == KindThinking {
+				sv.Timeline[i].Expanded = false
+				break
+			}
+		}
 
 	case agent.EventTokenDelta:
 		// Append to the last assistant entry if it is in-progress, else add new.
@@ -471,10 +514,10 @@ func (m *Model) checkContextWarnings(sv *SessionView) {
 	}
 	used := sv.Usage.InputTokens + sv.Usage.OutputTokens
 	ratio := float64(used) / float64(m.contextWindow)
-	if ratio >= 0.95 && !sv.warned95 {
+	if ratio >= m.contextCritPct && !sv.warned95 {
 		sv.warned95 = true
 		m.contextNotice = "Context near limit -- next turn may fail or truncate."
-	} else if ratio >= 0.80 && !sv.warned80 {
+	} else if ratio >= m.contextWarnPct && !sv.warned80 {
 		sv.warned80 = true
 		m.contextNotice = "Context 80% full -- consider /new or /resume into a fresh session."
 	}
@@ -592,6 +635,28 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(cmds...)
 		}
 
+		if m.showHelp {
+			switch msg.Type {
+			case tea.KeyEsc:
+				m.showHelp = false
+				m.helpScroll = 0
+			case tea.KeyUp, tea.KeyLeft:
+				if m.helpScroll > 0 {
+					m.helpScroll--
+				}
+			case tea.KeyDown, tea.KeyRight:
+				m.helpScroll++
+			case tea.KeyPgUp:
+				m.helpScroll -= 5
+				if m.helpScroll < 0 {
+					m.helpScroll = 0
+				}
+			case tea.KeyPgDown:
+				m.helpScroll += 5
+			}
+			return m, tea.Batch(cmds...)
+		}
+
 		if msg.Type == tea.KeyEsc && m.spinner.Active() &&
 			!m.browsing && !m.selectingModel {
 			m.spinner.HandleInput(msg)
@@ -613,6 +678,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.focusNext()
 		case tea.KeyCtrlOpenBracket:
 			m.focusPrev()
+		case tea.KeyCtrlH:
+			m.showHelp = true
+			m.helpScroll = 0
+			return m, tea.Batch(cmds...)
 		case tea.KeyPgUp:
 			m.chat.ScrollUp(5)
 		case tea.KeyPgDown:
@@ -636,8 +705,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					sv, ok := m.sessions[m.focused]
 					if ok && m.cursor >= 0 && m.cursor < len(sv.Timeline) {
 						entry := &sv.Timeline[m.cursor]
-						if entry.Kind == KindTool {
+						if entry.Kind == KindTool || entry.Kind == KindThinking {
+							m.chat.DisableAutoScroll(m.winW)
 							entry.Expanded = !entry.Expanded
+							m.rebuildViewportKeepScroll()
 						}
 					}
 				} else if strings.HasPrefix(text, "/") {
@@ -687,6 +758,36 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if msg.Type == tea.KeyEsc {
 					m.fileSearching = false
 					m.fileSearch.Hide()
+					return m, nil
+				}
+			}
+			// Timeline cursor navigation when editor is empty.
+			if strings.TrimSpace(m.editor.Value()) == "" {
+				if keyRune(msg) == 'c' {
+					sv, ok := m.sessions[m.focused]
+					if ok && m.cursor >= 0 && m.cursor < len(sv.Timeline) {
+						text := timelineEntryText(sv.Timeline[m.cursor])
+						if err := clipboard.WriteAll(text); err != nil {
+							m.statusMsg = fmt.Sprintf("Copy failed: %v", err)
+						} else {
+							m.statusMsg = "Copied to clipboard"
+						}
+						return m, nil
+					}
+				}
+				if msg.Type == tea.KeyUp {
+					if m.cursor > 0 {
+						m.cursor--
+					}
+					m.rebuildViewportKeepScroll()
+					return m, nil
+				}
+				if msg.Type == tea.KeyDown {
+					sv, ok := m.sessions[m.focused]
+					if ok && m.cursor < len(sv.Timeline)-1 {
+						m.cursor++
+					}
+					m.rebuildViewportKeepScroll()
 					return m, nil
 				}
 			}
@@ -825,6 +926,27 @@ func (m *Model) handleApprovalKey(msg tea.KeyMsg) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+// timelineEntryText returns the plain-text content of a TimelineEntry for
+// clipboard purposes.
+func timelineEntryText(e TimelineEntry) string {
+	switch e.Kind {
+	case KindUser, KindAssistant, KindThinking, KindNotice:
+		return e.Text
+	case KindTool:
+		var sb strings.Builder
+		fmt.Fprintf(&sb, "[tool] %s", e.ToolName)
+		if e.Text != "" {
+			fmt.Fprintf(&sb, "\nargs: %s", e.Text)
+		}
+		if e.ToolResult != "" {
+			fmt.Fprintf(&sb, "\nresult: %s", e.ToolResult)
+		}
+		return sb.String()
+	default:
+		return e.Text
+	}
+}
+
 // keyRune returns the single rune for a KeyRunes message, or 0 if the message
 // carries zero or more than one rune.
 func keyRune(msg tea.KeyMsg) rune {
@@ -886,7 +1008,7 @@ func (m *Model) clampCursor() {
 
 // slashCommands is the static list of available slash commands.
 var slashCommands = []string{
-	"/new", "/resume", "/yolo", "/endpoint", "/model", "/cancel", "/tokens", "/quit",
+	"/help", "/new", "/resume", "/yolo", "/endpoint", "/model", "/cancel", "/tokens", "/quit",
 }
 
 // slashComplete returns all commands in slashCommands that have prefix as a prefix.
@@ -921,6 +1043,10 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 		if m.onYoloChange != nil {
 			m.onYoloChange(m.yolo)
 		}
+	case "/help":
+		m.showHelp = true
+		m.helpScroll = 0
+		m.statusMsg = ""
 	case "/tokens":
 		m.showTokens = true
 		m.statusMsg = ""
@@ -1122,6 +1248,16 @@ func (m *Model) View() string {
 		return strings.Join(sections, "\n")
 	}
 
+	if m.showHelp {
+		helpH := m.winH - stripHeight - statusHeight - 2
+		if helpH < 1 {
+			helpH = 1
+		}
+		sections = append(sections, m.renderHelpOverlay(helpH))
+		sections = append(sections, m.statusBar())
+		return strings.Join(sections, "\n")
+	}
+
 	// Chat area
 	chatH := m.winH - editorMinHeight - 2 - stripHeight - statusHeight - 2
 	if chatH < 1 {
@@ -1257,4 +1393,15 @@ func (m *Model) ShowTokens() bool {
 // synchronously without going through the textarea input path.
 func (m *Model) OpenTokensOverlay() {
 	m.showTokens = true
+}
+
+// ShowHelp returns whether the help overlay is displayed (exported for tests).
+func (m *Model) ShowHelp() bool {
+	return m.showHelp
+}
+
+// OpenHelpOverlay opens the help overlay. Used in tests to set this state
+// synchronously without going through the key input path.
+func (m *Model) OpenHelpOverlay() {
+	m.showHelp = true
 }

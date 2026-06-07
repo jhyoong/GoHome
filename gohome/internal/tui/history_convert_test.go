@@ -35,6 +35,9 @@ func TestHistoryToTimeline_AssistantTextAndThinking(t *testing.T) {
 	if got[0].Kind != KindThinking || got[0].Text != "let me think" {
 		t.Errorf("thinking entry: %+v", got[0])
 	}
+	if got[0].Expanded != false {
+		t.Errorf("thinking Expanded = %v, want false", got[0].Expanded)
+	}
 	if got[1].Kind != KindAssistant || got[1].Text != "here is the answer" {
 		t.Errorf("assistant entry: %+v", got[1])
 	}
@@ -142,5 +145,62 @@ func TestHistoryToTimeline_FullConversation(t *testing.T) {
 	}
 	if got[3].ToolResult != "ok" {
 		t.Errorf("tool result not merged: %q", got[3].ToolResult)
+	}
+	if got[1].Expanded != false {
+		t.Errorf("thinking Expanded = %v, want false", got[1].Expanded)
+	}
+}
+
+func TestHistoryToTimeline_ThinkingWithSignatureCollapsed(t *testing.T) {
+	msgs := []common.Message{
+		{Role: common.RoleAssistant, Content: []common.Block{
+			{Kind: common.BlockThinking, Text: "reasoning", Signature: "sig-xyz"},
+			{Kind: common.BlockText, Text: "answer"},
+		}},
+	}
+	got := historyToTimeline(msgs)
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2", len(got))
+	}
+	if got[0].Kind != KindThinking {
+		t.Errorf("kind = %q, want %q", got[0].Kind, KindThinking)
+	}
+	if got[0].Expanded {
+		t.Error("thinking with signature should be collapsed on resume")
+	}
+}
+
+func TestHistoryToTimeline_ThinkingWithoutSignatureCollapsed(t *testing.T) {
+	msgs := []common.Message{
+		{Role: common.RoleAssistant, Content: []common.Block{
+			{Kind: common.BlockThinking, Text: "openai reasoning"},
+			{Kind: common.BlockText, Text: "answer"},
+		}},
+	}
+	got := historyToTimeline(msgs)
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2", len(got))
+	}
+	if got[0].Expanded {
+		t.Error("thinking without signature should be collapsed on resume")
+	}
+}
+
+func TestHistoryToTimeline_EmptyThinkingText(t *testing.T) {
+	msgs := []common.Message{
+		{Role: common.RoleAssistant, Content: []common.Block{
+			{Kind: common.BlockThinking, Text: ""},
+			{Kind: common.BlockText, Text: "answer"},
+		}},
+	}
+	got := historyToTimeline(msgs)
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2 (empty thinking still produces entry)", len(got))
+	}
+	if got[0].Kind != KindThinking {
+		t.Errorf("kind = %q, want %q", got[0].Kind, KindThinking)
+	}
+	if got[0].Expanded {
+		t.Error("empty thinking should be collapsed on resume")
 	}
 }

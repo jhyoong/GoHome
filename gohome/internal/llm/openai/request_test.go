@@ -225,6 +225,69 @@ func TestBuildOpenAIBody(t *testing.T) {
 	}
 }
 
+func TestTranslateAssistantMessage_ThinkingBlockDropped(t *testing.T) {
+	// A session-resume scenario: assistant message contains a thinking block
+	// followed by a text block. The OpenAI adapter must silently drop the
+	// thinking block and only emit the text content.
+	req := common.Request{
+		Model: "gpt-4o",
+		Messages: []common.Message{
+			{
+				Role: common.RoleUser,
+				Content: []common.Block{
+					{Kind: common.BlockText, Text: "Think about it."},
+				},
+			},
+			{
+				Role: common.RoleAssistant,
+				Content: []common.Block{
+					{Kind: common.BlockThinking, Text: "internal reasoning here"},
+					{Kind: common.BlockText, Text: "The answer is 42."},
+				},
+			},
+		},
+		MaxTokens: 1024,
+	}
+
+	data, err := buildOpenAIBody(req)
+	if err != nil {
+		t.Fatalf("buildOpenAIBody error: %v", err)
+	}
+
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(data, &body); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+
+	var messages []json.RawMessage
+	if err := json.Unmarshal(body["messages"], &messages); err != nil {
+		t.Fatalf("messages unmarshal: %v", err)
+	}
+	// user + assistant = 2 messages (no system)
+	if len(messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(messages))
+	}
+
+	// message 1: assistant — content should only contain the text, not the thinking
+	var msg1 struct {
+		Role      string          `json:"role"`
+		Content   *string         `json:"content"`
+		ToolCalls json.RawMessage `json:"tool_calls"`
+	}
+	if err := json.Unmarshal(messages[1], &msg1); err != nil {
+		t.Fatalf("unmarshal msg1: %v", err)
+	}
+	if msg1.Role != "assistant" {
+		t.Errorf("msg1 role: got %q, want assistant", msg1.Role)
+	}
+	if msg1.Content == nil {
+		t.Fatal("msg1 content is nil; expected text content")
+	}
+	if *msg1.Content != "The answer is 42." {
+		t.Errorf("msg1 content: got %q, want %q", *msg1.Content, "The answer is 42.")
+	}
+}
+
 func TestBuildOpenAIBody_MaxTokensZero(t *testing.T) {
 	req := common.Request{
 		Model:     "gpt-4o",

@@ -313,12 +313,25 @@ func TestTurn_ThinkingThenText(t *testing.T) {
 		t.Errorf("thinking delta: got %q", fe.events[0].ThinkingDelta)
 	}
 
-	// History should have one assistant message with text only (thinking is not persisted).
+	// History should have one assistant message with thinking + text.
 	if len(sess.History) != 1 {
 		t.Fatalf("history: got %d", len(sess.History))
 	}
-	if sess.History[0].Content[0].Text != "The answer" {
-		t.Errorf("text: got %q", sess.History[0].Content[0].Text)
+	blocks := sess.History[0].Content
+	if len(blocks) != 2 {
+		t.Fatalf("blocks count: got %d, want 2", len(blocks))
+	}
+	if blocks[0].Kind != common.BlockThinking {
+		t.Errorf("blocks[0].Kind: got %v, want BlockThinking", blocks[0].Kind)
+	}
+	if blocks[0].Text != "reasoning..." {
+		t.Errorf("thinking text: got %q, want %q", blocks[0].Text, "reasoning...")
+	}
+	if blocks[1].Kind != common.BlockText {
+		t.Errorf("blocks[1].Kind: got %v, want BlockText", blocks[1].Kind)
+	}
+	if blocks[1].Text != "The answer" {
+		t.Errorf("text: got %q, want %q", blocks[1].Text, "The answer")
 	}
 }
 
@@ -341,5 +354,75 @@ func TestTurn_TextOnlyNoToolUse(t *testing.T) {
 	}
 	if len(sess.History[0].Content) != 1 {
 		t.Errorf("expected 1 block (text only), got %d", len(sess.History[0].Content))
+	}
+}
+
+func TestTurn_ThinkingWithSignature(t *testing.T) {
+	usage := &common.Usage{InputTokens: 5, OutputTokens: 3}
+	events := []common.StreamEvent{
+		{Kind: common.EventThinkingDelta, ThinkingDelta: "deep thought"},
+		{Kind: common.EventThinkingDone, Signature: "sig-abc-123"},
+		{Kind: common.EventTextDelta, TextDelta: "The answer is 42"},
+		{Kind: common.EventTurnDone, StopReason: "end_turn", Usage: usage},
+	}
+	client := &fakeClient{sequences: [][]common.StreamEvent{events}}
+	fe := &fakeRecorder{}
+	a, sess, _ := newTestAgent(t, client, fe)
+
+	_, err := a.Turn(context.Background(), sess)
+	if err != nil {
+		t.Fatalf("Turn: %v", err)
+	}
+
+	if len(sess.History) != 1 {
+		t.Fatalf("history len = %d, want 1", len(sess.History))
+	}
+	blocks := sess.History[0].Content
+	if len(blocks) != 2 {
+		t.Fatalf("blocks len = %d, want 2", len(blocks))
+	}
+	if blocks[0].Kind != common.BlockThinking {
+		t.Errorf("blocks[0].Kind = %v, want BlockThinking", blocks[0].Kind)
+	}
+	if blocks[0].Text != "deep thought" {
+		t.Errorf("thinking text = %q, want %q", blocks[0].Text, "deep thought")
+	}
+	if blocks[0].Signature != "sig-abc-123" {
+		t.Errorf("thinking signature = %q, want %q", blocks[0].Signature, "sig-abc-123")
+	}
+	if blocks[1].Kind != common.BlockText {
+		t.Errorf("blocks[1].Kind = %v, want BlockText", blocks[1].Kind)
+	}
+}
+
+func TestTurn_ThinkingWithoutSignature(t *testing.T) {
+	usage := &common.Usage{InputTokens: 5, OutputTokens: 3}
+	events := []common.StreamEvent{
+		{Kind: common.EventThinkingDelta, ThinkingDelta: "openai reasoning"},
+		{Kind: common.EventThinkingDone},
+		{Kind: common.EventTextDelta, TextDelta: "Result"},
+		{Kind: common.EventTurnDone, StopReason: "stop", Usage: usage},
+	}
+	client := &fakeClient{sequences: [][]common.StreamEvent{events}}
+	fe := &fakeRecorder{}
+	a, sess, _ := newTestAgent(t, client, fe)
+
+	_, err := a.Turn(context.Background(), sess)
+	if err != nil {
+		t.Fatalf("Turn: %v", err)
+	}
+
+	blocks := sess.History[0].Content
+	if len(blocks) != 2 {
+		t.Fatalf("blocks len = %d, want 2", len(blocks))
+	}
+	if blocks[0].Kind != common.BlockThinking {
+		t.Errorf("blocks[0].Kind = %v, want BlockThinking", blocks[0].Kind)
+	}
+	if blocks[0].Text != "openai reasoning" {
+		t.Errorf("thinking text = %q", blocks[0].Text)
+	}
+	if blocks[0].Signature != "" {
+		t.Errorf("thinking signature = %q, want empty", blocks[0].Signature)
 	}
 }

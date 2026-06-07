@@ -1,16 +1,50 @@
 # Changelog
 
+## v0.2.2
+
+### Added
+
+- **Help overlay** -- `/help` command and `Ctrl+H` keybinding open a scrollable overlay showing all keybindings, slash commands, and CLI flags.
+- **Configurable settings** -- Context window, max tokens, thinking budget, bash timeouts, context warning thresholds, and retry backoff are now configurable via `settings.json` instead of being hardcoded. All new fields use `omitempty` so existing configs require no changes.
+- **Copy to clipboard** -- Press `c` while browsing history to copy the selected entry to the system clipboard. ( Does not work over SSH )
+- **Scroll-stable block expansion** -- Expanding thinking or tool blocks no longer jumps the viewport. The scroll position is anchored and expanded blocks get a subtle background highlight.
+- **Thinking blocks in OpenAI wire protocol** -- The OpenAI-compatible adapter now parses `reasoning_content` deltas and emits thinking events, enabling thinking block rendering for OpenAI-wire endpoints.
+- **Thinking block persistence** -- Thinking blocks (including signature data) are saved to session JSONL files so they are preserved and displayed when resuming a session.
+- **Session load validation** -- Malformed thinking blocks (empty text) are logged as warnings when loading session files, providing visibility into data quality without blocking resume.
+
+### Fixed
+
+- Thinking block signature field is now captured from Anthropic `signature_delta` events and forwarded through the stream, fixing extended thinking continuations on session resume.
+- LLM adapters now handle `BlockThinking` when building request messages for resumed sessions, preventing dropped thinking blocks.
+- The `c` key no longer swallows input when the timeline is empty.
+- Context warning thresholds are validated at startup to ensure the warning level is below the critical level.
+- Thinking blocks now collapse automatically after reasoning completes, matching the collapsed-by-default behavior of resumed sessions.
+- Resumed thinking blocks default to collapsed (previously expanded), reducing visual noise when loading old sessions.
+
 ## v0.2.1
 
 ### Added
 
 - **Thinking blocks** -- Anthropic thinking/reasoning blocks are parsed from the SSE stream, forwarded through the agent event pipeline, and rendered in the TUI as collapsible entries with line counts. Spinner shows "Thinking..." during reasoning and "Generating..." during token output.
-- **File search popup** -- Type `@` followed by a query to search project files using `fd` (with `find` fallback). Results are scored and ranked (exact filename > prefix > substring). Navigate with Up/Down, confirm with Enter to insert the path.
+- **File search popup** -- Type `@` followed by a query to search project files using `fd` (with `find` fallback). Results are scored and ranked (exact filename > prefix > substring). Navigate with Up/Down or Tab, confirm with Enter to insert the path.
 - **Pending message queue** -- Messages typed while the agent is streaming are queued and automatically sent when the current turn completes. Queue is cleared on `/cancel`.
+- **Ctrl+C cancellation** -- Ctrl+C cancels in-flight turns or dismisses approval prompts; double-tap quits the app. Escape also cancels the spinner.
+- **Table rendering** -- GFM tables are rendered with box-drawing borders in markdown output.
+- **Tab completion for slash commands** -- Tab auto-completes slash commands with first-match highlighting in the palette.
+- **Session browser** -- `/resume` now shows an interactive session browser with filtering and search via a new SelectListComponent.
+- **Model selector** -- New `/model` command with interactive ModelSelectorComponent for switching LLM models at runtime.
+- **Resume with history** -- When resuming a session, prior conversation history is loaded and displayed in the TUI.
+- **Approval prompt navigation** -- Up/Down arrows navigate approval options with selection markers, Enter confirms. Press `e` to edit allow-always patterns, `4` for deny+steer with steering message input.
+- **Blank session cleanup** -- Empty JSONL session files (no user messages) are automatically removed on shutdown.
+- **Token usage overlay** -- `/tokens` overlay shows token usage breakdown and context window percentage.
+- **Context fullness warnings** -- Warnings displayed at 80% and 95% context window thresholds.
+- **Tool status colors** -- Tool execution results shown with pending/success/error color indicators.
+- **Status bar** -- Session ID, model name, token progress bar, and YOLO mode indicator.
 
 ### Fixed
 
 - CI release workflow now creates draft releases and handles pre-existing releases correctly.
+- Anthropic API requests now include the `thinking` parameter so thinking blocks are actually returned.
 
 ## v0.2.0
 
