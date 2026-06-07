@@ -184,8 +184,8 @@ func (m *Model) SetSlashCallbacks(cb SlashCallbacks) {
 	m.slashCB = cb
 }
 
-func (m *Model) SetHomeDir(dir string) { m.homeDir = dir }
-func (m *Model) SetCWD(dir string)     { m.cwd = dir }
+func (m *Model) SetHomeDir(dir string)         { m.homeDir = dir }
+func (m *Model) SetCWD(dir string)             { m.cwd = dir }
 func (m *Model) SetSettings(s config.Settings) { m.settings = s }
 
 // SetContextWindow sets the total context window size used in the token bar.
