@@ -6,7 +6,7 @@
 
 - **Help overlay** -- `/help` command and `Ctrl+H` keybinding open a scrollable overlay showing all keybindings, slash commands, and CLI flags.
 - **Configurable settings** -- Context window, max tokens, thinking budget, bash timeouts, context warning thresholds, and retry backoff are now configurable via `settings.json` instead of being hardcoded. All new fields use `omitempty` so existing configs require no changes.
-- **Copy to clipboard** -- Press `c` while browsing history to copy the selected entry to the system clipboard.
+- **Copy to clipboard** -- Press `c` while browsing history to copy the selected entry to the system clipboard. ( Does not work over SSH )
 - **Scroll-stable block expansion** -- Expanding thinking or tool blocks no longer jumps the viewport. The scroll position is anchored and expanded blocks get a subtle background highlight.
 - **Thinking blocks in OpenAI wire protocol** -- The OpenAI-compatible adapter now parses `reasoning_content` deltas and emits thinking events, enabling thinking block rendering for OpenAI-wire endpoints.
 - **Thinking block persistence** -- Thinking blocks (including signature data) are saved to session JSONL files so they are preserved and displayed when resuming a session.
