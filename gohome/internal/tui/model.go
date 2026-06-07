@@ -761,8 +761,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						} else {
 							m.statusMsg = "Copied to clipboard"
 						}
+						return m, nil
 					}
-					return m, nil
 				}
 				if msg.Type == tea.KeyUp {
 					if m.cursor > 0 {
