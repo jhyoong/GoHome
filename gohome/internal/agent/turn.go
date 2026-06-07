@@ -39,6 +39,7 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, error)
 	var (
 		textBuf     string
 		thinkingBuf string
+		thinkingSig string
 		toolBlocks  []common.Block // tool_use blocks in arrival order
 		stopReason  string
 		usage       *common.Usage
@@ -74,6 +75,7 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, error)
 				})
 
 			case common.EventThinkingDone:
+				thinkingSig = ev.Signature
 				a.Frontend.Emit(sess.ID, Event{
 					Kind:      EventThinkingDone,
 					SessionID: sess.ID,
@@ -119,7 +121,7 @@ done:
 	// Build the assistant message: thinking block first, then text, then tool_use blocks.
 	var blocks []common.Block
 	if thinkingBuf != "" {
-		blocks = append(blocks, common.Block{Kind: common.BlockThinking, Text: thinkingBuf})
+		blocks = append(blocks, common.Block{Kind: common.BlockThinking, Text: thinkingBuf, Signature: thinkingSig})
 	}
 	if textBuf != "" {
 		blocks = append(blocks, common.Block{Kind: common.BlockText, Text: textBuf})

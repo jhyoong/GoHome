@@ -86,7 +86,7 @@ Both `"anthropic"` and `"openai"` wires are supported. Set `apiKey` for a litera
 | `defaultModel` | — | Model name sent to the endpoint |
 | `contextWindow` | — | Context window size in tokens (used for usage display) |
 | `maxTokens` | `16384` | Max output tokens per LLM turn |
-| `thinkingBudget` | `10240` | Extended thinking token budget |
+| `thinkingBudget` | `10240` | Extended thinking token budget (Anthropic wire only; ignored by OpenAI) |
 
 **Top-level fields:**
 
@@ -95,8 +95,8 @@ Both `"anthropic"` and `"openai"` wires are supported. Set `apiKey` for a litera
 | `defaultEndpoint` | — | Name of the endpoint used when `--endpoint` is not passed |
 | `bashTimeoutMs` | `120000` | Default bash command timeout in milliseconds |
 | `maxBashTimeoutMs` | `600000` | Maximum bash command timeout in milliseconds |
-| `contextWarnPct` | `0.80` | Context window usage ratio at which a warning is shown |
-| `contextCritPct` | `0.95` | Context window usage ratio at which a critical warning is shown |
+| `contextWarnPct` | `0.80` | Context window usage ratio at which a warning is shown (must be < `contextCritPct`) |
+| `contextCritPct` | `0.95` | Context window usage ratio at which a critical warning is shown (must be > `contextWarnPct` and <= 1.0) |
 | `retryBackoffMs` | `[250, 1000, 2000]` | Retry backoff schedule in milliseconds |
 
 ### 2. Run
@@ -107,6 +107,8 @@ export GOHOME_API_KEY=<your-key>
 ```
 
 Project-level settings live in `./.gohome/settings.json` and are merged on top of global settings at startup.
+
+If `contextWarnPct` >= `contextCritPct`, or either value is outside the (0, 1] range, both are silently reset to their defaults (0.80 and 0.95).
 
 ---
 

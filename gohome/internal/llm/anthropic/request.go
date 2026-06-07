@@ -50,8 +50,9 @@ type anthropicThinking struct {
 
 // anthropicThinkingBlock is the Anthropic wire shape for a thinking content block.
 type anthropicThinkingBlock struct {
-	Type     string `json:"type"`
-	Thinking string `json:"thinking"`
+	Type      string `json:"type"`
+	Thinking  string `json:"thinking"`
+	Signature string `json:"signature"`
 }
 
 // anthropicBody is the Anthropic wire shape for a messages request body.
@@ -150,7 +151,7 @@ func translateAssistantMessage(m common.Message) (anthropicMessage, error) {
 		case common.BlockText:
 			content = append(content, anthropicTextBlock{Type: "text", Text: b.Text})
 		case common.BlockThinking:
-			content = append(content, anthropicThinkingBlock{Type: "thinking", Thinking: b.Text})
+			content = append(content, anthropicThinkingBlock{Type: "thinking", Thinking: b.Text, Signature: b.Signature})
 		case common.BlockToolUse:
 			var inputRaw json.RawMessage
 			if b.InputJSON != "" {

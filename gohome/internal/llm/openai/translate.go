@@ -141,7 +141,6 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 				if !emitToolCalls() {
 					return
 				}
-				finishReasoning()
 				send(common.StreamEvent{
 					Kind:       common.EventTurnDone,
 					StopReason: stopReason,
@@ -161,7 +160,6 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 				if !emitToolCalls() {
 					return
 				}
-				finishReasoning()
 				send(common.StreamEvent{
 					Kind:       common.EventTurnDone,
 					StopReason: stopReason,

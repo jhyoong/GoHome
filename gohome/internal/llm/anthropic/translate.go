@@ -53,6 +53,7 @@ type contentBlockDeltaData struct {
 		Text        string `json:"text"`         // for text_delta
 		PartialJSON string `json:"partial_json"` // for input_json_delta
 		Thinking    string `json:"thinking"`     // for thinking_delta
+		Signature   string `json:"signature"`    // for signature_delta
 	} `json:"delta"`
 }
 
@@ -72,10 +73,12 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 	go func() {
 		defer close(ch)
 
-		// blockTypes tracks whether index N is "text" or "tool_use"
+		// blockTypes tracks whether index N is "text", "tool_use", or "thinking"
 		blockTypes := map[int]string{}
 		// toolBlocks accumulates tool_use state per block index
 		toolBlocks := map[int]*toolBlock{}
+		// sigBufs accumulates signature deltas per thinking block index
+		sigBufs := map[int][]byte{}
 
 		var usage common.Usage
 		var stopReason string
@@ -151,6 +154,8 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 					}) {
 						return
 					}
+				case "signature_delta":
+					sigBufs[d.Index] = append(sigBufs[d.Index], []byte(d.Delta.Signature)...)
 				case "input_json_delta":
 					if tb, ok := toolBlocks[d.Index]; ok {
 						tb.inputBuf = append(tb.inputBuf, []byte(d.Delta.PartialJSON)...)
@@ -169,10 +174,12 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 				switch blockTypes[raw.Index] {
 				case "thinking":
 					if !send(common.StreamEvent{
-						Kind: common.EventThinkingDone,
+						Kind:      common.EventThinkingDone,
+						Signature: string(sigBufs[raw.Index]),
 					}) {
 						return
 					}
+					delete(sigBufs, raw.Index)
 				case "tool_use":
 					tb := toolBlocks[raw.Index]
 					if tb != nil {

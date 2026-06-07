@@ -285,7 +285,7 @@ func TestTranslateAssistantMessage_ThinkingBlock(t *testing.T) {
 			{
 				Role: common.RoleAssistant,
 				Content: []common.Block{
-					{Kind: common.BlockThinking, Text: "internal reasoning here"},
+					{Kind: common.BlockThinking, Text: "internal reasoning here", Signature: "sig-abc123"},
 					{Kind: common.BlockText, Text: "The answer is 42."},
 				},
 			},
@@ -328,8 +328,9 @@ func TestTranslateAssistantMessage_ThinkingBlock(t *testing.T) {
 
 	// first block: thinking
 	var thinkBlock struct {
-		Type     string `json:"type"`
-		Thinking string `json:"thinking"`
+		Type      string `json:"type"`
+		Thinking  string `json:"thinking"`
+		Signature string `json:"signature"`
 	}
 	if err := json.Unmarshal(msg1.Content[0], &thinkBlock); err != nil {
 		t.Fatalf("unmarshal thinking block: %v", err)
@@ -339,6 +340,9 @@ func TestTranslateAssistantMessage_ThinkingBlock(t *testing.T) {
 	}
 	if thinkBlock.Thinking != "internal reasoning here" {
 		t.Errorf("thinking block content: got %q", thinkBlock.Thinking)
+	}
+	if thinkBlock.Signature != "sig-abc123" {
+		t.Errorf("thinking block signature: got %q, want %q", thinkBlock.Signature, "sig-abc123")
 	}
 
 	// second block: text

@@ -263,6 +263,10 @@ func main() {
 	if critPct <= 0 {
 		critPct = config.DefaultContextCritPct
 	}
+	if warnPct >= critPct {
+		warnPct = config.DefaultContextWarnPct
+		critPct = config.DefaultContextCritPct
+	}
 	m.SetContextThresholds(warnPct, critPct)
 
 	// Build tea program and wire frontend.

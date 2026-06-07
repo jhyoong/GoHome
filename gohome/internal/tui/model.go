@@ -208,6 +208,11 @@ func (m *Model) SetContextWindow(size int) {
 
 // SetContextThresholds sets the warn and critical context-fullness ratios.
 func (m *Model) SetContextThresholds(warn, crit float64) {
+	if warn <= 0 || crit <= 0 || warn >= crit || warn > 1 || crit > 1 {
+		m.contextWarnPct = config.DefaultContextWarnPct
+		m.contextCritPct = config.DefaultContextCritPct
+		return
+	}
 	m.contextWarnPct = warn
 	m.contextCritPct = crit
 }
