@@ -270,9 +270,12 @@ func main() {
 	fe.SetProgram(p)
 
 	// Build agent.
-	const systemPrompt = `You are gohome, an AI coding assistant. You help users with software development tasks.
+	systemPrompt := `You are gohome, an AI coding assistant. You help users with software development tasks.
 You have access to tools for reading and writing files, running bash commands, and spawning subagents for parallel work.
 Be concise and precise. Ask for clarification when requirements are ambiguous.`
+	if settings.SystemPrompt != "" {
+		systemPrompt = settings.SystemPrompt
+	}
 
 	maxTokens := endpoint.MaxTokens
 	if maxTokens <= 0 {

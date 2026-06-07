@@ -36,6 +36,7 @@ type Endpoint struct {
 type Settings struct {
 	Endpoints       map[string]Endpoint `json:"endpoints"`
 	DefaultEndpoint string              `json:"defaultEndpoint"`
+	SystemPrompt     string  `json:"systemPrompt,omitempty"`
 	BashTimeoutMs    int     `json:"bashTimeoutMs,omitempty"`
 	MaxBashTimeoutMs int     `json:"maxBashTimeoutMs,omitempty"`
 	ContextWarnPct   float64 `json:"contextWarnPct,omitempty"`
@@ -87,6 +88,12 @@ func Load(globalPath, projectPath string) (Settings, error) {
 
 	if project.DefaultEndpoint != "" {
 		merged.DefaultEndpoint = project.DefaultEndpoint
+	}
+	if global.SystemPrompt != "" {
+		merged.SystemPrompt = global.SystemPrompt
+	}
+	if project.SystemPrompt != "" {
+		merged.SystemPrompt = project.SystemPrompt
 	}
 	if project.BashTimeoutMs != 0 {
 		merged.BashTimeoutMs = project.BashTimeoutMs

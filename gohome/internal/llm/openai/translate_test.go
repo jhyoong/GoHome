@@ -236,6 +236,155 @@ func TestTranslateEvents_TurnDoneWithoutUsageChunk(t *testing.T) {
 	}
 }
 
+// --- Reasoning content (thinking) ---
+
+func TestTranslateEvents_ReasoningThenContent(t *testing.T) {
+	frames := []sseFrame{
+		{data: `{"choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`},
+		{data: `{"choices":[{"index":0,"delta":{"reasoning_content":"Let me"},"finish_reason":null}]}`},
+		{data: `{"choices":[{"index":0,"delta":{"reasoning_content":" think"},"finish_reason":null}]}`},
+		{data: `{"choices":[{"index":0,"delta":{"content":"Hello!"},"finish_reason":null}]}`},
+		{data: `{"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`},
+		{done: true},
+	}
+
+	events := collectEvents(translateEvents(context.Background(), makeFrames(frames)))
+
+	var thinkingDeltas []string
+	var thinkingDoneCount int
+	var textDeltas []string
+	var turnDone bool
+
+	for _, e := range events {
+		switch e.Kind {
+		case common.EventThinkingDelta:
+			thinkingDeltas = append(thinkingDeltas, e.ThinkingDelta)
+		case common.EventThinkingDone:
+			thinkingDoneCount++
+		case common.EventTextDelta:
+			textDeltas = append(textDeltas, e.TextDelta)
+		case common.EventTurnDone:
+			turnDone = true
+		case common.EventError:
+			t.Fatalf("unexpected error: %v", e.Err)
+		}
+	}
+
+	if len(thinkingDeltas) != 2 {
+		t.Fatalf("expected 2 thinking deltas, got %d: %v", len(thinkingDeltas), thinkingDeltas)
+	}
+	if thinkingDeltas[0] != "Let me" || thinkingDeltas[1] != " think" {
+		t.Errorf("thinking deltas: got %v", thinkingDeltas)
+	}
+	if thinkingDoneCount != 1 {
+		t.Errorf("expected 1 EventThinkingDone, got %d", thinkingDoneCount)
+	}
+	if len(textDeltas) != 1 || textDeltas[0] != "Hello!" {
+		t.Errorf("text deltas: got %v", textDeltas)
+	}
+	if !turnDone {
+		t.Error("no EventTurnDone received")
+	}
+}
+
+func TestTranslateEvents_ReasoningThenToolCalls(t *testing.T) {
+	frames := []sseFrame{
+		{data: `{"choices":[{"index":0,"delta":{"reasoning_content":"I should read the file"},"finish_reason":null}]}`},
+		{data: `{"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_01","type":"function","function":{"name":"read_file","arguments":"{\"path\":\"/tmp\"}"}}]},"finish_reason":null}]}`},
+		{data: `{"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`},
+		{done: true},
+	}
+
+	events := collectEvents(translateEvents(context.Background(), makeFrames(frames)))
+
+	var thinkingDeltas []string
+	var thinkingDoneCount int
+	var toolDones []common.StreamEvent
+
+	for _, e := range events {
+		switch e.Kind {
+		case common.EventThinkingDelta:
+			thinkingDeltas = append(thinkingDeltas, e.ThinkingDelta)
+		case common.EventThinkingDone:
+			thinkingDoneCount++
+		case common.EventToolCallDone:
+			toolDones = append(toolDones, e)
+		case common.EventError:
+			t.Fatalf("unexpected error: %v", e.Err)
+		}
+	}
+
+	if len(thinkingDeltas) != 1 || thinkingDeltas[0] != "I should read the file" {
+		t.Errorf("thinking deltas: got %v", thinkingDeltas)
+	}
+	if thinkingDoneCount != 1 {
+		t.Errorf("expected 1 EventThinkingDone, got %d", thinkingDoneCount)
+	}
+	if len(toolDones) != 1 {
+		t.Fatalf("expected 1 tool call done, got %d", len(toolDones))
+	}
+	if toolDones[0].ToolName != "read_file" {
+		t.Errorf("tool name: got %q, want read_file", toolDones[0].ToolName)
+	}
+}
+
+func TestTranslateEvents_ReasoningOnlyNoContent(t *testing.T) {
+	// Stream ends with reasoning but no text content (e.g. hit token limit during reasoning).
+	frames := []sseFrame{
+		{data: `{"choices":[{"index":0,"delta":{"reasoning_content":"Still thinking..."},"finish_reason":null}]}`},
+		{data: `{"choices":[{"index":0,"delta":{},"finish_reason":"length"}]}`},
+		{done: true},
+	}
+
+	events := collectEvents(translateEvents(context.Background(), makeFrames(frames)))
+
+	var thinkingDoneCount int
+	var turnDone *common.StreamEvent
+
+	for _, e := range events {
+		switch e.Kind {
+		case common.EventThinkingDone:
+			thinkingDoneCount++
+		case common.EventTurnDone:
+			cp := e
+			turnDone = &cp
+		case common.EventError:
+			t.Fatalf("unexpected error: %v", e.Err)
+		}
+	}
+
+	if thinkingDoneCount != 1 {
+		t.Errorf("expected 1 EventThinkingDone, got %d", thinkingDoneCount)
+	}
+	if turnDone == nil {
+		t.Fatal("no EventTurnDone received")
+	}
+	if turnDone.StopReason != "length" {
+		t.Errorf("stop reason: got %q, want length", turnDone.StopReason)
+	}
+}
+
+func TestTranslateEvents_EmptyReasoningContentSkipped(t *testing.T) {
+	// Empty reasoning_content should not emit an EventThinkingDelta.
+	frames := []sseFrame{
+		{data: `{"choices":[{"index":0,"delta":{"reasoning_content":""},"finish_reason":null}]}`},
+		{data: `{"choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}`},
+		{data: `{"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`},
+		{done: true},
+	}
+
+	events := collectEvents(translateEvents(context.Background(), makeFrames(frames)))
+
+	for _, e := range events {
+		if e.Kind == common.EventThinkingDelta {
+			t.Errorf("expected no EventThinkingDelta for empty reasoning_content, got: %q", e.ThinkingDelta)
+		}
+		if e.Kind == common.EventThinkingDone {
+			t.Error("expected no EventThinkingDone when no reasoning was emitted")
+		}
+	}
+}
+
 func TestTranslateEvents_CtxCancellationNoLeak(t *testing.T) {
 	framesCh := make(chan sseFrame, 8)
 	framesCh <- sseFrame{data: `{"choices":[{"index":0,"delta":{"content":"A"},"finish_reason":null}]}`}

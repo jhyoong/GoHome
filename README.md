@@ -114,11 +114,13 @@ Project-level settings live in `./.gohome/settings.json` and are merged on top o
 
 | Key | Action |
 |---|---|
-| `Enter` | Submit input (or toggle tool expansion when input is empty) |
+| `Enter` | Submit input (or toggle expand/collapse on the selected entry when input is empty) |
+| `Up` / `Down` | Move the cursor through timeline entries when input is empty |
 | `Shift+Enter` | Insert newline |
 | `Ctrl+C` (once) | Cancel current LLM turn or close approval prompt |
 | `Ctrl+C` (twice) | Quit |
 | `Ctrl+E` | Open current input in external editor (`$VISUAL` / `$EDITOR` / `vi`) |
+| `Ctrl+H` | Open help overlay |
 | `Ctrl+]` | Focus next session |
 | `Ctrl+[` | Focus previous session |
 | `PgUp` / `PgDn` | Scroll viewport |
@@ -128,6 +130,10 @@ Project-level settings live in `./.gohome/settings.json` and are merged on top o
 | `1`–`4` | Pick option in approval prompt |
 | `e` | Edit suggested bash pattern in approval prompt |
 | `Esc` | Deny / close overlay / dismiss file search |
+
+### Timeline cursor
+
+When the input editor is empty, `Up` and `Down` arrow keys move a `>` cursor through the conversation timeline. The cursor highlights the selected entry. Press `Enter` on a tool or thinking entry to expand or collapse its details. Thinking blocks are expanded by default so reasoning content is always visible as it streams in.
 
 ---
 

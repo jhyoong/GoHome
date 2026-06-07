@@ -264,8 +264,9 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 			sv.Timeline[n-1].Text += ev.ThinkingDelta
 		} else {
 			sv.Timeline = append(sv.Timeline, TimelineEntry{
-				Kind: KindThinking,
-				Text: ev.ThinkingDelta,
+				Kind:     KindThinking,
+				Text:     ev.ThinkingDelta,
+				Expanded: true,
 			})
 		}
 
@@ -676,7 +677,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					sv, ok := m.sessions[m.focused]
 					if ok && m.cursor >= 0 && m.cursor < len(sv.Timeline) {
 						entry := &sv.Timeline[m.cursor]
-						if entry.Kind == KindTool {
+						if entry.Kind == KindTool || entry.Kind == KindThinking {
 							entry.Expanded = !entry.Expanded
 						}
 					}
@@ -727,6 +728,24 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if msg.Type == tea.KeyEsc {
 					m.fileSearching = false
 					m.fileSearch.Hide()
+					return m, nil
+				}
+			}
+			// Timeline cursor navigation when editor is empty.
+			if strings.TrimSpace(m.editor.Value()) == "" {
+				if msg.Type == tea.KeyUp {
+					if m.cursor > 0 {
+						m.cursor--
+					}
+					m.rebuildViewport()
+					return m, nil
+				}
+				if msg.Type == tea.KeyDown {
+					sv, ok := m.sessions[m.focused]
+					if ok && m.cursor < len(sv.Timeline)-1 {
+						m.cursor++
+					}
+					m.rebuildViewport()
 					return m, nil
 				}
 			}
