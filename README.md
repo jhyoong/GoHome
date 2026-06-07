@@ -50,21 +50,54 @@ Override the model for a single run:
       "baseURL": "http://localhost:8080",
       "apiKeyEnv": "GOHOME_API_KEY",
       "defaultModel": "claude-opus-4-7",
-      "contextWindow": 200000
+      "contextWindow": 200000,
+      "maxTokens": 16384,
+      "thinkingBudget": 10240
     },
     "local-openai": {
       "wire": "openai",
       "baseURL": "http://localhost:8081/v1",
       "apiKeyEnv": "GOHOME_API_KEY",
       "defaultModel": "gpt-4o",
-      "contextWindow": 128000
+      "contextWindow": 128000,
+      "maxTokens": 16384,
+      "thinkingBudget": 10240
     }
   },
-  "defaultEndpoint": "local-anthropic"
+  "defaultEndpoint": "local-anthropic",
+  "bashTimeoutMs": 120000,
+  "maxBashTimeoutMs": 600000,
+  "contextWarnPct": 0.80,
+  "contextCritPct": 0.95,
+  "retryBackoffMs": [250, 1000, 2000]
 }
 ```
 
 Both `"anthropic"` and `"openai"` wires are supported. Set `apiKey` for a literal key or `apiKeyEnv` to read from an environment variable.
+
+**Endpoint fields:**
+
+| Field | Default | Description |
+|---|---|---|
+| `wire` | — | Wire protocol: `"anthropic"` or `"openai"` |
+| `baseURL` | — | Base URL of the LLM endpoint |
+| `apiKey` | — | Literal API key (use `apiKeyEnv` instead to avoid storing secrets) |
+| `apiKeyEnv` | — | Environment variable name whose value is used as the API key |
+| `defaultModel` | — | Model name sent to the endpoint |
+| `contextWindow` | — | Context window size in tokens (used for usage display) |
+| `maxTokens` | `16384` | Max output tokens per LLM turn |
+| `thinkingBudget` | `10240` | Extended thinking token budget |
+
+**Top-level fields:**
+
+| Field | Default | Description |
+|---|---|---|
+| `defaultEndpoint` | — | Name of the endpoint used when `--endpoint` is not passed |
+| `bashTimeoutMs` | `120000` | Default bash command timeout in milliseconds |
+| `maxBashTimeoutMs` | `600000` | Maximum bash command timeout in milliseconds |
+| `contextWarnPct` | `0.80` | Context window usage ratio at which a warning is shown |
+| `contextCritPct` | `0.95` | Context window usage ratio at which a critical warning is shown |
+| `retryBackoffMs` | `[250, 1000, 2000]` | Retry backoff schedule in milliseconds |
 
 ### 2. Run
 

@@ -89,9 +89,11 @@ type Model struct {
 	cursor int
 
 	// Phase 12 populates these; Phase 11 renders them.
-	modelName     string // LLM model name; "?" when empty
-	yolo          bool   // YOLO mode (skip approval)
-	contextWindow int    // context window size; defaults to 128000
+	modelName      string  // LLM model name; "?" when empty
+	yolo           bool    // YOLO mode (skip approval)
+	contextWindow  int     // context window size; defaults to 128000
+	contextWarnPct float64 // ratio at which to show 80% warning
+	contextCritPct float64 // ratio at which to show 95% critical warning
 
 	// Approval overlay state (Task 11.9+).
 	// activeApproval is the prompt currently displayed in the input region.
@@ -101,6 +103,10 @@ type Model struct {
 
 	// showTokens controls the /tokens overlay (Task 11.15).
 	showTokens bool
+
+	// showHelp controls the help overlay triggered by Ctrl+H.
+	showHelp   bool
+	helpScroll int
 
 	// statusMsg is a transient message shown near the status bar (Task 11.14).
 	statusMsg string
@@ -150,7 +156,9 @@ func New(fe *Frontend, sessionID string) *Model {
 		order:            []string{sessionID},
 		focused:          sessionID,
 		inputCh:          inputCh,
-		contextWindow:    128000,
+		contextWindow:    config.DefaultContextWindow,
+		contextWarnPct:   config.DefaultContextWarnPct,
+		contextCritPct:   config.DefaultContextCritPct,
 		pendingApprovals: make(map[string]*approvalPrompt),
 		editor:           NewEditor(80, 24),
 		spinner:          NewSpinner(),
@@ -189,12 +197,18 @@ func (m *Model) SetCWD(dir string)             { m.cwd = dir }
 func (m *Model) SetSettings(s config.Settings) { m.settings = s }
 
 // SetContextWindow sets the total context window size used in the token bar.
-// If size <= 0 the default 128000 is used.
+// If size <= 0 the default is used.
 func (m *Model) SetContextWindow(size int) {
 	if size <= 0 {
-		size = 128000
+		size = config.DefaultContextWindow
 	}
 	m.contextWindow = size
+}
+
+// SetContextThresholds sets the warn and critical context-fullness ratios.
+func (m *Model) SetContextThresholds(warn, crit float64) {
+	m.contextWarnPct = warn
+	m.contextCritPct = crit
 }
 
 // Focused returns the ID of the currently focused session.
@@ -471,10 +485,10 @@ func (m *Model) checkContextWarnings(sv *SessionView) {
 	}
 	used := sv.Usage.InputTokens + sv.Usage.OutputTokens
 	ratio := float64(used) / float64(m.contextWindow)
-	if ratio >= 0.95 && !sv.warned95 {
+	if ratio >= m.contextCritPct && !sv.warned95 {
 		sv.warned95 = true
 		m.contextNotice = "Context near limit -- next turn may fail or truncate."
-	} else if ratio >= 0.80 && !sv.warned80 {
+	} else if ratio >= m.contextWarnPct && !sv.warned80 {
 		sv.warned80 = true
 		m.contextNotice = "Context 80% full -- consider /new or /resume into a fresh session."
 	}
@@ -592,6 +606,28 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(cmds...)
 		}
 
+		if m.showHelp {
+			switch msg.Type {
+			case tea.KeyEsc:
+				m.showHelp = false
+				m.helpScroll = 0
+			case tea.KeyUp, tea.KeyLeft:
+				if m.helpScroll > 0 {
+					m.helpScroll--
+				}
+			case tea.KeyDown, tea.KeyRight:
+				m.helpScroll++
+			case tea.KeyPgUp:
+				m.helpScroll -= 5
+				if m.helpScroll < 0 {
+					m.helpScroll = 0
+				}
+			case tea.KeyPgDown:
+				m.helpScroll += 5
+			}
+			return m, tea.Batch(cmds...)
+		}
+
 		if msg.Type == tea.KeyEsc && m.spinner.Active() &&
 			!m.browsing && !m.selectingModel {
 			m.spinner.HandleInput(msg)
@@ -613,6 +649,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.focusNext()
 		case tea.KeyCtrlOpenBracket:
 			m.focusPrev()
+		case tea.KeyCtrlH:
+			m.showHelp = true
+			m.helpScroll = 0
+			return m, tea.Batch(cmds...)
 		case tea.KeyPgUp:
 			m.chat.ScrollUp(5)
 		case tea.KeyPgDown:
@@ -886,7 +926,7 @@ func (m *Model) clampCursor() {
 
 // slashCommands is the static list of available slash commands.
 var slashCommands = []string{
-	"/new", "/resume", "/yolo", "/endpoint", "/model", "/cancel", "/tokens", "/quit",
+	"/help", "/new", "/resume", "/yolo", "/endpoint", "/model", "/cancel", "/tokens", "/quit",
 }
 
 // slashComplete returns all commands in slashCommands that have prefix as a prefix.
@@ -921,6 +961,10 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 		if m.onYoloChange != nil {
 			m.onYoloChange(m.yolo)
 		}
+	case "/help":
+		m.showHelp = true
+		m.helpScroll = 0
+		m.statusMsg = ""
 	case "/tokens":
 		m.showTokens = true
 		m.statusMsg = ""
@@ -1122,6 +1166,16 @@ func (m *Model) View() string {
 		return strings.Join(sections, "\n")
 	}
 
+	if m.showHelp {
+		helpH := m.winH - stripHeight - statusHeight - 2
+		if helpH < 1 {
+			helpH = 1
+		}
+		sections = append(sections, m.renderHelpOverlay(helpH))
+		sections = append(sections, m.statusBar())
+		return strings.Join(sections, "\n")
+	}
+
 	// Chat area
 	chatH := m.winH - editorMinHeight - 2 - stripHeight - statusHeight - 2
 	if chatH < 1 {
@@ -1257,4 +1311,15 @@ func (m *Model) ShowTokens() bool {
 // synchronously without going through the textarea input path.
 func (m *Model) OpenTokensOverlay() {
 	m.showTokens = true
+}
+
+// ShowHelp returns whether the help overlay is displayed (exported for tests).
+func (m *Model) ShowHelp() bool {
+	return m.showHelp
+}
+
+// OpenHelpOverlay opens the help overlay. Used in tests to set this state
+// synchronously without going through the key input path.
+func (m *Model) OpenHelpOverlay() {
+	m.showHelp = true
 }

@@ -21,19 +21,26 @@ const (
 
 // Endpoint holds connection details for a single LLM endpoint.
 type Endpoint struct {
-	Wire          Wire              `json:"wire"`
-	BaseURL       string            `json:"baseURL"`
-	APIKey        string            `json:"apiKey,omitempty"`
-	APIKeyEnv     string            `json:"apiKeyEnv,omitempty"`
-	DefaultModel  string            `json:"defaultModel"`
-	ContextWindow int               `json:"contextWindow,omitempty"`
-	Headers       map[string]string `json:"headers,omitempty"`
+	Wire           Wire              `json:"wire"`
+	BaseURL        string            `json:"baseURL"`
+	APIKey         string            `json:"apiKey,omitempty"`
+	APIKeyEnv      string            `json:"apiKeyEnv,omitempty"`
+	DefaultModel   string            `json:"defaultModel"`
+	ContextWindow  int               `json:"contextWindow,omitempty"`
+	MaxTokens      int               `json:"maxTokens,omitempty"`
+	ThinkingBudget int               `json:"thinkingBudget,omitempty"`
+	Headers        map[string]string `json:"headers,omitempty"`
 }
 
 // Settings is the top-level configuration structure.
 type Settings struct {
 	Endpoints       map[string]Endpoint `json:"endpoints"`
 	DefaultEndpoint string              `json:"defaultEndpoint"`
+	BashTimeoutMs    int     `json:"bashTimeoutMs,omitempty"`
+	MaxBashTimeoutMs int     `json:"maxBashTimeoutMs,omitempty"`
+	ContextWarnPct   float64 `json:"contextWarnPct,omitempty"`
+	ContextCritPct   float64 `json:"contextCritPct,omitempty"`
+	RetryBackoffMs   []int   `json:"retryBackoffMs,omitempty"`
 }
 
 // load reads and decodes a Settings file at path.
@@ -62,8 +69,13 @@ func Load(globalPath, projectPath string) (Settings, error) {
 	project := load(projectPath)
 
 	merged := Settings{
-		Endpoints:       make(map[string]Endpoint),
-		DefaultEndpoint: global.DefaultEndpoint,
+		Endpoints:        make(map[string]Endpoint),
+		DefaultEndpoint:  global.DefaultEndpoint,
+		BashTimeoutMs:    global.BashTimeoutMs,
+		MaxBashTimeoutMs: global.MaxBashTimeoutMs,
+		ContextWarnPct:   global.ContextWarnPct,
+		ContextCritPct:   global.ContextCritPct,
+		RetryBackoffMs:   global.RetryBackoffMs,
 	}
 
 	for k, v := range global.Endpoints {
@@ -75,6 +87,21 @@ func Load(globalPath, projectPath string) (Settings, error) {
 
 	if project.DefaultEndpoint != "" {
 		merged.DefaultEndpoint = project.DefaultEndpoint
+	}
+	if project.BashTimeoutMs != 0 {
+		merged.BashTimeoutMs = project.BashTimeoutMs
+	}
+	if project.MaxBashTimeoutMs != 0 {
+		merged.MaxBashTimeoutMs = project.MaxBashTimeoutMs
+	}
+	if project.ContextWarnPct != 0 {
+		merged.ContextWarnPct = project.ContextWarnPct
+	}
+	if project.ContextCritPct != 0 {
+		merged.ContextCritPct = project.ContextCritPct
+	}
+	if len(project.RetryBackoffMs) > 0 {
+		merged.RetryBackoffMs = project.RetryBackoffMs
 	}
 
 	return merged, nil

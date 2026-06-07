@@ -114,4 +114,10 @@ func TestSnapshots(t *testing.T) {
 		m.OpenTokensOverlay()
 		golden.RequireEqual(t, []byte(m.View()))
 	})
+
+	t.Run("with_help_overlay", func(t *testing.T) {
+		m := newSized()
+		m.OpenHelpOverlay()
+		golden.RequireEqual(t, []byte(m.View()))
+	})
 }

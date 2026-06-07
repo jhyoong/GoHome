@@ -223,3 +223,96 @@ func TestDefaultProjectPath(t *testing.T) {
 		t.Errorf("path %q does not start with cwd %q", p, cwd)
 	}
 }
+
+// Task: new Settings fields — merge behaviour
+func TestLoad_MergesNewSettingsFields(t *testing.T) {
+	dir := t.TempDir()
+
+	global := Settings{BashTimeoutMs: 60000, ContextWarnPct: 0.70}
+	project := Settings{BashTimeoutMs: 90000}
+
+	gPath := writeJSON(t, dir, "global.json", global)
+	pPath := writeJSON(t, dir, "project.json", project)
+
+	merged, err := Load(gPath, pPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if merged.BashTimeoutMs != 90000 {
+		t.Errorf("BashTimeoutMs: got %d, want 90000", merged.BashTimeoutMs)
+	}
+	if merged.ContextWarnPct != 0.70 {
+		t.Errorf("ContextWarnPct: got %v, want 0.70", merged.ContextWarnPct)
+	}
+}
+
+func TestLoad_ProjectOverridesRetryBackoff(t *testing.T) {
+	dir := t.TempDir()
+
+	global := Settings{RetryBackoffMs: []int{100, 200}}
+	project := Settings{RetryBackoffMs: []int{500}}
+
+	gPath := writeJSON(t, dir, "global.json", global)
+	pPath := writeJSON(t, dir, "project.json", project)
+
+	merged, err := Load(gPath, pPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(merged.RetryBackoffMs) != 1 || merged.RetryBackoffMs[0] != 500 {
+		t.Errorf("RetryBackoffMs: got %v, want [500]", merged.RetryBackoffMs)
+	}
+}
+
+func TestLoad_ZeroValuesPreserveGlobal(t *testing.T) {
+	dir := t.TempDir()
+
+	global := Settings{ContextCritPct: 0.90}
+	project := Settings{} // ContextCritPct zero — should not override
+
+	gPath := writeJSON(t, dir, "global.json", global)
+	pPath := writeJSON(t, dir, "project.json", project)
+
+	merged, err := Load(gPath, pPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if merged.ContextCritPct != 0.90 {
+		t.Errorf("ContextCritPct: got %v, want 0.90", merged.ContextCritPct)
+	}
+}
+
+func TestLoad_EndpointMaxTokensAndThinkingBudget(t *testing.T) {
+	dir := t.TempDir()
+
+	global := Settings{
+		Endpoints: map[string]Endpoint{
+			"main": {
+				Wire:           WireAnthropic,
+				BaseURL:        "http://x",
+				DefaultModel:   "m",
+				MaxTokens:      8192,
+				ThinkingBudget: 4096,
+			},
+		},
+		DefaultEndpoint: "main",
+	}
+
+	gPath := writeJSON(t, dir, "global.json", global)
+	pPath := writeJSON(t, dir, "project.json", Settings{})
+
+	merged, err := Load(gPath, pPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	ep, ok := merged.Endpoints["main"]
+	if !ok {
+		t.Fatal("expected endpoint 'main' to be present")
+	}
+	if ep.MaxTokens != 8192 {
+		t.Errorf("MaxTokens: got %d, want 8192", ep.MaxTokens)
+	}
+	if ep.ThinkingBudget != 4096 {
+		t.Errorf("ThinkingBudget: got %d, want 4096", ep.ThinkingBudget)
+	}
+}

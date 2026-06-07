@@ -12,19 +12,19 @@ import (
 	"strings"
 	"sync"
 	"time"
-)
 
-const (
-	defaultBashTimeoutMs = 120_000
-	maxBashTimeoutMs     = 600_000
+	"github.com/jhyoong/GoHome/gohome/internal/config"
 )
 
 // BashTool implements the "bash" tool.
-type BashTool struct{}
+type BashTool struct {
+	DefaultTimeoutMs int
+	MaxTimeoutMs     int
+}
 
-func (BashTool) Name() string { return "bash" }
+func (b BashTool) Name() string { return "bash" }
 
-func (BashTool) Description() string {
+func (b BashTool) Description() string {
 	return "Execute a shell command. " +
 		"Default timeout is 120 000 ms; max is 600 000 ms. " +
 		"stdout and stderr are merged. " +
@@ -42,7 +42,7 @@ var bashSchema = json.RawMessage(`{
   "required": ["command"]
 }`)
 
-func (BashTool) InputSchema() json.RawMessage { return bashSchema }
+func (b BashTool) InputSchema() json.RawMessage { return bashSchema }
 
 type bashInput struct {
 	Command   string  `json:"command"`
@@ -50,17 +50,26 @@ type bashInput struct {
 	CWD       *string `json:"cwd"`
 }
 
-func (BashTool) Execute(ctx context.Context, in json.RawMessage, sink ProgressSink) (Result, error) {
+func (b BashTool) Execute(ctx context.Context, in json.RawMessage, sink ProgressSink) (Result, error) {
 	var inp bashInput
 	if err := json.Unmarshal(in, &inp); err != nil {
 		return Result{IsError: true, Content: "bash: invalid input: " + err.Error()}, nil
 	}
 
-	timeoutMs := defaultBashTimeoutMs
+	defaultTimeout := b.DefaultTimeoutMs
+	if defaultTimeout <= 0 {
+		defaultTimeout = config.DefaultBashTimeoutMs
+	}
+	maxTimeout := b.MaxTimeoutMs
+	if maxTimeout <= 0 {
+		maxTimeout = config.DefaultMaxBashTimeoutMs
+	}
+
+	timeoutMs := defaultTimeout
 	if inp.TimeoutMs != nil {
 		timeoutMs = *inp.TimeoutMs
-		if timeoutMs > maxBashTimeoutMs {
-			timeoutMs = maxBashTimeoutMs
+		if timeoutMs > maxTimeout {
+			timeoutMs = maxTimeout
 		}
 	}
 
