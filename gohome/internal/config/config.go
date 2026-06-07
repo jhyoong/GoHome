@@ -34,14 +34,14 @@ type Endpoint struct {
 
 // Settings is the top-level configuration structure.
 type Settings struct {
-	Endpoints       map[string]Endpoint `json:"endpoints"`
-	DefaultEndpoint string              `json:"defaultEndpoint"`
-	SystemPrompt     string  `json:"systemPrompt,omitempty"`
-	BashTimeoutMs    int     `json:"bashTimeoutMs,omitempty"`
-	MaxBashTimeoutMs int     `json:"maxBashTimeoutMs,omitempty"`
-	ContextWarnPct   float64 `json:"contextWarnPct,omitempty"`
-	ContextCritPct   float64 `json:"contextCritPct,omitempty"`
-	RetryBackoffMs   []int   `json:"retryBackoffMs,omitempty"`
+	Endpoints        map[string]Endpoint `json:"endpoints"`
+	DefaultEndpoint  string              `json:"defaultEndpoint"`
+	SystemPrompt     string              `json:"systemPrompt,omitempty"`
+	BashTimeoutMs    int                 `json:"bashTimeoutMs,omitempty"`
+	MaxBashTimeoutMs int                 `json:"maxBashTimeoutMs,omitempty"`
+	ContextWarnPct   float64             `json:"contextWarnPct,omitempty"`
+	ContextCritPct   float64             `json:"contextCritPct,omitempty"`
+	RetryBackoffMs   []int               `json:"retryBackoffMs,omitempty"`
 }
 
 // load reads and decodes a Settings file at path.
