@@ -11,6 +11,8 @@ package tui_test
 // machines and colour profiles. No goroutines, no sleeps, no teatest.
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -120,4 +122,36 @@ func TestSnapshots(t *testing.T) {
 		m.OpenHelpOverlay()
 		golden.RequireEqual(t, []byte(m.View()))
 	})
+}
+
+func TestToggleExpansion_PreservesScrollPosition(t *testing.T) {
+	m := newSized()
+
+	// Add several entries so the timeline exceeds viewport height.
+	for i := 0; i < 15; i++ {
+		m.AddTimelineEntry("main", tui.TimelineEntry{Kind: tui.KindUser, Text: fmt.Sprintf("message %d", i)})
+	}
+	// Add a tool entry at the end.
+	m.AddTimelineEntry("main", tui.TimelineEntry{
+		Kind:       tui.KindTool,
+		ToolName:   "bash",
+		Text:       `{"command":"ls"}`,
+		ToolResult: "file1.go\nfile2.go\nfile3.go\nfile4.go\nfile5.go",
+		Status:     "success",
+	})
+
+	// Move cursor to the tool entry (last entry).
+	for i := 0; i < 16; i++ {
+		m = apply(m, tea.KeyMsg{Type: tea.KeyDown})
+	}
+
+	// Record scroll state, then toggle expansion.
+	viewBefore := m.View()
+	m = apply(m, tea.KeyMsg{Type: tea.KeyEnter})
+	viewAfter := m.View()
+
+	// The tool entry should still be visible after expansion (not scrolled away).
+	if !strings.Contains(viewAfter, "bash") {
+		t.Errorf("tool entry should remain visible after expansion.\nBefore:\n%s\nAfter:\n%s", viewBefore, viewAfter)
+	}
 }

@@ -10,6 +10,7 @@ import (
 var (
 	userPrefix  = lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
 	noticeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	expandedBg  = lipgloss.NewStyle().Background(lipgloss.Color("236"))
 )
 
 // ChatComponent renders a timeline of entries with markdown support and scrolling.
@@ -60,6 +61,73 @@ func (c *ChatComponent) ScrollToBottom() {
 	c.autoScroll = true
 }
 
+// DisableAutoScroll turns off auto-scroll, anchoring scrollTop to the current
+// effective position so the viewport does not jump. maxWidth is the terminal
+// column width used to compute the pre-expansion line count.
+func (c *ChatComponent) DisableAutoScroll(maxWidth int) {
+	if !c.autoScroll {
+		return
+	}
+	// When autoScroll is true the view shows the last maxHeight lines.
+	// Compute total line count so we can anchor scrollTop accordingly.
+	if c.timeline == nil || len(*c.timeline) == 0 || c.maxHeight <= 0 {
+		c.autoScroll = false
+		return
+	}
+	total := c.countLines(maxWidth)
+	if total > c.maxHeight {
+		c.scrollTop = total - c.maxHeight
+	} else {
+		c.scrollTop = 0
+	}
+	c.autoScroll = false
+}
+
+// countLines returns the total number of rendered lines for all timeline entries
+// at the given maxWidth, without applying scroll constraints.
+func (c *ChatComponent) countLines(maxWidth int) int {
+	if c.timeline == nil {
+		return 0
+	}
+	count := 0
+	for _, e := range *c.timeline {
+		switch e.Kind {
+		case KindUser:
+			count += len(WrapText(e.Text, maxWidth-len("you: ")-2))
+		case KindAssistant:
+			lines := RenderMarkdown(e.Text, maxWidth-2)
+			if len(lines) == 0 {
+				lines = WrapText(e.Text, maxWidth-2)
+			}
+			count += len(lines)
+		case KindThinking:
+			if e.Expanded {
+				lines := RenderMarkdown(e.Text, maxWidth-4)
+				if len(lines) == 0 {
+					lines = WrapText(e.Text, maxWidth-4)
+				}
+				count += 1 + len(lines)
+			} else {
+				count++
+			}
+		case KindTool:
+			count++
+			if e.Expanded {
+				if e.Text != "" {
+					count += len(WrapText("args: "+e.Text, maxWidth-7))
+				}
+				if e.ToolResult != "" {
+					count++ // "result:" line
+					count += len(WrapText(e.ToolResult, maxWidth-9))
+				}
+			}
+		case KindNotice:
+			count++
+		}
+	}
+	return count
+}
+
 // Render converts the current timeline to a slice of display lines, applying
 // scroll and height constraints. maxWidth is the terminal column width.
 func (c *ChatComponent) Render(maxWidth int) []string {
@@ -107,9 +175,9 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 				if len(mdLines) == 0 {
 					mdLines = WrapText(e.Text, maxWidth-4)
 				}
-				entryLines = append(entryLines, marker+ansiDim+ansiItalic+"Thinking..."+ansiReset)
+				entryLines = append(entryLines, marker+expandedBg.Render(ansiDim+ansiItalic+"Thinking..."+ansiReset))
 				for _, l := range mdLines {
-					entryLines = append(entryLines, "    "+ansiDim+ansiItalic+l+ansiReset)
+					entryLines = append(entryLines, expandedBg.Render("    "+ansiDim+ansiItalic+l+ansiReset))
 				}
 			} else {
 				label := "Thinking..."
@@ -125,13 +193,13 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 			if e.Expanded {
 				if e.Text != "" {
 					for _, l := range WrapText("args: "+e.Text, maxWidth-7) {
-						entryLines = append(entryLines, "       "+l)
+						entryLines = append(entryLines, expandedBg.Render("       "+l))
 					}
 				}
 				if e.ToolResult != "" {
-					entryLines = append(entryLines, "       result:")
+					entryLines = append(entryLines, expandedBg.Render("       result:"))
 					for _, l := range WrapText(e.ToolResult, maxWidth-9) {
-						entryLines = append(entryLines, "         "+l)
+						entryLines = append(entryLines, expandedBg.Render("         "+l))
 					}
 				}
 			}

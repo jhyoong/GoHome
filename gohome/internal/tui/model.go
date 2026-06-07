@@ -233,6 +233,22 @@ func (m *Model) getOrCreateSession(id string, depth int) *SessionView {
 	return sv
 }
 
+// rebuildViewportKeepScroll refreshes the chat cursor and timeline without
+// resetting scroll position. Used after toggling block expansion.
+func (m *Model) rebuildViewportKeepScroll() {
+	sv, ok := m.sessions[m.focused]
+	if !ok {
+		return
+	}
+	cur := -1
+	if strings.TrimSpace(m.editor.Value()) == "" {
+		m.clampCursor()
+		cur = m.cursor
+	}
+	m.chat.SetTimeline(&sv.Timeline)
+	m.chat.SetCursor(cur)
+}
+
 // rebuildViewport refreshes the chat component state from the focused session.
 func (m *Model) rebuildViewport() {
 	sv, ok := m.sessions[m.focused]
@@ -678,7 +694,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if ok && m.cursor >= 0 && m.cursor < len(sv.Timeline) {
 						entry := &sv.Timeline[m.cursor]
 						if entry.Kind == KindTool || entry.Kind == KindThinking {
+							m.chat.DisableAutoScroll(m.winW)
 							entry.Expanded = !entry.Expanded
+							m.rebuildViewportKeepScroll()
 						}
 					}
 				} else if strings.HasPrefix(text, "/") {
@@ -737,7 +755,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if m.cursor > 0 {
 						m.cursor--
 					}
-					m.rebuildViewport()
+					m.rebuildViewportKeepScroll()
 					return m, nil
 				}
 				if msg.Type == tea.KeyDown {
@@ -745,7 +763,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if ok && m.cursor < len(sv.Timeline)-1 {
 						m.cursor++
 					}
-					m.rebuildViewport()
+					m.rebuildViewportKeepScroll()
 					return m, nil
 				}
 			}
