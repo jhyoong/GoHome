@@ -103,6 +103,8 @@ func runLoop(
 	fe agent.Frontend,
 	sess **session.Session,
 	writer **session.Writer,
+	turnMu *sync.Mutex,
+	turnCancel *context.CancelFunc,
 ) {
 	for {
 		text, err := fe.AwaitUserInput(ctx, (*sess).ID)
@@ -120,8 +122,21 @@ func runLoop(
 				{Kind: common.BlockText, Text: text},
 			},
 		})
-		if err := a.Run(ctx, *sess); err != nil {
-			slog.Error("agent run failed", "err", err)
+
+		turnCtx, cancel := context.WithCancel(ctx)
+		turnMu.Lock()
+		*turnCancel = cancel
+		turnMu.Unlock()
+
+		runErr := a.Run(turnCtx, *sess)
+
+		turnMu.Lock()
+		*turnCancel = nil
+		turnMu.Unlock()
+		cancel()
+
+		if runErr != nil {
+			slog.Error("agent run failed", "err", runErr)
 			if ctx.Err() != nil {
 				return
 			}
@@ -339,6 +354,11 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 	}
 	a.RegisterSubagentTool()
 
+	var (
+		turnMu     sync.Mutex
+		turnCancel context.CancelFunc
+	)
+
 	m.SetSlashCallbacks(tui.SlashCallbacks{
 		ListSessions: func() ([]session.Listing, error) {
 			return session.List(home, cwd)
@@ -405,6 +425,14 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 			sess.Model = name
 			return nil
 		},
+		CancelSession: func(id string) {
+			turnMu.Lock()
+			defer turnMu.Unlock()
+			if turnCancel != nil {
+				turnCancel()
+				turnCancel = nil
+			}
+		},
 	})
 
 	// Shutdown ordering (Task 12.5):
@@ -429,7 +457,7 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		runLoop(ctx, a, fe, &sess, &writer)
+		runLoop(ctx, a, fe, &sess, &writer, &turnMu, &turnCancel)
 	}()
 
 	// Run TUI in the main goroutine (blocks until user quits or signal).
