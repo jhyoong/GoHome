@@ -382,6 +382,11 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 	case agent.EventSessionEnded:
 		sv.InFlight = false
 
+	case agent.EventSessionSwapped:
+		m.focused = ev.SessionID
+		m.getOrCreateSession(ev.SessionID, 0)
+		m.statusMsg = "Switched to session: " + ev.SessionID
+
 	case agent.EventError:
 		errText := ""
 		if ev.Err != nil {
