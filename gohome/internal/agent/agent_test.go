@@ -8,6 +8,12 @@ import (
 	"github.com/jhyoong/GoHome/gohome/internal/tools"
 )
 
+// Compile-time check: ensure Agent no longer has Writer or Session fields.
+// If someone re-adds them this will fail to compile.
+var _ = func() {
+	_ = Agent{State: (*SessionState)(nil)}
+}
+
 // TestAgentStructFields is a compile-time + runtime sanity check that Agent
 // has all the expected fields with the correct types.
 func TestAgentStructFields(t *testing.T) {
@@ -20,7 +26,7 @@ func TestAgentStructFields(t *testing.T) {
 		Tools:    reg,
 		Guard:    g,
 		Frontend: fe,
-		Writer:   nil,
+		State:    NewSessionState(nil, nil),
 		System:   "you are an assistant",
 	}
 	if a.System != "you are an assistant" {

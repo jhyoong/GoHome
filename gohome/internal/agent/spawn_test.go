@@ -36,17 +36,17 @@ func buildSpawnParent(t *testing.T, client common.Client, home string) *Agent {
 	g := compileYoloGuard(t)
 	fe := &fakeRecorder{}
 
+	// Simulate a parent session at depth 0.
+	parentSess := session.NewSession("parent-sess", home, "model", "anthropic")
 	a := &Agent{
 		Client:   client,
 		Tools:    tools.NewRegistry(),
 		Guard:    g,
 		Frontend: fe,
-		Writer:   nil, // no parent writer for basic Spawn test
+		State:    NewSessionState(parentSess, nil), // no parent writer for basic Spawn test
 		System:   "parent system",
 		Home:     home,
 	}
-	// Simulate a parent session at depth 0.
-	a.Session = session.NewSession("parent-sess", home, "model", "anthropic")
 	return a
 }
 
@@ -97,7 +97,7 @@ func TestSpawn_DepthCheck(t *testing.T) {
 	a := buildSpawnParent(t, client, home)
 
 	// Force parent session to depth 1 (simulates running inside a subagent).
-	a.Session.Depth = 1
+	a.State.Session().Depth = 1
 
 	_, isError, err := a.Spawn(context.Background(), "nested task", "")
 	if err == nil {
@@ -190,16 +190,16 @@ func TestSpawn_ParentWriterMarkers(t *testing.T) {
 		t.Fatalf("OpenWriter: %v", err)
 	}
 
+	parentSess := session.NewSession("parent-sess", home, "model", "anthropic")
 	a := &Agent{
 		Client:   client,
 		Tools:    tools.NewRegistry(),
 		Guard:    g,
 		Frontend: fe,
-		Writer:   pw,
+		State:    NewSessionState(parentSess, pw),
 		System:   "parent system",
 		Home:     home,
 	}
-	a.Session = session.NewSession("parent-sess", home, "model", "anthropic")
 
 	_, _, err = a.Spawn(context.Background(), "the task", "")
 	if err != nil {
@@ -306,16 +306,16 @@ func TestSpawn_ChildJSONLHasUserMessage(t *testing.T) {
 	g := compileYoloGuard(t)
 	fe := &fakeRecorder{}
 
+	parentSess := session.NewSession("parent", home, "model", "anthropic")
 	a := &Agent{
 		Client:   client,
 		Tools:    tools.NewRegistry(),
 		Guard:    g,
 		Frontend: fe,
-		Writer:   nil,
+		State:    NewSessionState(parentSess, nil),
 		System:   "sys",
 		Home:     home,
 	}
-	a.Session = session.NewSession("parent", home, "model", "anthropic")
 
 	const wantTask = "specific task text"
 	_, _, err := a.Spawn(context.Background(), wantTask, "")
@@ -370,16 +370,16 @@ func TestSpawn_ChildJSONLHasSessionEnd(t *testing.T) {
 	g := compileYoloGuard(t)
 	fe := &fakeRecorder{}
 
+	parentSess := session.NewSession("parent", home, "model", "anthropic")
 	a := &Agent{
 		Client:   client,
 		Tools:    tools.NewRegistry(),
 		Guard:    g,
 		Frontend: fe,
-		Writer:   nil,
+		State:    NewSessionState(parentSess, nil),
 		System:   "sys",
 		Home:     home,
 	}
-	a.Session = session.NewSession("parent", home, "model", "anthropic")
 
 	_, _, err := a.Spawn(context.Background(), "task", "")
 	if err != nil {

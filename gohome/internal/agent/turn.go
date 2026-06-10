@@ -139,8 +139,8 @@ done:
 		sess.History = append(sess.History, assistantMsg)
 
 		// Persist to writer.
-		if a.Writer != nil {
-			a.Writer.Emit(session.AssistantMessage{
+		if w := a.State.Writer(); w != nil {
+			w.Emit(session.AssistantMessage{
 				Content:    blocks,
 				StopReason: stopReason,
 				Usage:      usage,

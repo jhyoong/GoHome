@@ -81,7 +81,7 @@ func newTestAgentWithGuard(t *testing.T, client common.Client, fe *fakeRecorder,
 		Tools:    reg,
 		Guard:    g,
 		Frontend: fe,
-		Writer:   w,
+		State:    NewSessionState(sess, w),
 		System:   "system",
 	}
 	return a, sess

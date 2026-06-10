@@ -94,6 +94,69 @@ func pickResume(home, cwd string) (*session.Session, []common.Message, string, e
 	return sess, history, listing.Path, nil
 }
 
+// runLoop is the agent's REPL: it waits for user input, appends it to the
+// session history, persists it, and runs the agent. It returns when ctx is
+// cancelled.
+func runLoop(
+	ctx context.Context,
+	a *agent.Agent,
+	fe agent.Frontend,
+	turnMu *sync.Mutex,
+	turnCancel *context.CancelFunc,
+) {
+	for {
+		sess := a.State.Session()
+		writer := a.State.Writer()
+
+		text, err := fe.AwaitUserInput(ctx, sess.ID)
+		if err != nil {
+			return
+		}
+		sess.History = append(sess.History, common.Message{
+			Role: common.RoleUser,
+			Content: []common.Block{
+				{Kind: common.BlockText, Text: text},
+			},
+		})
+		writer.Emit(session.UserMessage{
+			Content: []common.Block{
+				{Kind: common.BlockText, Text: text},
+			},
+		})
+
+		turnCtx, cancel := context.WithCancel(ctx)
+		turnMu.Lock()
+		*turnCancel = cancel
+		turnMu.Unlock()
+
+		runErr := a.Run(turnCtx, sess)
+
+		turnMu.Lock()
+		*turnCancel = nil
+		turnMu.Unlock()
+		cancel()
+
+		if runErr != nil {
+			slog.Error("agent run failed", "err", runErr)
+			if ctx.Err() != nil {
+				return
+			}
+		}
+
+		if tag, drainErr := a.State.DrainPending(); tag != "" {
+			if drainErr != nil {
+				slog.Error("session swap failed", "tag", tag, "err", drainErr)
+			} else {
+				newSess := a.State.Session()
+				fe.Emit(newSess.ID, agent.Event{
+					Kind:      agent.EventSessionSwapped,
+					SessionID: newSess.ID,
+				})
+			}
+		}
+	}
+}
+
 func main() {
 	flag.Parse()
 
@@ -290,19 +353,25 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		thinkingBudget = config.DefaultThinkingBudget
 	}
 
+	state := agent.NewSessionState(sess, writer)
+
 	a := &agent.Agent{
 		Client:         client,
 		Tools:          registry,
 		Guard:          g,
 		Frontend:       fe,
-		Writer:         writer,
+		State:          state,
 		System:         systemPrompt,
 		MaxTokens:      maxTokens,
 		ThinkingBudget: thinkingBudget,
 		Home:           home,
-		Session:        sess,
 	}
 	a.RegisterSubagentTool()
+
+	var (
+		turnMu     sync.Mutex
+		turnCancel context.CancelFunc
+	)
 
 	m.SetSlashCallbacks(tui.SlashCallbacks{
 		ListSessions: func() ([]session.Listing, error) {
@@ -327,17 +396,22 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 			if err != nil {
 				return nil, err
 			}
-			writer.Emit(session.SessionEnd{Reason: "switch"})
-			_ = writer.Close()
 
-			newWriter, err := session.OpenWriter(path)
+			queued, err := state.Swap("resume "+id, func() (*session.Session, *session.Writer, error) {
+				oldWriter := state.Writer()
+				oldWriter.Emit(session.SessionEnd{Reason: "switch"})
+				_ = oldWriter.Close()
+
+				newWriter, err := session.OpenWriter(path)
+				if err != nil {
+					return nil, nil, fmt.Errorf("open writer: %w", err)
+				}
+				return loaded, newWriter, nil
+			})
 			if err != nil {
-				return nil, fmt.Errorf("open writer: %w", err)
+				return nil, err
 			}
-			sess = loaded
-			writer = newWriter
-			a.Session = sess
-			a.Writer = writer
+			_ = queued
 			return history, nil
 		},
 		NewSession: func() (string, error) {
@@ -345,30 +419,42 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 			newSess := session.NewSession(id, cwd, endpoint.DefaultModel, epName)
 			wrPath := session.SessionPath(home, cwd, id, time.Now().UTC())
 
-			newWriter, err := session.OpenWriter(wrPath)
-			if err != nil {
-				return "", fmt.Errorf("open writer: %w", err)
-			}
-			newWriter.Emit(session.SessionStart{
-				ID:        newSess.ID,
-				CWD:       cwd,
-				Model:     endpoint.DefaultModel,
-				Endpoint:  epName,
-				StartedAt: newSess.StartedAt,
+			queued, err := state.Swap("new "+id, func() (*session.Session, *session.Writer, error) {
+				oldWriter := state.Writer()
+				oldWriter.Emit(session.SessionEnd{Reason: "switch"})
+				_ = oldWriter.Close()
+
+				newWriter, err := session.OpenWriter(wrPath)
+				if err != nil {
+					return nil, nil, fmt.Errorf("open writer: %w", err)
+				}
+				newWriter.Emit(session.SessionStart{
+					ID:        newSess.ID,
+					CWD:       cwd,
+					Model:     endpoint.DefaultModel,
+					Endpoint:  epName,
+					StartedAt: newSess.StartedAt,
+				})
+				return newSess, newWriter, nil
 			})
-
-			writer.Emit(session.SessionEnd{Reason: "switch"})
-			_ = writer.Close()
-
-			sess = newSess
-			writer = newWriter
-			a.Session = sess
-			a.Writer = writer
+			if err != nil {
+				return "", err
+			}
+			_ = queued
 			return id, nil
 		},
 		SetModel: func(name string) error {
-			sess.Model = name
+			state.SetModel(name)
 			return nil
+		},
+		CancelSession: func(id string) {
+			turnMu.Lock()
+			defer turnMu.Unlock()
+			if turnCancel != nil {
+				turnCancel()
+				turnCancel = nil
+			}
+			state.ClearPending()
 		},
 	})
 
@@ -394,30 +480,7 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for {
-			text, err := fe.AwaitUserInput(ctx, sess.ID)
-			if err != nil {
-				// Context cancelled: clean exit.
-				return
-			}
-			sess.History = append(sess.History, common.Message{
-				Role: common.RoleUser,
-				Content: []common.Block{
-					{Kind: common.BlockText, Text: text},
-				},
-			})
-			writer.Emit(session.UserMessage{
-				Content: []common.Block{
-					{Kind: common.BlockText, Text: text},
-				},
-			})
-			if err := a.Run(ctx, sess); err != nil {
-				slog.Error("agent run failed", "err", err)
-				if ctx.Err() != nil {
-					return
-				}
-			}
-		}
+		runLoop(ctx, a, fe, &turnMu, &turnCancel)
 	}()
 
 	// Run TUI in the main goroutine (blocks until user quits or signal).
@@ -431,8 +494,8 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 	cancel()
 	wg.Wait()
 
-	writer.Emit(session.SessionEnd{Reason: "user_quit"})
-	if err := writer.Close(); err != nil {
+	state.Writer().Emit(session.SessionEnd{Reason: "user_quit"})
+	if err := state.Writer().Close(); err != nil {
 		slog.Error("writer close error", "err", err)
 	}
 
