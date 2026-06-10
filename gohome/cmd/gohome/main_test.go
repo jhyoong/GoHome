@@ -76,12 +76,14 @@ func TestRunLoop_CancelMidTurn(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = writer.Close() })
 
+	state := agent.NewSessionState(sess, writer)
+
 	a := &agent.Agent{
 		Client:   &blockingClient{bgCtx: bgCtx},
 		Tools:    tools.NewRegistry(),
 		Guard:    g,
 		Frontend: fe,
-		Writer:   writer,
+		State:    state,
 		System:   "test",
 	}
 
@@ -97,7 +99,7 @@ func TestRunLoop_CancelMidTurn(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		runLoop(ctx, a, fe, &sess, &writer, &turnMu, &turnCancel)
+		runLoop(ctx, a, fe, &turnMu, &turnCancel)
 	}()
 
 	// Send user input to start a turn.
