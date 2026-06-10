@@ -90,11 +90,11 @@ func buildOpenAIBody(req common.Request) ([]byte, error) {
 	}
 
 	for _, m := range req.Messages {
-		msg, err := translateMessage(m)
+		translated, err := translateMessage(m)
 		if err != nil {
 			return nil, err
 		}
-		msgs = append(msgs, msg)
+		msgs = append(msgs, translated...)
 	}
 
 	tools := make([]openaiTool, 0, len(req.Tools))
@@ -125,7 +125,7 @@ func buildOpenAIBody(req common.Request) ([]byte, error) {
 	return json.Marshal(body)
 }
 
-func translateMessage(m common.Message) (any, error) {
+func translateMessage(m common.Message) ([]any, error) {
 	switch m.Role {
 	case common.RoleUser:
 		return translateUserMessage(m)
@@ -138,7 +138,7 @@ func translateMessage(m common.Message) (any, error) {
 	}
 }
 
-func translateUserMessage(m common.Message) (any, error) {
+func translateUserMessage(m common.Message) ([]any, error) {
 	var parts []string
 	for _, b := range m.Content {
 		if b.Kind != common.BlockText {
@@ -146,10 +146,10 @@ func translateUserMessage(m common.Message) (any, error) {
 		}
 		parts = append(parts, b.Text)
 	}
-	return openaiUserMessage{Role: "user", Content: strings.Join(parts, "")}, nil
+	return []any{openaiUserMessage{Role: "user", Content: strings.Join(parts, "")}}, nil
 }
 
-func translateAssistantMessage(m common.Message) (any, error) {
+func translateAssistantMessage(m common.Message) ([]any, error) {
 	var textParts []string
 	var toolCalls []openaiToolCall
 
@@ -187,25 +187,23 @@ func translateAssistantMessage(m common.Message) (any, error) {
 		msg.Content = &s
 	}
 	// content is nil (null in JSON) when only tool_calls present
-	return msg, nil
+	return []any{msg}, nil
 }
 
-func translateToolMessage(m common.Message) (any, error) {
+func translateToolMessage(m common.Message) ([]any, error) {
 	if len(m.Content) == 0 {
 		return nil, fmt.Errorf("openai: tool message has no content blocks")
 	}
-	// OpenAI sends one tool message per tool call result.
-	// We emit one message per BlockToolResult block.
-	// If there's exactly one block, return a single message.
-	// Multiple blocks in a tool message: caller must send them as separate messages;
-	// for now we handle the common single-block case and error on multi.
-	b := m.Content[0]
-	if b.Kind != common.BlockToolResult {
-		return nil, fmt.Errorf("openai: unexpected block kind %q in tool message", b.Kind)
+	var msgs []any
+	for _, b := range m.Content {
+		if b.Kind != common.BlockToolResult {
+			return nil, fmt.Errorf("openai: unexpected block kind %q in tool message", b.Kind)
+		}
+		msgs = append(msgs, openaiToolMessage{
+			Role:       "tool",
+			ToolCallID: b.ToolUseID,
+			Content:    b.ResultText,
+		})
 	}
-	return openaiToolMessage{
-		Role:       "tool",
-		ToolCallID: b.ToolUseID,
-		Content:    b.ResultText,
-	}, nil
+	return msgs, nil
 }
