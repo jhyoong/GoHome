@@ -19,6 +19,7 @@ const (
 	EventTurnDone       EventKind = "turn_done"
 	EventSessionStarted EventKind = "session_started"
 	EventSessionEnded   EventKind = "session_ended"
+	EventSessionSwapped EventKind = "session_swapped"
 	EventError          EventKind = "error"
 	EventThinkingDelta  EventKind = "thinking_delta"
 	EventThinkingDone   EventKind = "thinking_done"
