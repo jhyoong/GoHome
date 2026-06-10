@@ -5,25 +5,20 @@ import (
 
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
-	"github.com/jhyoong/GoHome/gohome/internal/session"
 	"github.com/jhyoong/GoHome/gohome/internal/tools"
 )
 
 // Agent drives a single agentic session: it owns the LLM client, tools,
-// guardrail, frontend, and session writer, and orchestrates the turn loop.
+// guardrail, frontend, and session state, and orchestrates the turn loop.
 type Agent struct {
 	Client         common.Client
 	Tools          *tools.Registry
 	Guard          *guard.Guard
 	Frontend       Frontend
-	Writer         *session.Writer
+	State          *SessionState
 	System         string
 	MaxTokens      int // if > 0, overrides the default 4096 per-turn token limit
 	ThinkingBudget int // if > 0, enable extended thinking with this token budget
-
-	// Session is the session currently running inside Run. It is set at the
-	// start of Run and used by Spawn to build the child session.
-	Session *session.Session
 
 	// Home is the gohome home directory used to compute subagent JSONL paths.
 	Home string

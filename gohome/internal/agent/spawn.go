@@ -20,20 +20,19 @@ import (
 // signature does not expose the tool_use block ID. Parent/child linkage is
 // established via the child session's ParentID and the ChildID field.
 func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, bool, error) {
+	// Fetch the parent session from State.
+	parent := a.State.Session()
+
 	// Defensive depth check: subagents may not spawn further subagents.
-	if a.Session != nil && a.Session.Depth >= 1 {
-		return "", true, fmt.Errorf("subagent (depth %d) cannot spawn another subagent", a.Session.Depth)
+	if parent != nil && parent.Depth >= 1 {
+		return "", true, fmt.Errorf("subagent (depth %d) cannot spawn another subagent", parent.Depth)
 	}
 
 	// Generate a unique child ID.
 	childID := fmt.Sprintf("sub-%d", a.nextSubIndex())
 
-	// Build the child session from the parent's parameters.
-	var parent *session.Session
-	if a.Session != nil {
-		parent = a.Session
-	} else {
-		// Fallback: create a minimal parent placeholder (should not occur in normal use).
+	// Fallback: create a minimal parent placeholder (should not occur in normal use).
+	if parent == nil {
 		parent = session.NewSession("", ".", "", "")
 	}
 
@@ -83,7 +82,7 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 		Tools:          a.Tools.Without("subagent"),
 		Guard:          a.Guard,
 		Frontend:       a.Frontend,
-		Writer:         cw,
+		State:          NewSessionState(child, cw),
 		System:         sys,
 		MaxTokens:      a.MaxTokens,
 		ThinkingBudget: a.ThinkingBudget,
@@ -98,8 +97,8 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 
 	// Persist spawn marker on the PARENT writer (ToolUseID left empty for v1;
 	// linkage is via ChildID + child.ParentID).
-	if a.Writer != nil {
-		a.Writer.Emit(session.SubagentSpawn{
+	if w := a.State.Writer(); w != nil {
+		w.Emit(session.SubagentSpawn{
 			ChildID: childID,
 			Task:    task,
 		})
@@ -119,8 +118,8 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 	cw.Emit(session.SessionEnd{Reason: endReason})
 
 	// Persist done marker on the PARENT writer.
-	if a.Writer != nil {
-		a.Writer.Emit(session.SubagentDone{
+	if w := a.State.Writer(); w != nil {
+		w.Emit(session.SubagentDone{
 			ChildID: childID,
 			IsError: isError,
 		})

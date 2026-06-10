@@ -17,8 +17,8 @@ import (
 //
 // Session context is injected into ctx so that tools can access session state.
 func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
-	// Record the active session so Spawn can reference it.
-	a.Session = sess
+	a.State.MarkBusy()
+	defer a.State.MarkIdle()
 
 	// Inject session into ctx so tools can call tools.SessionFrom(ctx).
 	tctx := tools.WithSession(ctx, sess)
@@ -63,8 +63,8 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 			content, isError := a.dispatchTool(ctx, tctx, sess, block)
 
 			// Persist the tool result event.
-			if a.Writer != nil {
-				a.Writer.Emit(session.ToolResult{
+			if w := a.State.Writer(); w != nil {
+				w.Emit(session.ToolResult{
 					ToolUseID: block.ToolUseID,
 					Content:   content,
 					IsError:   isError,
@@ -120,8 +120,8 @@ func (a *Agent) dispatchTool(
 	}
 
 	// Persist approval event.
-	if a.Writer != nil {
-		a.Writer.Emit(session.Approval{
+	if w := a.State.Writer(); w != nil {
+		w.Emit(session.Approval{
 			ToolUseID:    block.ToolUseID,
 			Outcome:      dec.Reason,
 			SavedPattern: dec.SavedPattern,
