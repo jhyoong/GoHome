@@ -94,6 +94,41 @@ func pickResume(home, cwd string) (*session.Session, []common.Message, string, e
 	return sess, history, listing.Path, nil
 }
 
+// runLoop is the agent's REPL: it waits for user input, appends it to the
+// session history, persists it, and runs the agent. It returns when ctx is
+// cancelled.
+func runLoop(
+	ctx context.Context,
+	a *agent.Agent,
+	fe agent.Frontend,
+	sess **session.Session,
+	writer **session.Writer,
+) {
+	for {
+		text, err := fe.AwaitUserInput(ctx, (*sess).ID)
+		if err != nil {
+			return
+		}
+		(*sess).History = append((*sess).History, common.Message{
+			Role: common.RoleUser,
+			Content: []common.Block{
+				{Kind: common.BlockText, Text: text},
+			},
+		})
+		(*writer).Emit(session.UserMessage{
+			Content: []common.Block{
+				{Kind: common.BlockText, Text: text},
+			},
+		})
+		if err := a.Run(ctx, *sess); err != nil {
+			slog.Error("agent run failed", "err", err)
+			if ctx.Err() != nil {
+				return
+			}
+		}
+	}
+}
+
 func main() {
 	flag.Parse()
 
@@ -394,30 +429,7 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for {
-			text, err := fe.AwaitUserInput(ctx, sess.ID)
-			if err != nil {
-				// Context cancelled: clean exit.
-				return
-			}
-			sess.History = append(sess.History, common.Message{
-				Role: common.RoleUser,
-				Content: []common.Block{
-					{Kind: common.BlockText, Text: text},
-				},
-			})
-			writer.Emit(session.UserMessage{
-				Content: []common.Block{
-					{Kind: common.BlockText, Text: text},
-				},
-			})
-			if err := a.Run(ctx, sess); err != nil {
-				slog.Error("agent run failed", "err", err)
-				if ctx.Err() != nil {
-					return
-				}
-			}
-		}
+		runLoop(ctx, a, fe, &sess, &writer)
 	}()
 
 	// Run TUI in the main goroutine (blocks until user quits or signal).
