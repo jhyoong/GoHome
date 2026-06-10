@@ -191,6 +191,7 @@ func TestConcurrentSwapAndRun(t *testing.T) {
 	t.Cleanup(func() { _ = writer.Close() })
 
 	state := agent.NewSessionState(sess, writer)
+	t.Cleanup(func() { _ = state.Writer().Close() })
 
 	a := &agent.Agent{
 		Client:   &blockingClient{bgCtx: bgCtx},
