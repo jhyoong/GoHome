@@ -264,6 +264,25 @@ func (m *Model) rebuildViewport() {
 	m.chat.ScrollToBottom()
 }
 
+func (m *Model) cancelFocusedSession() {
+	m.cancelFocusedSessionWith("Cancelled")
+}
+
+func (m *Model) cancelFocusedSessionWith(statusMsg string) {
+	if m.slashCB.CancelSession != nil {
+		m.slashCB.CancelSession(m.focused)
+	}
+	sv := m.sessions[m.focused]
+	if sv != nil {
+		sv.InFlight = false
+		sv.Timeline = append(sv.Timeline, TimelineEntry{Kind: KindNotice, Text: "Cancelled."})
+	}
+	m.pendingMessages = m.pendingMessages[:0]
+	m.spinner.Stop()
+	m.statusMsg = statusMsg
+	m.rebuildViewport()
+}
+
 // Update implements tea.Model.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {

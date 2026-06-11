@@ -166,25 +166,6 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 	return nil
 }
 
-func (m *Model) cancelFocusedSession() {
-	m.cancelFocusedSessionWith("Cancelled")
-}
-
-func (m *Model) cancelFocusedSessionWith(statusMsg string) {
-	if m.slashCB.CancelSession != nil {
-		m.slashCB.CancelSession(m.focused)
-	}
-	sv := m.sessions[m.focused]
-	if sv != nil {
-		sv.InFlight = false
-		sv.Timeline = append(sv.Timeline, TimelineEntry{Kind: KindNotice, Text: "Cancelled."})
-	}
-	m.pendingMessages = m.pendingMessages[:0]
-	m.spinner.Stop()
-	m.statusMsg = statusMsg
-	m.rebuildViewport()
-}
-
 // sendInputCmd returns a Cmd that delivers text to the input channel
 // without blocking the update loop.
 func (m *Model) sendInputCmd(text string) tea.Cmd {
