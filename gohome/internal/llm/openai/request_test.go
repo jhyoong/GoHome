@@ -331,6 +331,122 @@ func TestBuildOpenAIBody_NoTools(t *testing.T) {
 	}
 }
 
+func TestTranslateToolMessage_MultipleResults(t *testing.T) {
+	// Regression: a single RoleTool message with multiple BlockToolResult blocks
+	// (parallel tool calls) must produce one separate "tool"-role wire message
+	// per result.
+	req := common.Request{
+		Model:  "gpt-4o",
+		System: "You are a helpful assistant.",
+		Messages: []common.Message{
+			{
+				Role: common.RoleUser,
+				Content: []common.Block{
+					{Kind: common.BlockText, Text: "Read both files."},
+				},
+			},
+			{
+				Role: common.RoleAssistant,
+				Content: []common.Block{
+					{
+						Kind:      common.BlockToolUse,
+						ToolUseID: "call_01",
+						ToolName:  "read_file",
+						InputJSON: `{"path":"/tmp/a.txt"}`,
+					},
+					{
+						Kind:      common.BlockToolUse,
+						ToolUseID: "call_02",
+						ToolName:  "read_file",
+						InputJSON: `{"path":"/tmp/b.txt"}`,
+					},
+				},
+			},
+			{
+				Role: common.RoleTool,
+				Content: []common.Block{
+					{
+						Kind:       common.BlockToolResult,
+						ToolUseID:  "call_01",
+						ResultText: "contents of a",
+					},
+					{
+						Kind:       common.BlockToolResult,
+						ToolUseID:  "call_02",
+						ResultText: "contents of b",
+					},
+				},
+			},
+		},
+		Tools: []common.ToolDef{
+			{
+				Name:        "read_file",
+				Description: "Reads a file from disk.",
+				InputSchema: json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}`),
+			},
+		},
+		MaxTokens: 1024,
+	}
+
+	data, err := buildOpenAIBody(req)
+	if err != nil {
+		t.Fatalf("buildOpenAIBody error: %v", err)
+	}
+
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(data, &body); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+
+	var messages []json.RawMessage
+	if err := json.Unmarshal(body["messages"], &messages); err != nil {
+		t.Fatalf("messages unmarshal: %v", err)
+	}
+
+	// Expect 5 wire messages: system + user + assistant + tool(call_01) + tool(call_02)
+	if len(messages) != 5 {
+		t.Fatalf("expected 5 messages (system+user+assistant+tool_01+tool_02), got %d", len(messages))
+	}
+
+	// message 3: first tool result
+	var msg3 struct {
+		Role       string `json:"role"`
+		ToolCallID string `json:"tool_call_id"`
+		Content    string `json:"content"`
+	}
+	if err := json.Unmarshal(messages[3], &msg3); err != nil {
+		t.Fatalf("unmarshal msg3: %v", err)
+	}
+	if msg3.Role != "tool" {
+		t.Errorf("msg3 role: got %q, want tool", msg3.Role)
+	}
+	if msg3.ToolCallID != "call_01" {
+		t.Errorf("msg3 tool_call_id: got %q, want call_01", msg3.ToolCallID)
+	}
+	if msg3.Content != "contents of a" {
+		t.Errorf("msg3 content: got %q, want %q", msg3.Content, "contents of a")
+	}
+
+	// message 4: second tool result
+	var msg4 struct {
+		Role       string `json:"role"`
+		ToolCallID string `json:"tool_call_id"`
+		Content    string `json:"content"`
+	}
+	if err := json.Unmarshal(messages[4], &msg4); err != nil {
+		t.Fatalf("unmarshal msg4: %v", err)
+	}
+	if msg4.Role != "tool" {
+		t.Errorf("msg4 role: got %q, want tool", msg4.Role)
+	}
+	if msg4.ToolCallID != "call_02" {
+		t.Errorf("msg4 tool_call_id: got %q, want call_02", msg4.ToolCallID)
+	}
+	if msg4.Content != "contents of b" {
+		t.Errorf("msg4 content: got %q, want %q", msg4.Content, "contents of b")
+	}
+}
+
 func TestBuildOpenAIBody_NoSystem(t *testing.T) {
 	req := common.Request{
 		Model:     "gpt-4o",
