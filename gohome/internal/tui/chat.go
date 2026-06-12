@@ -20,6 +20,7 @@ type ChatComponent struct {
 	maxHeight  int
 	autoScroll bool
 	cursor     int
+	lastCursor int
 }
 
 // NewChat creates a new ChatComponent backed by the given timeline pointer.
@@ -29,6 +30,7 @@ func NewChat(timeline *[]TimelineEntry, maxHeight int) *ChatComponent {
 		maxHeight:  maxHeight,
 		autoScroll: true,
 		cursor:     -1,
+		lastCursor: -1,
 	}
 }
 
@@ -143,6 +145,18 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 		return nil
 	}
 
+	// Invalidate cache for entries whose cursor marker changed.
+	if c.lastCursor != c.cursor && c.timeline != nil {
+		tl := *c.timeline
+		if c.lastCursor >= 0 && c.lastCursor < len(tl) {
+			tl[c.lastCursor].cachedLines = nil
+		}
+		if c.cursor >= 0 && c.cursor < len(tl) {
+			tl[c.cursor].cachedLines = nil
+		}
+		c.lastCursor = c.cursor
+	}
+
 	// Render all entries into lines, using cache when valid.
 	var all []string
 	for i := range *c.timeline {
@@ -158,15 +172,6 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 			e.cachedExpanded = e.Expanded
 			e.cachedText = e.Text
 			e.cachedResult = e.ToolResult
-		} else if i == c.cursor || (c.cursor < 0 && marker == "  ") {
-			// Cache is valid but cursor marker may have changed.
-			// Check if the first line's marker prefix matches.
-			if len(e.cachedLines) > 0 {
-				first := e.cachedLines[0]
-				if len(first) >= 2 && first[:2] != marker {
-					e.cachedLines = c.renderEntry(e, maxWidth, marker)
-				}
-			}
 		}
 
 		all = append(all, e.cachedLines...)
