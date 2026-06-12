@@ -42,6 +42,7 @@ type Settings struct {
 	ContextWarnPct   float64             `json:"contextWarnPct,omitempty"`
 	ContextCritPct   float64             `json:"contextCritPct,omitempty"`
 	RetryBackoffMs   []int               `json:"retryBackoffMs,omitempty"`
+	RenderThrottleMs int                 `json:"renderThrottleMs,omitempty"`
 }
 
 // load reads and decodes a Settings file at path.
@@ -77,6 +78,7 @@ func Load(globalPath, projectPath string) (Settings, error) {
 		ContextWarnPct:   global.ContextWarnPct,
 		ContextCritPct:   global.ContextCritPct,
 		RetryBackoffMs:   global.RetryBackoffMs,
+		RenderThrottleMs: global.RenderThrottleMs,
 	}
 
 	for k, v := range global.Endpoints {
@@ -109,6 +111,9 @@ func Load(globalPath, projectPath string) (Settings, error) {
 	}
 	if len(project.RetryBackoffMs) > 0 {
 		merged.RetryBackoffMs = project.RetryBackoffMs
+	}
+	if project.RenderThrottleMs != 0 {
+		merged.RenderThrottleMs = project.RenderThrottleMs
 	}
 
 	return merged, nil

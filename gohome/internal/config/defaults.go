@@ -10,6 +10,7 @@ const (
 	DefaultMaxBashTimeoutMs = 600_000
 	DefaultContextWarnPct   = 0.80
 	DefaultContextCritPct   = 0.95
+	DefaultRenderThrottleMs = 0
 )
 
 var DefaultRetryBackoff = []time.Duration{250 * time.Millisecond, time.Second, 2 * time.Second}

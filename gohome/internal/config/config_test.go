@@ -316,3 +316,39 @@ func TestLoad_EndpointMaxTokensAndThinkingBudget(t *testing.T) {
 		t.Errorf("ThinkingBudget: got %d, want 4096", ep.ThinkingBudget)
 	}
 }
+
+func TestLoad_RenderThrottleMsMerge(t *testing.T) {
+	dir := t.TempDir()
+
+	global := Settings{RenderThrottleMs: 50}
+	project := Settings{RenderThrottleMs: 100}
+
+	gPath := writeJSON(t, dir, "global.json", global)
+	pPath := writeJSON(t, dir, "project.json", project)
+
+	merged, err := Load(gPath, pPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if merged.RenderThrottleMs != 100 {
+		t.Errorf("RenderThrottleMs: got %d, want 100", merged.RenderThrottleMs)
+	}
+}
+
+func TestLoad_RenderThrottleMsZeroPreservesGlobal(t *testing.T) {
+	dir := t.TempDir()
+
+	global := Settings{RenderThrottleMs: 50}
+	project := Settings{}
+
+	gPath := writeJSON(t, dir, "global.json", global)
+	pPath := writeJSON(t, dir, "project.json", project)
+
+	merged, err := Load(gPath, pPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if merged.RenderThrottleMs != 50 {
+		t.Errorf("RenderThrottleMs: got %d, want 50 (should preserve global)", merged.RenderThrottleMs)
+	}
+}
