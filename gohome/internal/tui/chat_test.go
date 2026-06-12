@@ -154,3 +154,82 @@ func TestChatRenderToolExpanded_HasBackground(t *testing.T) {
 		t.Errorf("expanded tool args label missing: %q", joined)
 	}
 }
+
+func TestChatRenderCacheReuse(t *testing.T) {
+	entries := []TimelineEntry{
+		{Kind: KindAssistant, Text: "# Hello\n\nSome **bold** text."},
+		{Kind: KindUser, Text: "follow up"},
+	}
+	c := NewChat(&entries, 40)
+
+	first := c.Render(80)
+	if len(first) == 0 {
+		t.Fatal("expected non-empty render")
+	}
+
+	// After first render, cache should be populated.
+	if entries[0].cachedLines == nil {
+		t.Error("expected cachedLines to be populated after first render")
+	}
+	if entries[0].cachedWidth != 80 {
+		t.Errorf("cachedWidth: got %d, want 80", entries[0].cachedWidth)
+	}
+
+	// Second render with same state should produce identical output.
+	second := c.Render(80)
+	if len(first) != len(second) {
+		t.Fatalf("line count mismatch: first=%d second=%d", len(first), len(second))
+	}
+	for i := range first {
+		if first[i] != second[i] {
+			t.Errorf("line %d differs:\n  first:  %q\n  second: %q", i, first[i], second[i])
+		}
+	}
+}
+
+func TestChatRenderCacheInvalidatesOnWidthChange(t *testing.T) {
+	entries := []TimelineEntry{
+		{Kind: KindAssistant, Text: "Some text that will wrap differently at different widths."},
+	}
+	c := NewChat(&entries, 40)
+
+	first := c.Render(80)
+	cachedWidth80 := entries[0].cachedWidth
+
+	second := c.Render(40)
+	cachedWidth40 := entries[0].cachedWidth
+
+	if cachedWidth80 != 80 {
+		t.Errorf("expected cachedWidth 80 after first render, got %d", cachedWidth80)
+	}
+	if cachedWidth40 != 40 {
+		t.Errorf("expected cachedWidth 40 after second render, got %d", cachedWidth40)
+	}
+
+	// The outputs should differ because wrapping changed.
+	joined1 := strings.Join(first, "\n")
+	joined2 := strings.Join(second, "\n")
+	if joined1 == joined2 {
+		t.Error("expected different output at different widths")
+	}
+}
+
+func TestChatRenderCacheInvalidatesOnTextChange(t *testing.T) {
+	entries := []TimelineEntry{
+		{Kind: KindAssistant, Text: "first version"},
+	}
+	c := NewChat(&entries, 40)
+	c.Render(80)
+
+	if entries[0].cachedText != "first version" {
+		t.Errorf("cachedText: got %q, want %q", entries[0].cachedText, "first version")
+	}
+
+	// Mutate the text (simulating a token delta append).
+	entries[0].Text = "first version, extended"
+	c.Render(80)
+
+	if entries[0].cachedText != "first version, extended" {
+		t.Errorf("cachedText after mutation: got %q, want %q", entries[0].cachedText, "first version, extended")
+	}
+}
