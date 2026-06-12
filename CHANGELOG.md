@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.2.3
+
+### Added
+
+- **Render caching** -- Per-entry render cache eliminates redundant markdown and syntax highlighting on unchanged timeline entries, dramatically improving TUI responsiveness in large conversations.
+- **Render throttling** -- New optional `renderThrottleMs` config setting gates redraws during token streaming, preventing excessive refreshes on slow terminals. Defaults to 0 (no throttling).
+- **Editor word wrap** -- Long lines in the input editor now wrap at word boundaries with sticky column navigation.
+- **CLAUDE.md developer guide** -- Comprehensive documentation of project architecture, build/test commands, key interfaces, data flow, CI setup, and debug logging.
+- **Code audit (FABLE_REVIEW.md)** -- Detailed technical review documenting high, medium, and low priority findings with line-number citations and suggested fixes.
+
+### Fixed
+
+- **Turn cancellation wired end-to-end** -- `/cancel`, Esc, and single Ctrl+C now properly cancel in-flight LLM turns via per-turn context cancellation, preventing UI/agent state divergence (H1).
+- **Data races in session swaps** -- `/new` and `/resume` are now safe to call mid-turn. A new mutex-guarded `agent.State` type owns session and writer references, and swaps cancel the active turn first (H2).
+- **OpenAI adapter parallel tool results** -- Multiple tool results in a single turn are no longer silently dropped. `buildOpenAIBody` now flattens `RoleTool` messages into one `openaiToolMessage` per `BlockToolResult` block (H3).
+
+### Changed
+
+- **TUI model decomposition** -- Split `model.go` (1407 lines) into focused subfiles: `model_agent.go`, `model_approval.go`, `model_keys.go`, `model_slash.go`, `model_overlays.go` (partial H4).
+- **Main loop refactored** -- New `runLoop()` encapsulates the agent REPL with per-turn context cancellation, cleanly separating the event loop from session lifecycle management.
+
 ## v0.2.2
 
 ### Added

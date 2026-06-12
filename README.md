@@ -11,7 +11,7 @@ The source tree lives under `gohome/` at the repo root. Because the module layou
 ```sh
 git clone https://github.com/jhyoong/GoHome
 cd GoHome
-go build -ldflags "-X main.version=v0.2.0" -o bin/gohome ./gohome/cmd/gohome
+go build -ldflags "-X main.version=v0.2.3" -o bin/gohome ./gohome/cmd/gohome
 ```
 
 ### Run
@@ -97,6 +97,7 @@ Both `"anthropic"` and `"openai"` wires are supported. Set `apiKey` for a litera
 | `maxBashTimeoutMs` | `600000` | Maximum bash command timeout in milliseconds |
 | `contextWarnPct` | `0.80` | Context window usage ratio at which a warning is shown (must be < `contextCritPct`) |
 | `contextCritPct` | `0.95` | Context window usage ratio at which a critical warning is shown (must be > `contextWarnPct` and <= 1.0) |
+| `renderThrottleMs` | `0` | Minimum interval in milliseconds between TUI redraws during token streaming. `0` (default) renders every token; higher values reduce terminal flicker on slow connections |
 | `retryBackoffMs` | `[250, 1000, 2000]` | Retry backoff schedule in milliseconds |
 
 ### 2. Run

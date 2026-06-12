@@ -18,7 +18,7 @@ goal of keeping the codebase clean, small, and easy to extend.
 
 ## High priority
 
-### H1. Turn cancellation is not wired end-to-end — VERIFIED
+### H1. Turn cancellation is not wired end-to-end — VERIFIED — RESOLVED in v0.2.3
 
 `/cancel`, Esc-during-spinner, and single Ctrl+C all route to
 `cancelFocusedSessionWith` (`gohome/internal/tui/model.go:434-447`), which calls
@@ -43,7 +43,7 @@ Suggested fix (KISS): in the agent driver loop in `main.go`, wrap each
 `a.Run` call in `context.WithCancel(ctx)`, store the cancel func where the
 callbacks can reach it, and set `CancelSession: func(string) { cancelTurn() }`.
 
-### H2. Data races and a send-on-closed-channel panic path in session-swap callbacks — VERIFIED
+### H2. Data races and a send-on-closed-channel panic path in session-swap callbacks — VERIFIED — RESOLVED in v0.2.3
 
 The slash callbacks execute on the Bubble Tea goroutine (they are called
 synchronously from `handleSlashCommand`, `model.go:1056-1101`). `ResumeSession`
@@ -72,7 +72,7 @@ Suggested fix (KISS): own `sess` + `writer` in a small mutex-guarded struct
 once H1 is fixed, first cancel — when a turn is in flight. Add a regression
 test for "switch session mid-turn" and run it under `-race`.
 
-### H3. OpenAI adapter silently drops parallel tool results — VERIFIED
+### H3. OpenAI adapter silently drops parallel tool results — VERIFIED — RESOLVED in v0.2.3
 
 `Agent.Run` batches all tool results of a turn into a single `RoleTool`
 message (`gohome/internal/agent/run.go:94-98`). On the OpenAI wire,
@@ -92,7 +92,7 @@ Suggested fix (KISS): in `buildOpenAIBody` (`request.go:92-98`), flatten
 (the builder already owns the `msgs []any` slice). Add a translate test with
 two results in one message.
 
-### H4. `tui.Model` is a god object with a modal mega-Update — VERIFIED
+### H4. `tui.Model` is a god object with a modal mega-Update — VERIFIED — PARTIALLY RESOLVED in v0.2.3
 
 `gohome/internal/tui/model.go` is 1407 lines; the next-largest production file
 is `main.go` at 449. `Model` has roughly 30 fields spanning every concern
@@ -366,13 +366,10 @@ re-checked against the current source.
 
 ## Suggested sequencing
 
-1. H1 + H2 together: per-turn cancellation, then a mutex-guarded session/writer
-   owner that refuses swaps mid-turn. These fix the only crash/correctness
-   bugs in the core loop. Add the `-race` test from L6.
-2. H3: small, isolated, testable wire-format fix.
+1. ~~H1 + H2 together~~ -- Done in v0.2.3 (PR #9). Per-turn cancellation and mutex-guarded `agent.State`.
+2. ~~H3~~ -- Done in v0.2.3 (PR #10). OpenAI adapter flattens tool results correctly.
 3. M2, M3, M8: small correctness/consistency fixes, each under an hour of
    review surface, no design decisions needed.
-4. H4 and M1: the structural refactors that most directly serve the goal of
-   cheap future expansion (new TUI modes, new LLM providers).
+4. ~~H4 (partial)~~ and M1: H4 partially addressed in v0.2.3 (PR #9, model split into subfiles). M1 (LLM client scaffold dedup) and further H4 work (mode delegation) remain.
 5. M4-M7, L1-L4: opportunistic cleanups; safe to batch or do when touching
    the surrounding code.

@@ -20,11 +20,10 @@ Seam: `session.Session.History` is a plain slice owned by the agent loop.
 A compaction step can be injected at the top of `Run` before each `Turn`
 call, or as an explicit slash command that rewrites the slice in place.
 
-**Reasoning / thinking tokens**
-Surface model chain-of-thought blocks as first-class timeline entries.
-Seam: `common.Block` already carries a `Kind` discriminator. A new
-`BlockThinking` kind and a corresponding TUI timeline renderer are the only
-additions required; the agent loop and adapters need no structural change.
+**Reasoning / thinking tokens** -- DELIVERED in v0.2.1
+Thinking blocks are parsed from Anthropic SSE streams and OpenAI `reasoning_content`
+deltas, rendered as collapsible timeline entries with line counts, persisted to
+session JSONL, and restored on resume.
 
 **Denylist**
 Complement to the whitelist — keep specific patterns blocked even if they
@@ -64,11 +63,11 @@ Seam: `guard.Guard` is injected into the agent at construction. `agent.Spawn`
 already creates a child `Agent`; passing a different `Guard` instance
 (compiled from a per-subagent whitelist file) is a one-line change in Spawn.
 
-**Per-session model selection**
-Switch the model mid-session from the TUI without restarting.
-Seam: `session.Session.Model` is a plain string field. A `/model` slash
-command that updates it and rebuilds the `common.Request` in the next Turn
-is the implementation.
+**Per-session model selection** -- DELIVERED in v0.2.1
+`/model <name>` switches the active model. Without arguments, an interactive
+model selector shows all configured endpoints and their models. Note: the LLM
+client is not rebuilt on model change (see FABLE_REVIEW.md M2), so cross-endpoint
+model selection does not fully work yet.
 
 **Mouse support**
 Click to focus sessions, scroll with the mouse wheel.
