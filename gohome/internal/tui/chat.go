@@ -135,81 +135,33 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 		return nil
 	}
 
-	// Render all entries into lines.
+	// Render all entries into lines, using cache when valid.
 	var all []string
-	for i, e := range *c.timeline {
+	for i := range *c.timeline {
+		e := &(*c.timeline)[i]
 		marker := "  "
 		if i == c.cursor {
 			marker = "> "
 		}
 
-		var entryLines []string
-		switch e.Kind {
-		case KindUser:
-			prefix := userPrefix.Render("you:")
-			text := WrapText(e.Text, maxWidth-len("you: ")-2)
-			for j, l := range text {
-				if j == 0 {
-					entryLines = append(entryLines, marker+prefix+" "+l)
-				} else {
-					entryLines = append(entryLines, "      "+l)
+		if !e.cacheValid(maxWidth) {
+			e.cachedLines = c.renderEntry(e, maxWidth, marker)
+			e.cachedWidth = maxWidth
+			e.cachedExpanded = e.Expanded
+			e.cachedText = e.Text
+			e.cachedResult = e.ToolResult
+		} else if i == c.cursor || (c.cursor < 0 && marker == "  ") {
+			// Cache is valid but cursor marker may have changed.
+			// Check if the first line's marker prefix matches.
+			if len(e.cachedLines) > 0 {
+				first := e.cachedLines[0]
+				if len(first) >= 2 && first[:2] != marker {
+					e.cachedLines = c.renderEntry(e, maxWidth, marker)
 				}
 			}
-
-		case KindAssistant:
-			mdLines := RenderMarkdown(e.Text, maxWidth-2)
-			if len(mdLines) == 0 {
-				mdLines = WrapText(e.Text, maxWidth-2)
-			}
-			for j, l := range mdLines {
-				if j == 0 {
-					entryLines = append(entryLines, marker+l)
-				} else {
-					entryLines = append(entryLines, "  "+l)
-				}
-			}
-
-		case KindThinking:
-			if e.Expanded {
-				mdLines := RenderMarkdown(e.Text, maxWidth-4)
-				if len(mdLines) == 0 {
-					mdLines = WrapText(e.Text, maxWidth-4)
-				}
-				entryLines = append(entryLines, marker+expandedBg.Render(ansiDim+ansiItalic+"Thinking..."+ansiReset))
-				for _, l := range mdLines {
-					entryLines = append(entryLines, expandedBg.Render("    "+ansiDim+ansiItalic+l+ansiReset))
-				}
-			} else {
-				label := "Thinking..."
-				if n := strings.Count(strings.TrimSpace(e.Text), "\n"); n > 0 {
-					label = fmt.Sprintf("Thinking... (%d lines)", n+1)
-				}
-				entryLines = append(entryLines, marker+ansiDim+ansiItalic+label+ansiReset)
-			}
-
-		case KindTool:
-			line := renderToolLine(e, maxWidth-2)
-			entryLines = append(entryLines, marker+line)
-			if e.Expanded {
-				if e.Text != "" {
-					for _, l := range WrapText("args: "+e.Text, maxWidth-7) {
-						entryLines = append(entryLines, expandedBg.Render("       "+l))
-					}
-				}
-				if e.ToolResult != "" {
-					entryLines = append(entryLines, expandedBg.Render("       result:"))
-					for _, l := range WrapText(e.ToolResult, maxWidth-9) {
-						entryLines = append(entryLines, expandedBg.Render("         "+l))
-					}
-				}
-			}
-
-		case KindNotice:
-			line := noticeStyle.Render(fmt.Sprintf("[notice] %s", e.Text))
-			entryLines = append(entryLines, marker+line)
 		}
 
-		all = append(all, entryLines...)
+		all = append(all, e.cachedLines...)
 	}
 
 	// Apply scroll and height constraints.
@@ -219,11 +171,9 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 	}
 
 	if c.autoScroll {
-		// Show last maxHeight lines.
 		return all[total-c.maxHeight:]
 	}
 
-	// Clamp scrollTop to valid range.
 	maxScroll := total - c.maxHeight
 	if c.scrollTop > maxScroll {
 		c.scrollTop = maxScroll
@@ -237,6 +187,78 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 		end = total
 	}
 	return all[c.scrollTop:end]
+}
+
+// renderEntry produces the display lines for a single timeline entry.
+func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker string) []string {
+	var lines []string
+
+	switch e.Kind {
+	case KindUser:
+		prefix := userPrefix.Render("you:")
+		text := WrapText(e.Text, maxWidth-len("you: ")-2)
+		for j, l := range text {
+			if j == 0 {
+				lines = append(lines, marker+prefix+" "+l)
+			} else {
+				lines = append(lines, "      "+l)
+			}
+		}
+
+	case KindAssistant:
+		mdLines := RenderMarkdown(e.Text, maxWidth-2)
+		if len(mdLines) == 0 {
+			mdLines = WrapText(e.Text, maxWidth-2)
+		}
+		for j, l := range mdLines {
+			if j == 0 {
+				lines = append(lines, marker+l)
+			} else {
+				lines = append(lines, "  "+l)
+			}
+		}
+
+	case KindThinking:
+		if e.Expanded {
+			mdLines := RenderMarkdown(e.Text, maxWidth-4)
+			if len(mdLines) == 0 {
+				mdLines = WrapText(e.Text, maxWidth-4)
+			}
+			lines = append(lines, marker+expandedBg.Render(ansiDim+ansiItalic+"Thinking..."+ansiReset))
+			for _, l := range mdLines {
+				lines = append(lines, expandedBg.Render("    "+ansiDim+ansiItalic+l+ansiReset))
+			}
+		} else {
+			label := "Thinking..."
+			if n := strings.Count(strings.TrimSpace(e.Text), "\n"); n > 0 {
+				label = fmt.Sprintf("Thinking... (%d lines)", n+1)
+			}
+			lines = append(lines, marker+ansiDim+ansiItalic+label+ansiReset)
+		}
+
+	case KindTool:
+		line := renderToolLine(*e, maxWidth-2)
+		lines = append(lines, marker+line)
+		if e.Expanded {
+			if e.Text != "" {
+				for _, l := range WrapText("args: "+e.Text, maxWidth-7) {
+					lines = append(lines, expandedBg.Render("       "+l))
+				}
+			}
+			if e.ToolResult != "" {
+				lines = append(lines, expandedBg.Render("       result:"))
+				for _, l := range WrapText(e.ToolResult, maxWidth-9) {
+					lines = append(lines, expandedBg.Render("         "+l))
+				}
+			}
+		}
+
+	case KindNotice:
+		line := noticeStyle.Render(fmt.Sprintf("[notice] %s", e.Text))
+		lines = append(lines, marker+line)
+	}
+
+	return lines
 }
 
 // renderToolLine builds the collapsed single-line representation of a tool entry.
