@@ -137,7 +137,14 @@ type Model struct {
 	// slashCB holds optional callbacks wired to slash commands (/new, /resume,
 	// /model, /cancel). Set via SetSlashCallbacks.
 	slashCB SlashCallbacks
+
+	renderThrottleMs int
+	lastRenderTime   time.Time
+	renderPending    bool
 }
+
+// renderThrottleMsg fires when a deferred render is due.
+type renderThrottleMsg struct{}
 
 // New creates and returns a new Model with an initial session whose ID matches
 // the agent session. fe may be nil (tests that do not need agent routing or
@@ -205,6 +212,7 @@ func (m *Model) SetSlashCallbacks(cb SlashCallbacks) {
 func (m *Model) SetHomeDir(dir string)         { m.homeDir = dir }
 func (m *Model) SetCWD(dir string)             { m.cwd = dir }
 func (m *Model) SetSettings(s config.Settings) { m.settings = s }
+func (m *Model) SetRenderThrottleMs(ms int)     { m.renderThrottleMs = ms }
 
 // SetContextWindow sets the total context window size used in the token bar.
 // If size <= 0 the default is used.
@@ -322,6 +330,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case FileSearchResultMsg:
 		if m.fileSearching {
 			m.fileSearch.SetResults(msg.Query, msg.Results)
+		}
+
+	case renderThrottleMsg:
+		if m.renderPending {
+			m.renderPending = false
+			m.lastRenderTime = time.Now()
+			m.rebuildViewport()
 		}
 
 	case agentEventMsg:

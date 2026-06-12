@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"time"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
 )
@@ -154,6 +156,32 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 	}
 
 	if msg.SessionID == m.focused {
+		if m.renderThrottleMs > 0 &&
+			(ev.Kind == agent.EventTokenDelta || ev.Kind == agent.EventThinkingDelta) {
+			elapsed := time.Since(m.lastRenderTime)
+			threshold := time.Duration(m.renderThrottleMs) * time.Millisecond
+			if elapsed < threshold {
+				if !m.renderPending {
+					m.renderPending = true
+					remaining := threshold - elapsed
+					cmd := tea.Tick(remaining, func(time.Time) tea.Msg {
+						return renderThrottleMsg{}
+					})
+					if dequeuedCmd != nil {
+						return tea.Batch(dequeuedCmd, cmd)
+					}
+					return cmd
+				}
+				if dequeuedCmd != nil {
+					return dequeuedCmd
+				}
+				if m.spinner.Active() {
+					return SpinnerTickCmd()
+				}
+				return nil
+			}
+			m.lastRenderTime = time.Now()
+		}
 		m.rebuildViewport()
 	}
 
