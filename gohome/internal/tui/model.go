@@ -27,6 +27,22 @@ type TimelineEntry struct {
 	ToolResult string
 	Expanded   bool
 	Status     string // "" | "pending" | "success" | "error" (tool entries only)
+
+	cachedLines    []string
+	cachedWidth    int
+	cachedExpanded bool
+	cachedText     string
+	cachedResult   string
+}
+
+// cacheValid reports whether the cached render output is still usable
+// at the given terminal width.
+func (e *TimelineEntry) cacheValid(width int) bool {
+	return e.cachedLines != nil &&
+		e.cachedWidth == width &&
+		e.cachedExpanded == e.Expanded &&
+		e.cachedText == e.Text &&
+		e.cachedResult == e.ToolResult
 }
 
 // SessionView holds the display state for one agent session.
