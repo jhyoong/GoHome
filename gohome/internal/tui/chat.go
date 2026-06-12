@@ -61,6 +61,9 @@ func (c *ChatComponent) ScrollToBottom() {
 	c.autoScroll = true
 }
 
+// IsAutoScroll reports whether auto-scroll is active.
+func (c *ChatComponent) IsAutoScroll() bool { return c.autoScroll }
+
 // DisableAutoScroll turns off auto-scroll, anchoring scrollTop to the current
 // effective position so the viewport does not jump. maxWidth is the terminal
 // column width used to compute the pre-expansion line count.
@@ -84,13 +87,18 @@ func (c *ChatComponent) DisableAutoScroll(maxWidth int) {
 }
 
 // countLines returns the total number of rendered lines for all timeline entries
-// at the given maxWidth, without applying scroll constraints.
+// at the given maxWidth. Uses cached line counts when available.
 func (c *ChatComponent) countLines(maxWidth int) int {
 	if c.timeline == nil {
 		return 0
 	}
 	count := 0
-	for _, e := range *c.timeline {
+	for i := range *c.timeline {
+		e := &(*c.timeline)[i]
+		if e.cacheValid(maxWidth) {
+			count += len(e.cachedLines)
+			continue
+		}
 		switch e.Kind {
 		case KindUser:
 			count += len(WrapText(e.Text, maxWidth-len("you: ")-2))
@@ -117,7 +125,7 @@ func (c *ChatComponent) countLines(maxWidth int) int {
 					count += len(WrapText("args: "+e.Text, maxWidth-7))
 				}
 				if e.ToolResult != "" {
-					count++ // "result:" line
+					count++
 					count += len(WrapText(e.ToolResult, maxWidth-9))
 				}
 			}

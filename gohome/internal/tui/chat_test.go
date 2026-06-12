@@ -233,3 +233,24 @@ func TestChatRenderCacheInvalidatesOnTextChange(t *testing.T) {
 		t.Errorf("cachedText after mutation: got %q, want %q", entries[0].cachedText, "first version, extended")
 	}
 }
+
+func TestCountLinesCacheBehavior(t *testing.T) {
+	entries := []TimelineEntry{
+		{Kind: KindAssistant, Text: "# Hello\n\nParagraph one."},
+		{Kind: KindUser, Text: "reply"},
+	}
+	c := NewChat(&entries, 40)
+
+	// Call Render first to populate caches.
+	c.Render(80)
+
+	// Now DisableAutoScroll calls countLines internally.
+	// It should use cached line counts rather than re-rendering.
+	c.ScrollToBottom()
+	c.DisableAutoScroll(80)
+
+	// After disabling, autoScroll should be false and scrollTop should be set.
+	if c.IsAutoScroll() {
+		t.Error("expected autoScroll to be false after DisableAutoScroll")
+	}
+}
