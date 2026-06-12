@@ -331,6 +331,7 @@ func main() {
 		critPct = config.DefaultContextCritPct
 	}
 	m.SetContextThresholds(warnPct, critPct)
+	m.SetRenderThrottleMs(settings.RenderThrottleMs)
 
 	// Build tea program and wire frontend.
 	p := tea.NewProgram(m, tea.WithAltScreen())
