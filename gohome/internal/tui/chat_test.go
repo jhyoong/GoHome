@@ -3,6 +3,9 @@ package tui
 import (
 	"strings"
 	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/jhyoong/GoHome/gohome/internal/agent"
 )
 
 func TestChatRenderUserMessage(t *testing.T) {
@@ -252,5 +255,47 @@ func TestCountLinesCacheBehavior(t *testing.T) {
 	// After disabling, autoScroll should be false and scrollTop should be set.
 	if c.IsAutoScroll() {
 		t.Error("expected autoScroll to be false after DisableAutoScroll")
+	}
+}
+
+func TestRenderThrottle_SkipsIntermediateRebuilds(t *testing.T) {
+	m := New(nil, "main")
+	m.SetRenderThrottleMs(100)
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	// Send first token delta -- should render immediately (lastRenderTime is zero).
+	model1, _ := m.Update(agentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind:      agent.EventTokenDelta,
+		SessionID: "main",
+		TextDelta: "Hello ",
+	}})
+	m1 := model1.(*Model)
+
+	// Send second token delta immediately -- should be throttled because
+	// less than 100ms has elapsed since the first render.
+	model2, cmd2 := m1.Update(agentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind:      agent.EventTokenDelta,
+		SessionID: "main",
+		TextDelta: "world",
+	}})
+	m2 := model2.(*Model)
+
+	// cmd2 should include a tea.Tick (the deferred render) or a SpinnerTickCmd.
+	// The key point is that a command is returned (non-nil) to schedule the
+	// deferred rebuild.
+	if cmd2 == nil {
+		t.Error("expected a non-nil command for throttled render, got nil")
+	}
+
+	// renderPending should be true since the rebuild was deferred.
+	if !m2.renderPending {
+		t.Error("expected renderPending to be true after throttled delta")
+	}
+
+	// Verify the text was still appended to the timeline (content is never lost).
+	sv := m2.sessions["main"]
+	last := sv.Timeline[len(sv.Timeline)-1]
+	if last.Text != "Hello world" {
+		t.Errorf("text: got %q, want %q", last.Text, "Hello world")
 	}
 }
