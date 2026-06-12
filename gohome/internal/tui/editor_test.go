@@ -3,6 +3,8 @@ package tui
 import (
 	"strings"
 	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestEditorRenderEmpty(t *testing.T) {
@@ -124,5 +126,130 @@ func TestEditorInsertTextReplacesTab(t *testing.T) {
 	want := "a    b"
 	if e.Value() != want {
 		t.Errorf("Value() = %q, want %q", e.Value(), want)
+	}
+}
+
+func TestWrapLineShort(t *testing.T) {
+	rows := wrapLine("hello", 0, 20)
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(rows))
+	}
+	if rows[0].runeLen != 5 {
+		t.Errorf("runeLen = %d, want 5", rows[0].runeLen)
+	}
+}
+
+func TestWrapLineExactWidth(t *testing.T) {
+	rows := wrapLine("12345", 0, 5)
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(rows))
+	}
+}
+
+func TestWrapLineLongWord(t *testing.T) {
+	rows := wrapLine("abcdefghij", 0, 5)
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(rows))
+	}
+	if rows[0].runeLen != 5 {
+		t.Errorf("row 0 runeLen = %d, want 5", rows[0].runeLen)
+	}
+	if rows[1].startCol != 5 {
+		t.Errorf("row 1 startCol = %d, want 5", rows[1].startCol)
+	}
+}
+
+func TestWrapLineWordBoundary(t *testing.T) {
+	rows := wrapLine("hello world foo", 0, 12)
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(rows))
+	}
+	// "hello world " fits in 12, then "foo" on next row
+	if rows[0].runeLen != 12 {
+		t.Errorf("row 0 runeLen = %d, want 12", rows[0].runeLen)
+	}
+}
+
+func TestWrapLineEmpty(t *testing.T) {
+	rows := wrapLine("", 0, 20)
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(rows))
+	}
+	if rows[0].runeLen != 0 {
+		t.Errorf("runeLen = %d, want 0", rows[0].runeLen)
+	}
+}
+
+func TestEditorRenderWrapsLongLine(t *testing.T) {
+	e := NewEditor(20, 24)
+	for _, r := range "the quick brown fox jumps" {
+		e.InsertRune(r)
+	}
+	lines := e.Render(20)
+	// The text should be wrapped across multiple visual lines.
+	plain := StripAnsi(strings.Join(lines, "\n"))
+	if !strings.Contains(plain, "the quick brown") {
+		t.Errorf("expected wrapped content, got:\n%s", plain)
+	}
+	// Should have more content lines than a single line would produce.
+	contentLines := 0
+	for _, l := range lines {
+		stripped := StripAnsi(l)
+		if !strings.Contains(stripped, "─") {
+			contentLines++
+		}
+	}
+	if contentLines < 2 {
+		t.Errorf("expected at least 2 content lines for wrapped text, got %d", contentLines)
+	}
+}
+
+func TestEditorVisualRowNavigation(t *testing.T) {
+	e := NewEditor(15, 24)
+	// Type a line longer than width to trigger wrapping.
+	for _, r := range "hello world abcde" {
+		e.InsertRune(r)
+	}
+	// Cursor is at end of the text (logical line 0, col 17).
+	if e.cursorLine != 0 {
+		t.Fatalf("cursorLine = %d, want 0", e.cursorLine)
+	}
+
+	// Press Up to move to the previous visual row (same logical line).
+	e.HandleInput(tea.KeyMsg{Type: tea.KeyUp})
+	// Should still be on logical line 0 but at an earlier column.
+	if e.cursorLine != 0 {
+		t.Errorf("after Up: cursorLine = %d, want 0", e.cursorLine)
+	}
+	if e.cursorCol >= 17 {
+		t.Errorf("after Up: cursorCol = %d, should be less than 17", e.cursorCol)
+	}
+
+	// Press Down to go back.
+	e.HandleInput(tea.KeyMsg{Type: tea.KeyDown})
+	if e.cursorLine != 0 {
+		t.Errorf("after Down: cursorLine = %d, want 0", e.cursorLine)
+	}
+}
+
+func TestEditorWrappedScrolling(t *testing.T) {
+	e := NewEditor(10, 10)
+	// Insert enough text to create many visual rows.
+	for i := 0; i < 5; i++ {
+		if i > 0 {
+			e.InsertNewline()
+		}
+		for _, r := range "abcdefghijklmno" {
+			e.InsertRune(r)
+		}
+	}
+	lines := e.Render(10)
+	// Should not panic and should have borders.
+	if len(lines) < 2 {
+		t.Errorf("expected at least 2 lines (borders), got %d", len(lines))
+	}
+	first := StripAnsi(lines[0])
+	if !strings.Contains(first, "─") {
+		t.Errorf("first line should be border, got %q", first)
 	}
 }
