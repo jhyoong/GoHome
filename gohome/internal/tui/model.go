@@ -212,7 +212,7 @@ func (m *Model) SetSlashCallbacks(cb SlashCallbacks) {
 func (m *Model) SetHomeDir(dir string)         { m.homeDir = dir }
 func (m *Model) SetCWD(dir string)             { m.cwd = dir }
 func (m *Model) SetSettings(s config.Settings) { m.settings = s }
-func (m *Model) SetRenderThrottleMs(ms int)     { m.renderThrottleMs = ms }
+func (m *Model) SetRenderThrottleMs(ms int)    { m.renderThrottleMs = ms }
 
 // SetContextWindow sets the total context window size used in the token bar.
 // If size <= 0 the default is used.
