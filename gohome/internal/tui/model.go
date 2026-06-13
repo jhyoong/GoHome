@@ -108,7 +108,6 @@ type Model struct {
 	activeApproval   *approvalPrompt
 	pendingApprovals map[string]*approvalPrompt
 
-
 	// statusMsg is a transient message shown near the status bar (Task 11.14).
 	statusMsg string
 

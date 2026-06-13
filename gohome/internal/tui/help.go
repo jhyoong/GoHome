@@ -4,7 +4,7 @@ var helpLines = []string{
 	"Keyboard shortcuts",
 	"  Ctrl+C        Cancel turn / double-tap to quit",
 	"  Ctrl+E        Open external editor",
-	"  Ctrl+H        Toggle this help",
+	"  Ctrl+H        Show this help",
 	"  Ctrl+]        Focus next session",
 	"  Ctrl+[        Focus prev session",
 	"  PgUp/PgDown   Scroll chat (or this help)",

@@ -60,8 +60,8 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 		sv := m.sessions[m.focused]
 		if sv != nil {
 			m.activeModal = NewTokensOverlay(sv, m.modelName, m.contextWindow, func() { m.activeModal = nil })
+			m.statusMsg = ""
 		}
-		m.statusMsg = ""
 	case "/cancel":
 		m.cancelFocusedSession()
 	case "/new":
