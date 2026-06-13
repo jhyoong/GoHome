@@ -81,15 +81,12 @@ type Model struct {
 
 	fileSearch    *FileSearchPopup
 	fileSearching bool
+	activeModal   Interactive
 
-	homeDir        string
-	cwd            string
-	sessionBrowser *SessionBrowserComponent
-	browsing       bool
+	homeDir string
+	cwd     string
 
-	settings       config.Settings
-	modelSelector  *ModelSelectorComponent
-	selectingModel bool
+	settings config.Settings
 
 	pendingMessages []string
 	pending         *PendingMessagesComponent
@@ -111,12 +108,6 @@ type Model struct {
 	activeApproval   *approvalPrompt
 	pendingApprovals map[string]*approvalPrompt
 
-	// showTokens controls the /tokens overlay (Task 11.15).
-	showTokens bool
-
-	// showHelp controls the help overlay triggered by Ctrl+H.
-	showHelp   bool
-	helpScroll int
 
 	// statusMsg is a transient message shown near the status bar (Task 11.14).
 	statusMsg string
@@ -446,18 +437,19 @@ func (m *Model) View() string {
 		sections = append(sections, m.theme.Notification.Render(nl))
 	}
 
-	if m.showTokens {
-		sections = append(sections, m.renderTokensOverlay())
+	if to, ok := m.activeModal.(*TokensOverlay); ok {
+		sections = append(sections, strings.Join(to.Render(m.winW), "\n"))
 		sections = append(sections, m.statusBar())
 		return strings.Join(sections, "\n")
 	}
 
-	if m.showHelp {
+	if ho, ok := m.activeModal.(*HelpOverlay); ok {
 		helpH := m.winH - stripHeight - statusHeight - 2
 		if helpH < 1 {
 			helpH = 1
 		}
-		sections = append(sections, m.renderHelpOverlay(helpH))
+		ho.SetMaxH(helpH)
+		sections = append(sections, strings.Join(ho.Render(m.winW), "\n"))
 		sections = append(sections, m.statusBar())
 		return strings.Join(sections, "\n")
 	}
@@ -505,12 +497,9 @@ func (m *Model) View() string {
 	// Input region (swappable slot).
 	if m.activeApproval != nil {
 		sections = append(sections, renderApprovalOverlay(m.activeApproval, m.winW))
-	} else if m.browsing && m.sessionBrowser != nil {
-		browserLines := m.sessionBrowser.Render(m.winW)
-		sections = append(sections, strings.Join(browserLines, "\n"))
-	} else if m.selectingModel && m.modelSelector != nil {
-		selectorLines := m.modelSelector.Render(m.winW)
-		sections = append(sections, strings.Join(selectorLines, "\n"))
+	} else if m.activeModal != nil {
+		modalLines := m.activeModal.Render(m.winW)
+		sections = append(sections, strings.Join(modalLines, "\n"))
 	} else {
 		palette := m.slashPalette()
 		if palette != "" {
@@ -538,22 +527,32 @@ func (m *Model) StatusMsg() string {
 
 // ShowTokens returns whether the tokens overlay is displayed (exported for tests).
 func (m *Model) ShowTokens() bool {
-	return m.showTokens
+	_, ok := m.activeModal.(*TokensOverlay)
+	return ok
 }
 
 // OpenTokensOverlay opens the /tokens overlay. Used in tests to set this state
 // synchronously without going through the textarea input path.
 func (m *Model) OpenTokensOverlay() {
-	m.showTokens = true
+	sv := m.sessions[m.focused]
+	if sv == nil {
+		return
+	}
+	m.activeModal = NewTokensOverlay(sv, m.modelName, m.contextWindow, func() { m.activeModal = nil })
 }
 
 // ShowHelp returns whether the help overlay is displayed (exported for tests).
 func (m *Model) ShowHelp() bool {
-	return m.showHelp
+	_, ok := m.activeModal.(*HelpOverlay)
+	return ok
 }
 
 // OpenHelpOverlay opens the help overlay. Used in tests to set this state
 // synchronously without going through the key input path.
 func (m *Model) OpenHelpOverlay() {
-	m.showHelp = true
+	helpH := m.winH - stripHeight - statusHeight - 2
+	if helpH < 1 {
+		helpH = 1
+	}
+	m.activeModal = NewHelpOverlay(helpH, func() { m.activeModal = nil })
 }

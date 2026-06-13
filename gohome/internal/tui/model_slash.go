@@ -50,11 +50,17 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 			m.onYoloChange(m.yolo)
 		}
 	case "/help":
-		m.showHelp = true
-		m.helpScroll = 0
+		helpH := m.winH - stripHeight - statusHeight - 2
+		if helpH < 1 {
+			helpH = 1
+		}
+		m.activeModal = NewHelpOverlay(helpH, func() { m.activeModal = nil })
 		m.statusMsg = ""
 	case "/tokens":
-		m.showTokens = true
+		sv := m.sessions[m.focused]
+		if sv != nil {
+			m.activeModal = NewTokensOverlay(sv, m.modelName, m.contextWindow, func() { m.activeModal = nil })
+		}
 		m.statusMsg = ""
 	case "/cancel":
 		m.cancelFocusedSession()
@@ -88,8 +94,7 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 		}
 		sb := NewSessionBrowser(listings)
 		sb.SetOnSelect(func(id string) {
-			m.browsing = false
-			m.sessionBrowser = nil
+			m.activeModal = nil
 			var history []common.Message
 			if m.slashCB.ResumeSession != nil {
 				var err error
@@ -107,8 +112,7 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 			m.rebuildViewport()
 		})
 		sb.SetOnCancel(func() {
-			m.browsing = false
-			m.sessionBrowser = nil
+			m.activeModal = nil
 		})
 		sb.SetOnDelete(func(l session.Listing) {
 			_ = os.Remove(l.Path)
@@ -117,8 +121,7 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 		if len(fields) >= 2 {
 			sb.SetFilter(fields[1])
 		}
-		m.sessionBrowser = sb
-		m.browsing = true
+		m.activeModal = sb
 	case "/model":
 		if len(fields) >= 2 {
 			name := fields[1]
@@ -141,8 +144,7 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 		}
 		ms := NewModelSelector(m.settings.Endpoints, m.settings.DefaultEndpoint)
 		ms.SetOnSelect(func(endpoint, model string) {
-			m.selectingModel = false
-			m.modelSelector = nil
+			m.activeModal = nil
 			if m.slashCB.SetModel != nil {
 				if err := m.slashCB.SetModel(model); err != nil {
 					m.statusMsg = fmt.Sprintf("/model: %v", err)
@@ -154,11 +156,9 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 			m.statusMsg = "Model set to " + model
 		})
 		ms.SetOnCancel(func() {
-			m.selectingModel = false
-			m.modelSelector = nil
+			m.activeModal = nil
 		})
-		m.modelSelector = ms
-		m.selectingModel = true
+		m.activeModal = ms
 	default:
 		m.statusMsg = cmd + ": unknown command"
 	}
