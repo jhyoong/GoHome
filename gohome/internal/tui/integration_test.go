@@ -177,11 +177,11 @@ func TestStatusMsgClearedOnSend(t *testing.T) {
 func TestSlashModelOpensSelector(t *testing.T) {
 	m := tui.New(nil, "")
 	m.SetSettings(config.Settings{
-		Endpoints: map[string]config.Endpoint{
-			"anthropic": {DefaultModel: "claude-sonnet-4-20250514"},
-			"openai":    {DefaultModel: "gpt-4o"},
+		ModelConfig: map[string]config.ModelConfig{
+			"anthropic": {ModelName: "claude-sonnet-4-20250514"},
+			"openai":    {ModelName: "gpt-4o"},
 		},
-		DefaultEndpoint: "anthropic",
+		DefaultModel: "anthropic",
 	})
 
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))

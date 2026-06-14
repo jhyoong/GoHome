@@ -221,7 +221,7 @@ func TestTabCompletesFirstMatchFromSlash(t *testing.T) {
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
 
-func TestSlashEndpointNotConfigured(t *testing.T) {
+func TestSlashModelNoConfigs(t *testing.T) {
 	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
@@ -230,27 +230,27 @@ func TestSlashEndpointNotConfigured(t *testing.T) {
 		return bytes.Contains(out, []byte("─"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
-	tm.Type("/endpoint")
+	tm.Type("/model")
 	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("no endpoints configured"))
+		return bytes.Contains(out, []byte("Current model:"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
 
-func TestSlashEndpointCallsCallback(t *testing.T) {
+func TestSlashModelCallsCallback(t *testing.T) {
 	m := tui.New(nil, "")
 	m.SetSettings(config.Settings{
-		Endpoints: map[string]config.Endpoint{
-			"ep1": {DefaultModel: "model-a"},
-			"ep2": {DefaultModel: "model-b"},
+		ModelConfig: map[string]config.ModelConfig{
+			"ep1": {ModelName: "model-a"},
+			"ep2": {ModelName: "model-b"},
 		},
-		DefaultEndpoint: "ep1",
+		DefaultModel: "ep1",
 	})
 
 	var calledWith string
 	m.SetSlashCallbacks(tui.SlashCallbacks{
-		SetEndpoint: func(name string) (string, int, error) {
+		SetModel: func(name string) (string, int, error) {
 			calledWith = name
 			return "model-b", 200000, nil
 		},
@@ -263,10 +263,10 @@ func TestSlashEndpointCallsCallback(t *testing.T) {
 		return bytes.Contains(out, []byte("─"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
-	tm.Type("/endpoint")
+	tm.Type("/model")
 	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
 
-	// Wait for the selector to appear (it should show endpoint names).
+	// Wait for the selector to appear (it should show config names).
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("ep1")) || bytes.Contains(out, []byte("ep2"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
@@ -275,10 +275,10 @@ func TestSlashEndpointCallsCallback(t *testing.T) {
 	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("Endpoint set to"))
+		return bytes.Contains(out, []byte("Model set to"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
 	if calledWith == "" {
-		t.Error("SetEndpoint callback was not called")
+		t.Error("SetModel callback was not called")
 	}
 }
