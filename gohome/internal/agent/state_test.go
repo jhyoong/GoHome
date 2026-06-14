@@ -182,6 +182,35 @@ func TestClientGetterSetter(t *testing.T) {
 	}
 }
 
+func TestSetClientGuarded(t *testing.T) {
+	sess := session.NewSession("s1", t.TempDir(), "m", "ep")
+	w := openTestWriter(t)
+	st := NewSessionState(sess, w, nil)
+
+	c1 := &fakeStateClient{name: "c1"}
+	c2 := &fakeStateClient{name: "c2"}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			st.SetClient(c1)
+		}()
+		go func() {
+			defer wg.Done()
+			_ = st.Client()
+		}()
+	}
+	wg.Wait()
+
+	got := st.Client()
+	if got != c1 && got != c2 {
+		t.Error("Client() returned unexpected value after concurrent access")
+	}
+	_ = c2
+}
+
 func TestSetModelGuarded(t *testing.T) {
 	sess1 := session.NewSession("s1", t.TempDir(), "m", "ep")
 	w1 := openTestWriter(t)
