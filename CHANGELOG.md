@@ -7,6 +7,7 @@
 - **Mutex self-deadlock in session swaps** -- `/new` and `/resume` slash command closures no longer deadlock by re-acquiring a held lock; closures now receive `(oldSess, oldWriter)` as parameters.
 - **Data race in model switching** -- `SetModel` callback no longer writes `sess.ModelConfig` outside the lock; new `SetModelConfig()` method provides proper synchronization.
 - **Stale model state on `/new`** -- `/new` now reads the current model config at call time instead of capturing the startup value.
+- **Crash on `/new` after `/resume`** -- `runLoop` held stale session/writer references across the blocking `AwaitUserInput` call; a session swap closed the old writer, and sending on the closed channel panicked. References are now re-fetched after unblocking.
 
 ### Changed
 
