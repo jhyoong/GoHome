@@ -447,6 +447,28 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 			state.SetModel(name)
 			return nil
 		},
+		SetEndpoint: func(name string) (string, int, error) {
+			ep, ok := settings.Endpoints[name]
+			if !ok {
+				return "", 0, fmt.Errorf("endpoint %q not found", name)
+			}
+			apiKey, err := config.ResolveAPIKey(ep)
+			if err != nil {
+				return "", 0, fmt.Errorf("no API key for endpoint %q", name)
+			}
+			newClient, err := llm.New(ep, apiKey)
+			if err != nil {
+				return "", 0, fmt.Errorf("create client for %q: %w", name, err)
+			}
+			state.SetClient(newClient)
+			state.SetModel(ep.DefaultModel)
+			state.Session().Endpoint = name
+			ctxWin := ep.ContextWindow
+			if ctxWin <= 0 {
+				ctxWin = config.DefaultContextWindow
+			}
+			return ep.DefaultModel, ctxWin, nil
+		},
 		CancelSession: func(id string) {
 			turnMu.Lock()
 			defer turnMu.Unlock()
