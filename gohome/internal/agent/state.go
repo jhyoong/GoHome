@@ -17,7 +17,7 @@ type SessionState struct {
 	writer     *session.Writer
 	client     common.Client
 	busy       bool
-	pending    func() (*session.Session, *session.Writer, error)
+	pending    func(oldSess *session.Session, oldWriter *session.Writer) (*session.Session, *session.Writer, error)
 	pendingTag string
 }
 
@@ -58,7 +58,7 @@ func (s *SessionState) MarkIdle() {
 // Swap replaces the session and writer. If the agent is busy, the swap
 // function is stored as pending and queued returns true. Otherwise the
 // function is executed immediately and the session/writer are replaced.
-func (s *SessionState) Swap(tag string, fn func() (*session.Session, *session.Writer, error)) (queued bool, err error) {
+func (s *SessionState) Swap(tag string, fn func(oldSess *session.Session, oldWriter *session.Writer) (*session.Session, *session.Writer, error)) (queued bool, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.busy {
@@ -66,7 +66,7 @@ func (s *SessionState) Swap(tag string, fn func() (*session.Session, *session.Wr
 		s.pendingTag = tag
 		return true, nil
 	}
-	newSess, newWriter, err := fn()
+	newSess, newWriter, err := fn(s.sess, s.writer)
 	if err != nil {
 		return false, err
 	}
@@ -87,7 +87,7 @@ func (s *SessionState) DrainPending() (tag string, err error) {
 	tag = s.pendingTag
 	s.pending = nil
 	s.pendingTag = ""
-	newSess, newWriter, err := fn()
+	newSess, newWriter, err := fn(s.sess, s.writer)
 	if err != nil {
 		return tag, err
 	}
@@ -116,6 +116,13 @@ func (s *SessionState) SetModel(name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.sess.Model = name
+}
+
+// SetModelConfig updates the model config name on the current session.
+func (s *SessionState) SetModelConfig(name string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sess.ModelConfig = name
 }
 
 // Client returns the current LLM client.

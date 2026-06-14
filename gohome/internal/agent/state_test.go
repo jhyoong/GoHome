@@ -38,7 +38,7 @@ func TestSwapWhileIdle(t *testing.T) {
 	sess2 := session.NewSession("s2", t.TempDir(), "m", "ep")
 	w2 := openTestWriter(t)
 
-	queued, err := st.Swap("resume s2", func() (*session.Session, *session.Writer, error) {
+	queued, err := st.Swap("resume s2", func(_ *session.Session, _ *session.Writer) (*session.Session, *session.Writer, error) {
 		return sess2, w2, nil
 	})
 	if err != nil {
@@ -64,7 +64,7 @@ func TestSwapWhileBusy(t *testing.T) {
 	sess2 := session.NewSession("s2", t.TempDir(), "m", "ep")
 	w2 := openTestWriter(t)
 
-	queued, err := st.Swap("resume s2", func() (*session.Session, *session.Writer, error) {
+	queued, err := st.Swap("resume s2", func(_ *session.Session, _ *session.Writer) (*session.Session, *session.Writer, error) {
 		return sess2, w2, nil
 	})
 	if err != nil {
@@ -87,7 +87,7 @@ func TestDrainPendingExecutesSwap(t *testing.T) {
 	sess2 := session.NewSession("s2", t.TempDir(), "m", "ep")
 	w2 := openTestWriter(t)
 
-	_, _ = st.Swap("resume s2", func() (*session.Session, *session.Writer, error) {
+	_, _ = st.Swap("resume s2", func(_ *session.Session, _ *session.Writer) (*session.Session, *session.Writer, error) {
 		return sess2, w2, nil
 	})
 
@@ -128,7 +128,7 @@ func TestClearPendingDiscardsSwap(t *testing.T) {
 	sess2 := session.NewSession("s2", t.TempDir(), "m", "ep")
 	w2 := openTestWriter(t)
 
-	_, _ = st.Swap("new", func() (*session.Session, *session.Writer, error) {
+	_, _ = st.Swap("new", func(_ *session.Session, _ *session.Writer) (*session.Session, *session.Writer, error) {
 		return sess2, w2, nil
 	})
 
@@ -152,7 +152,7 @@ func TestSwapError(t *testing.T) {
 	w1 := openTestWriter(t)
 	st := NewSessionState(sess1, w1, nil)
 
-	_, err := st.Swap("bad", func() (*session.Session, *session.Writer, error) {
+	_, err := st.Swap("bad", func(_ *session.Session, _ *session.Writer) (*session.Session, *session.Writer, error) {
 		return nil, nil, errors.New("writer open failed")
 	})
 	if err == nil {
@@ -160,6 +160,77 @@ func TestSwapError(t *testing.T) {
 	}
 	if st.Session().ID != "s1" {
 		t.Error("session should remain s1 on swap error")
+	}
+}
+
+func TestSwapClosureUsesOldWriter(t *testing.T) {
+	sess1 := session.NewSession("s1", t.TempDir(), "m", "ep")
+	w1 := openTestWriter(t)
+	st := NewSessionState(sess1, w1, nil)
+
+	sess2 := session.NewSession("s2", t.TempDir(), "m", "ep")
+	w2 := openTestWriter(t)
+
+	var capturedWriter *session.Writer
+	queued, err := st.Swap("new s2", func(_ *session.Session, oldWriter *session.Writer) (*session.Session, *session.Writer, error) {
+		capturedWriter = oldWriter
+		oldWriter.Emit(session.SessionEnd{Reason: "switch"})
+		return sess2, w2, nil
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if queued {
+		t.Fatal("expected immediate execution, got queued")
+	}
+	if capturedWriter != w1 {
+		t.Error("closure did not receive the old writer")
+	}
+	if st.Writer() != w2 {
+		t.Error("writer not updated after swap")
+	}
+}
+
+func TestDrainPendingClosureUsesOldWriter(t *testing.T) {
+	sess1 := session.NewSession("s1", t.TempDir(), "m", "ep")
+	w1 := openTestWriter(t)
+	st := NewSessionState(sess1, w1, nil)
+	st.MarkBusy()
+
+	sess2 := session.NewSession("s2", t.TempDir(), "m", "ep")
+	w2 := openTestWriter(t)
+
+	var capturedWriter *session.Writer
+	_, _ = st.Swap("new s2", func(_ *session.Session, oldWriter *session.Writer) (*session.Session, *session.Writer, error) {
+		capturedWriter = oldWriter
+		oldWriter.Emit(session.SessionEnd{Reason: "switch"})
+		return sess2, w2, nil
+	})
+
+	st.MarkIdle()
+	tag, err := st.DrainPending()
+	if err != nil {
+		t.Fatalf("drain error: %v", err)
+	}
+	if tag != "new s2" {
+		t.Errorf("tag = %q, want %q", tag, "new s2")
+	}
+	if capturedWriter != w1 {
+		t.Error("closure did not receive the old writer via DrainPending")
+	}
+	if st.Writer() != w2 {
+		t.Error("writer not updated after drain")
+	}
+}
+
+func TestSetModelConfigGuarded(t *testing.T) {
+	sess := session.NewSession("s1", t.TempDir(), "m", "ep")
+	w := openTestWriter(t)
+	st := NewSessionState(sess, w, nil)
+
+	st.SetModelConfig("cfg-new")
+	if got := st.Session().ModelConfig; got != "cfg-new" {
+		t.Errorf("ModelConfig = %q, want cfg-new", got)
 	}
 }
 

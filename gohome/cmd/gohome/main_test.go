@@ -239,7 +239,7 @@ func TestConcurrentSwapAndRun(t *testing.T) {
 	newSess := session.NewSession("swapped", t.TempDir(), "model", "ep")
 	newWriterPath := t.TempDir() + "/swapped.jsonl"
 
-	queued, err := state.Swap("new swapped", func() (*session.Session, *session.Writer, error) {
+	queued, err := state.Swap("new swapped", func(_ *session.Session, _ *session.Writer) (*session.Session, *session.Writer, error) {
 		newW, err := session.OpenWriter(newWriterPath)
 		if err != nil {
 			return nil, nil, err

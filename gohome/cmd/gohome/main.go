@@ -392,8 +392,7 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 				return nil, err
 			}
 
-			queued, err := state.Swap("resume "+id, func() (*session.Session, *session.Writer, error) {
-				oldWriter := state.Writer()
+			queued, err := state.Swap("resume "+id, func(_ *session.Session, oldWriter *session.Writer) (*session.Session, *session.Writer, error) {
 				oldWriter.Emit(session.SessionEnd{Reason: "switch"})
 				_ = oldWriter.Close()
 
@@ -414,8 +413,7 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 			newSess := session.NewSession(id, cwd, mc.ModelName, cfgName)
 			wrPath := session.SessionPath(home, cwd, id, time.Now().UTC())
 
-			queued, err := state.Swap("new "+id, func() (*session.Session, *session.Writer, error) {
-				oldWriter := state.Writer()
+			queued, err := state.Swap("new "+id, func(_ *session.Session, oldWriter *session.Writer) (*session.Session, *session.Writer, error) {
 				oldWriter.Emit(session.SessionEnd{Reason: "switch"})
 				_ = oldWriter.Close()
 
@@ -453,7 +451,7 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 			}
 			state.SetClient(newClient)
 			state.SetModel(cfg.ModelName)
-			state.Session().ModelConfig = name
+			state.SetModelConfig(name)
 			ctxWin := cfg.ContextWindow
 			if ctxWin <= 0 {
 				ctxWin = config.DefaultContextWindow
