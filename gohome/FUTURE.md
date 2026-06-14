@@ -63,11 +63,10 @@ Seam: `guard.Guard` is injected into the agent at construction. `agent.Spawn`
 already creates a child `Agent`; passing a different `Guard` instance
 (compiled from a per-subagent whitelist file) is a one-line change in Spawn.
 
-**Per-session model selection** -- DELIVERED in v0.2.1
-`/model <name>` switches the active model. Without arguments, an interactive
-model selector shows all configured endpoints and their models. Note: the LLM
-client is not rebuilt on model change (see FABLE_REVIEW.md M2), so cross-endpoint
-model selection does not fully work yet.
+**Per-session model selection** -- DELIVERED in v0.2.1, COMPLETED in v0.2.4
+`/model <name>` switches the active model and rebuilds the LLM client at runtime.
+Without arguments, an interactive model selector shows all configured model configs.
+Cross-endpoint model selection now fully works (M2 resolved in v0.2.4).
 
 **Mouse support**
 Click to focus sessions, scroll with the mouse wheel.

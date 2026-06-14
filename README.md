@@ -1,6 +1,10 @@
 # gohome
 
-`gohome` is a lightweight, single-binary coding agent and terminal UI written in Go. It targets custom LLM endpoints — both Anthropic-wire and OpenAI-compatible formats — and provides two features absent from most agents: tool-call guardrails with human approval (plus a skip/"yolo" mode) and built-in sequential subagents you can focus into, steer, and approve independently. The entire stack compiles to a single small binary with no external runtime dependencies.
+`gohome` is a lightweight, single-binary coding agent and terminal UI written in Go. The entire stack compiles to a single small binary with no external runtime dependencies.
+
+## Why am I building this
+
+For fun, mostly. Since I made a dumb choice of buying an annual subscription, I might as well use it. I mainly wanted a terminal tool for custom, local LLM endpoints — for both Anthropic and OpenAI-compatible formats. Other alternatives out there are either massive projects or not exactly what I wanted: a simple and lightweight TUI based coding agent with tool-call guardrails with human approval (plus a skip/"yolo" mode) and built-in sequential subagents you can focus into, steer, and approve independently. 
 
 ---
 
@@ -11,7 +15,7 @@ The source tree lives under `gohome/` at the repo root. Because the module layou
 ```sh
 git clone https://github.com/jhyoong/GoHome
 cd GoHome
-go build -ldflags "-X main.version=v0.2.3" -o bin/gohome ./gohome/cmd/gohome
+go build -ldflags "-X main.version=v0.2.4" -o bin/gohome ./gohome/cmd/gohome
 ```
 
 ### Run
