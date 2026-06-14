@@ -118,6 +118,13 @@ func (s *SessionState) SetModel(name string) {
 	s.sess.Model = name
 }
 
+// ModelConfig returns the model config name from the current session.
+func (s *SessionState) ModelConfig() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.sess.ModelConfig
+}
+
 // SetModelConfig updates the model config name on the current session.
 func (s *SessionState) SetModelConfig(name string) {
 	s.mu.Lock()

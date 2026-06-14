@@ -410,7 +410,9 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		},
 		NewSession: func() (string, error) {
 			id := newSessionID()
-			newSess := session.NewSession(id, cwd, mc.ModelName, cfgName)
+			currentModel := state.Model()
+			currentCfg := state.ModelConfig()
+			newSess := session.NewSession(id, cwd, currentModel, currentCfg)
 			wrPath := session.SessionPath(home, cwd, id, time.Now().UTC())
 
 			queued, err := state.Swap("new "+id, func(_ *session.Session, oldWriter *session.Writer) (*session.Session, *session.Writer, error) {
@@ -424,8 +426,8 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 				newWriter.Emit(session.SessionStart{
 					ID:          newSess.ID,
 					CWD:         cwd,
-					Model:       mc.ModelName,
-					ModelConfig: cfgName,
+					Model:       currentModel,
+					ModelConfig: currentCfg,
 					StartedAt:   newSess.StartedAt,
 				})
 				return newSess, newWriter, nil

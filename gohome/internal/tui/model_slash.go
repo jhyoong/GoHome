@@ -147,7 +147,7 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 			break
 		}
 		ms := NewModelSelector(m.settings.ModelConfig, m.settings.DefaultModel)
-		ms.SetOnSelect(func(configName, model string) {
+		ms.SetOnSelect(func(configName, _ string) {
 			m.activeModal = nil
 			if m.slashCB.SetModel == nil {
 				m.statusMsg = "/model: not configured"

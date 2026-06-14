@@ -45,7 +45,7 @@ func NewModelSelector(configs map[string]config.ModelConfig, current string) *Mo
 	return ms
 }
 
-func (ms *ModelSelectorComponent) SetOnSelect(fn func(endpoint, model string)) {
+func (ms *ModelSelectorComponent) SetOnSelect(fn func(configName, model string)) {
 	ms.list.onSelect = func(item SelectItem) {
 		ep := ms.configs[item.Value]
 		fn(item.Value, ep.ModelName)
