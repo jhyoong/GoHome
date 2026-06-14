@@ -29,8 +29,7 @@ import (
 var version = "dev"
 
 var (
-	endpointName = flag.String("endpoint", "", "endpoint name override")
-	modelName    = flag.String("model", "", "model override")
+	modelFlag = flag.String("model", "", "model config name override")
 	yolo         = flag.Bool("yolo", false, "disable all approval prompts")
 	resume       = flag.Bool("resume", false, "resume a past session")
 	showVersion  = flag.Bool("version", false, "print version and exit")
@@ -199,35 +198,30 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Resolve endpoint.
-	epName := *endpointName
-	if epName == "" {
-		epName = settings.DefaultEndpoint
+	// Resolve model config.
+	cfgName := *modelFlag
+	if cfgName == "" {
+		cfgName = settings.DefaultModel
 	}
-	endpoint, ok := settings.Endpoints[epName]
+	mc, ok := settings.ModelConfig[cfgName]
 	if !ok {
-		if epName == "" {
-			fmt.Fprintf(os.Stderr, "gohome: no endpoint configured. Set defaultEndpoint in ~/.gohome/settings.json or use --endpoint.\n")
+		if cfgName == "" {
+			fmt.Fprintf(os.Stderr, "gohome: no model configured. Set defaultModel in ~/.gohome/settings.json or use --model.\n")
 		} else {
-			fmt.Fprintf(os.Stderr, "gohome: endpoint %q not found. Check ~/.gohome/settings.json.\n", epName)
+			fmt.Fprintf(os.Stderr, "gohome: model config %q not found. Check ~/.gohome/settings.json.\n", cfgName)
 		}
 		os.Exit(1)
 	}
 
-	apiKey, err := config.ResolveAPIKey(endpoint)
+	apiKey, err := config.ResolveAPIKey(mc)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "gohome: no API key for endpoint %q.\n", epName)
+		fmt.Fprintf(os.Stderr, "gohome: no API key for model config %q.\n", cfgName)
 		fmt.Fprintf(os.Stderr, "  Set apiKey in settings.json or the environment variable named by apiKeyEnv.\n")
 		os.Exit(1)
 	}
 
-	// Model override.
-	if *modelName != "" {
-		endpoint.DefaultModel = *modelName
-	}
-
 	// Build LLM client.
-	client, err := llm.New(endpoint, apiKey)
+	client, err := llm.New(mc, apiKey)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "gohome: cannot create LLM client: %v\n", err)
 		os.Exit(1)
@@ -284,7 +278,7 @@ func main() {
 
 	if sess == nil {
 		// Fresh session.
-		sess = session.NewSession(newSessionID(), cwd, endpoint.DefaultModel, epName)
+		sess = session.NewSession(newSessionID(), cwd, mc.ModelName, cfgName)
 		writerPath = session.SessionPath(home, cwd, sess.ID, time.Now().UTC())
 	}
 
@@ -300,8 +294,8 @@ func main() {
 			ID:        sess.ID,
 			ParentID:  sess.ParentID,
 			CWD:       cwd,
-			Model:     endpoint.DefaultModel,
-			Endpoint:  epName,
+			Model:       mc.ModelName,
+			ModelConfig: cfgName,
 			Depth:     sess.Depth,
 			StartedAt: sess.StartedAt,
 		})
@@ -310,8 +304,8 @@ func main() {
 	// Build TUI model.
 	m := tui.New(fe, sess.ID)
 	m.SetYoloCallback(g.SetYolo)
-	m.SetModelName(endpoint.DefaultModel)
-	contextWindow := endpoint.ContextWindow
+	m.SetModelName(mc.ModelName)
+	contextWindow := mc.ContextWindow
 	if contextWindow <= 0 {
 		contextWindow = config.DefaultContextWindow
 	}
@@ -332,6 +326,7 @@ func main() {
 	}
 	m.SetContextThresholds(warnPct, critPct)
 	m.SetRenderThrottleMs(settings.RenderThrottleMs)
+	m.SetSettings(settings)
 
 	// Build tea program and wire frontend.
 	p := tea.NewProgram(m, tea.WithAltScreen())
@@ -345,11 +340,11 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		systemPrompt = settings.SystemPrompt
 	}
 
-	maxTokens := endpoint.MaxTokens
+	maxTokens := mc.MaxTokens
 	if maxTokens <= 0 {
 		maxTokens = config.DefaultMaxTokens
 	}
-	thinkingBudget := endpoint.ThinkingBudget
+	thinkingBudget := mc.ThinkingBudget
 	if thinkingBudget <= 0 {
 		thinkingBudget = config.DefaultThinkingBudget
 	}
@@ -416,7 +411,7 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		},
 		NewSession: func() (string, error) {
 			id := newSessionID()
-			newSess := session.NewSession(id, cwd, endpoint.DefaultModel, epName)
+			newSess := session.NewSession(id, cwd, mc.ModelName, cfgName)
 			wrPath := session.SessionPath(home, cwd, id, time.Now().UTC())
 
 			queued, err := state.Swap("new "+id, func() (*session.Session, *session.Writer, error) {
@@ -429,11 +424,11 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 					return nil, nil, fmt.Errorf("open writer: %w", err)
 				}
 				newWriter.Emit(session.SessionStart{
-					ID:        newSess.ID,
-					CWD:       cwd,
-					Model:     endpoint.DefaultModel,
-					Endpoint:  epName,
-					StartedAt: newSess.StartedAt,
+					ID:          newSess.ID,
+					CWD:         cwd,
+					Model:       mc.ModelName,
+					ModelConfig: cfgName,
+					StartedAt:   newSess.StartedAt,
 				})
 				return newSess, newWriter, nil
 			})
@@ -443,31 +438,27 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 			_ = queued
 			return id, nil
 		},
-		SetModel: func(name string) error {
-			state.SetModel(name)
-			return nil
-		},
-		SetEndpoint: func(name string) (string, int, error) {
-			ep, ok := settings.Endpoints[name]
+		SetModel: func(name string) (string, int, error) {
+			cfg, ok := settings.ModelConfig[name]
 			if !ok {
-				return "", 0, fmt.Errorf("endpoint %q not found", name)
+				return "", 0, fmt.Errorf("model config %q not found", name)
 			}
-			apiKey, err := config.ResolveAPIKey(ep)
+			apiKey, err := config.ResolveAPIKey(cfg)
 			if err != nil {
-				return "", 0, fmt.Errorf("no API key for endpoint %q", name)
+				return "", 0, fmt.Errorf("no API key for model config %q", name)
 			}
-			newClient, err := llm.New(ep, apiKey)
+			newClient, err := llm.New(cfg, apiKey)
 			if err != nil {
 				return "", 0, fmt.Errorf("create client for %q: %w", name, err)
 			}
 			state.SetClient(newClient)
-			state.SetModel(ep.DefaultModel)
-			state.Session().Endpoint = name
-			ctxWin := ep.ContextWindow
+			state.SetModel(cfg.ModelName)
+			state.Session().ModelConfig = name
+			ctxWin := cfg.ContextWindow
 			if ctxWin <= 0 {
 				ctxWin = config.DefaultContextWindow
 			}
-			return ep.DefaultModel, ctxWin, nil
+			return cfg.ModelName, ctxWin, nil
 		},
 		CancelSession: func(id string) {
 			turnMu.Lock()
