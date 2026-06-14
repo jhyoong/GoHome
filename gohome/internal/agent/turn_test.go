@@ -52,7 +52,6 @@ func newTestAgent(t *testing.T, client common.Client, fe Frontend) (*Agent, *ses
 
 	sess := session.NewSession("sess-test", dir, "claude-3-5-haiku", "anthropic")
 	a := &Agent{
-		Client:   client,
 		Tools:    tools.NewRegistry(),
 		Frontend: fe,
 		State:    NewSessionState(sess, w, client),
@@ -114,7 +113,6 @@ func TestTurn_TextDeltaAndTurnDone(t *testing.T) {
 
 	sess := session.NewSession("sess-test", dir, "claude-3-5-haiku", "anthropic")
 	a := &Agent{
-		Client:   client,
 		Tools:    tools.NewRegistry(),
 		Frontend: fe,
 		State:    NewSessionState(sess, w, client),

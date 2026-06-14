@@ -39,7 +39,6 @@ func buildSpawnParent(t *testing.T, client common.Client, home string) *Agent {
 	// Simulate a parent session at depth 0.
 	parentSess := session.NewSession("parent-sess", home, "model", "anthropic")
 	a := &Agent{
-		Client:   client,
 		Tools:    tools.NewRegistry(),
 		Guard:    g,
 		Frontend: fe,
@@ -192,7 +191,6 @@ func TestSpawn_ParentWriterMarkers(t *testing.T) {
 
 	parentSess := session.NewSession("parent-sess", home, "model", "anthropic")
 	a := &Agent{
-		Client:   client,
 		Tools:    tools.NewRegistry(),
 		Guard:    g,
 		Frontend: fe,
@@ -308,7 +306,6 @@ func TestSpawn_ChildJSONLHasUserMessage(t *testing.T) {
 
 	parentSess := session.NewSession("parent", home, "model", "anthropic")
 	a := &Agent{
-		Client:   client,
 		Tools:    tools.NewRegistry(),
 		Guard:    g,
 		Frontend: fe,
@@ -372,7 +369,6 @@ func TestSpawn_ChildJSONLHasSessionEnd(t *testing.T) {
 
 	parentSess := session.NewSession("parent", home, "model", "anthropic")
 	a := &Agent{
-		Client:   client,
 		Tools:    tools.NewRegistry(),
 		Guard:    g,
 		Frontend: fe,

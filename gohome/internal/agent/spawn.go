@@ -76,9 +76,8 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 		sys = a.System
 	}
 
-	// Build the child Agent (shares Client / Guard / Frontend with parent).
+	// Build the child Agent (shares Guard / Frontend with parent).
 	childAgent := &Agent{
-		Client:         a.Client,
 		Tools:          a.Tools.Without("subagent"),
 		Guard:          a.Guard,
 		Frontend:       a.Frontend,

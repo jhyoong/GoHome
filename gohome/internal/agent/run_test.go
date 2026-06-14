@@ -77,7 +77,6 @@ func newTestAgentWithGuard(t *testing.T, client common.Client, fe *fakeRecorder,
 
 	sess := session.NewSession("sess-run", dir, "model", "anthropic")
 	a := &Agent{
-		Client:   client,
 		Tools:    reg,
 		Guard:    g,
 		Frontend: fe,

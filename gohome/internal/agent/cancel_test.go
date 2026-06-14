@@ -56,7 +56,6 @@ func TestRun_CancelMidTurn(t *testing.T) {
 	g := guardNewYolo(wl)
 
 	a := &Agent{
-		Client:   client,
 		Tools:    tools.NewRegistry(),
 		Guard:    g,
 		Frontend: fe,

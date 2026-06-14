@@ -357,7 +357,6 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 	state := agent.NewSessionState(sess, writer, client)
 
 	a := &agent.Agent{
-		Client:         client,
 		Tools:          registry,
 		Guard:          g,
 		Frontend:       fe,
