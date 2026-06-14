@@ -24,7 +24,7 @@ func TestLoad(t *testing.T) {
 		ParentID:  "parent-1",
 		CWD:       "/tmp/proj",
 		Model:     "gpt-4o",
-		Endpoint:  "https://api.example.com",
+		ModelConfig: "https://api.example.com",
 		Depth:     1,
 		StartedAt: startedAt,
 	})
@@ -81,8 +81,8 @@ func TestLoad(t *testing.T) {
 	if sess.Model != "gpt-4o" {
 		t.Errorf("sess.Model = %q, want %q", sess.Model, "gpt-4o")
 	}
-	if sess.Endpoint != "https://api.example.com" {
-		t.Errorf("sess.Endpoint = %q, want %q", sess.Endpoint, "https://api.example.com")
+	if sess.ModelConfig != "https://api.example.com" {
+		t.Errorf("sess.ModelConfig = %q, want %q", sess.ModelConfig, "https://api.example.com")
 	}
 	if sess.Depth != 1 {
 		t.Errorf("sess.Depth = %d, want 1", sess.Depth)

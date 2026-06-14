@@ -67,7 +67,7 @@ func assertTSPresent(t *testing.T, m map[string]json.RawMessage) {
 }
 
 func TestEncodeSessionStart(t *testing.T) {
-	ev := SessionStart{ID: "s1", ParentID: "p1", CWD: "/home", Model: "gpt-4o", Endpoint: "https://x", Depth: 2}
+	ev := SessionStart{ID: "s1", ParentID: "p1", CWD: "/home", Model: "gpt-4o", ModelConfig: "https://x", Depth: 2}
 	b, err := Encode(ev)
 	if err != nil {
 		t.Fatalf("Encode: %v", err)

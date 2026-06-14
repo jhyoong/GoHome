@@ -15,7 +15,7 @@ import (
 // conversation history.
 //
 // Event types handled:
-//   - session_start  -> Session metadata (id, cwd, model, endpoint, depth, parentId, startedAt)
+//   - session_start  -> Session metadata (id, cwd, model, modelConfig, depth, parentId, startedAt)
 //   - user_message   -> common.Message{Role: RoleUser}
 //   - assistant_message -> common.Message{Role: RoleAssistant}
 //   - tool_result    -> common.Message{Role: RoleTool, single BlockToolResult}
@@ -54,7 +54,7 @@ func Load(path string) (*Session, []common.Message, error) {
 				ParentID  string    `json:"parentId"`
 				CWD       string    `json:"cwd"`
 				Model     string    `json:"model"`
-				Endpoint  string    `json:"endpoint"`
+				ModelConfig string  `json:"modelConfig"`
 				Depth     int       `json:"depth"`
 				StartedAt time.Time `json:"startedAt"`
 				TS        string    `json:"ts"`
@@ -62,7 +62,7 @@ func Load(path string) (*Session, []common.Message, error) {
 			if err := json.Unmarshal([]byte(line), &ev); err != nil {
 				continue
 			}
-			sess = NewSession(ev.ID, ev.CWD, ev.Model, ev.Endpoint)
+			sess = NewSession(ev.ID, ev.CWD, ev.Model, ev.ModelConfig)
 			sess.ParentID = ev.ParentID
 			sess.Depth = ev.Depth
 			// Prefer explicit StartedAt field; fall back to envelope ts.

@@ -36,7 +36,7 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 		parent = session.NewSession("", ".", "", "")
 	}
 
-	child := session.NewSession(childID, parent.CWD(), parent.Model, parent.Endpoint)
+	child := session.NewSession(childID, parent.CWD(), parent.Model, parent.ModelConfig)
 	child.Depth = 1
 	child.ParentID = parent.ID
 
@@ -62,7 +62,7 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 		ParentID:  parent.ID,
 		CWD:       parent.CWD(),
 		Model:     parent.Model,
-		Endpoint:  parent.Endpoint,
+		ModelConfig: parent.ModelConfig,
 		Depth:     1,
 		StartedAt: child.StartedAt,
 	})

@@ -15,7 +15,7 @@ type SessionStart struct {
 	ParentID  string    `json:"parentId"`
 	CWD       string    `json:"cwd"`
 	Model     string    `json:"model"`
-	Endpoint  string    `json:"endpoint"`
+	ModelConfig string  `json:"modelConfig"`
 	Depth     int       `json:"depth"`
 	StartedAt time.Time `json:"startedAt"`
 }

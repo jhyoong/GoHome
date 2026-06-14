@@ -12,8 +12,8 @@ type Session struct {
 	ID        string
 	Depth     int
 	ParentID  string
-	Model     string
-	Endpoint  string
+	Model       string
+	ModelConfig string
 	History   []common.Message
 	StartedAt time.Time
 
@@ -24,12 +24,12 @@ type Session struct {
 
 // NewSession creates a new Session with the given parameters.
 // StartedAt is set to time.Now().UTC().
-func NewSession(id, cwd, model, endpoint string) *Session {
+func NewSession(id, cwd, model, modelConfig string) *Session {
 	return &Session{
-		ID:        id,
-		cwd:       cwd,
-		Model:     model,
-		Endpoint:  endpoint,
+		ID:          id,
+		cwd:         cwd,
+		Model:       model,
+		ModelConfig: modelConfig,
 		StartedAt: time.Now().UTC(),
 		readFiles: make(map[string]struct{}),
 	}
