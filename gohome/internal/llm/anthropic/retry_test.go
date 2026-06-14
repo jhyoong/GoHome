@@ -35,7 +35,7 @@ func TestClientStream_RetryOn5xx(t *testing.T) {
 	defer srv.Close()
 
 	ep := config.ModelConfig{
-		BaseURL:      srv.URL,
+		BaseURL:   srv.URL,
 		ModelName: "claude-3-5-haiku-20241022",
 	}
 	client := New(ep, "test-key")
@@ -72,7 +72,7 @@ func TestClientStream_NoRetryOn4xx(t *testing.T) {
 	defer srv.Close()
 
 	ep := config.ModelConfig{
-		BaseURL:      srv.URL,
+		BaseURL:   srv.URL,
 		ModelName: "claude-3-5-haiku-20241022",
 	}
 	client := New(ep, "test-key")
@@ -102,7 +102,7 @@ func TestClientStream_NoRetryOnContextCancel(t *testing.T) {
 	defer srv.Close()
 
 	ep := config.ModelConfig{
-		BaseURL:      srv.URL,
+		BaseURL:   srv.URL,
 		ModelName: "claude-3-5-haiku-20241022",
 	}
 	client := New(ep, "test-key")

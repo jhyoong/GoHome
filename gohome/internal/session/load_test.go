@@ -20,13 +20,13 @@ func TestLoad(t *testing.T) {
 
 	// SessionStart
 	w.Emit(SessionStart{
-		ID:        "sess-load",
-		ParentID:  "parent-1",
-		CWD:       "/tmp/proj",
-		Model:     "gpt-4o",
+		ID:          "sess-load",
+		ParentID:    "parent-1",
+		CWD:         "/tmp/proj",
+		Model:       "gpt-4o",
 		ModelConfig: "https://api.example.com",
-		Depth:     1,
-		StartedAt: startedAt,
+		Depth:       1,
+		StartedAt:   startedAt,
 	})
 
 	// UserMessage

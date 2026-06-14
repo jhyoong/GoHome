@@ -50,14 +50,14 @@ func Load(path string) (*Session, []common.Message, error) {
 		switch envelope.Type {
 		case "session_start":
 			var ev struct {
-				ID        string    `json:"id"`
-				ParentID  string    `json:"parentId"`
-				CWD       string    `json:"cwd"`
-				Model     string    `json:"model"`
-				ModelConfig string  `json:"modelConfig"`
-				Depth     int       `json:"depth"`
-				StartedAt time.Time `json:"startedAt"`
-				TS        string    `json:"ts"`
+				ID          string    `json:"id"`
+				ParentID    string    `json:"parentId"`
+				CWD         string    `json:"cwd"`
+				Model       string    `json:"model"`
+				ModelConfig string    `json:"modelConfig"`
+				Depth       int       `json:"depth"`
+				StartedAt   time.Time `json:"startedAt"`
+				TS          string    `json:"ts"`
 			}
 			if err := json.Unmarshal([]byte(line), &ev); err != nil {
 				continue

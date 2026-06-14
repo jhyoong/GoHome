@@ -39,7 +39,7 @@ func TestClientStream_TextFixture(t *testing.T) {
 	defer srv.Close()
 
 	ep := config.ModelConfig{
-		BaseURL:      srv.URL,
+		BaseURL:   srv.URL,
 		ModelName: "gpt-4o",
 	}
 	client := New(ep, "test-key")
@@ -106,7 +106,7 @@ func TestClientStream_HTTPError(t *testing.T) {
 	defer srv.Close()
 
 	ep := config.ModelConfig{
-		BaseURL:      srv.URL,
+		BaseURL:   srv.URL,
 		ModelName: "gpt-4o",
 	}
 	client := New(ep, "bad-key")
@@ -134,9 +134,9 @@ func TestClientStream_CustomHeaders(t *testing.T) {
 	defer srv.Close()
 
 	ep := config.ModelConfig{
-		BaseURL:      srv.URL,
+		BaseURL:   srv.URL,
 		ModelName: "gpt-4o",
-		Headers:      map[string]string{"X-Custom-Header": "myvalue"},
+		Headers:   map[string]string{"X-Custom-Header": "myvalue"},
 	}
 	client := New(ep, "test-key")
 

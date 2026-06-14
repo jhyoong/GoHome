@@ -9,13 +9,13 @@ import (
 
 // Session holds all state for one agent session.
 type Session struct {
-	ID        string
-	Depth     int
-	ParentID  string
+	ID          string
+	Depth       int
+	ParentID    string
 	Model       string
 	ModelConfig string
-	History   []common.Message
-	StartedAt time.Time
+	History     []common.Message
+	StartedAt   time.Time
 
 	cwd       string
 	mu        sync.RWMutex
@@ -30,8 +30,8 @@ func NewSession(id, cwd, model, modelConfig string) *Session {
 		cwd:         cwd,
 		Model:       model,
 		ModelConfig: modelConfig,
-		StartedAt: time.Now().UTC(),
-		readFiles: make(map[string]struct{}),
+		StartedAt:   time.Now().UTC(),
+		readFiles:   make(map[string]struct{}),
 	}
 }
 
