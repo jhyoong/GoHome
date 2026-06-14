@@ -36,7 +36,7 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 		parent = session.NewSession("", ".", "", "")
 	}
 
-	child := session.NewSession(childID, parent.CWD(), parent.Model, parent.Endpoint)
+	child := session.NewSession(childID, parent.CWD(), parent.Model, parent.ModelConfig)
 	child.Depth = 1
 	child.ParentID = parent.ID
 
@@ -58,13 +58,13 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 
 	// Write the child session start event.
 	cw.Emit(session.SessionStart{
-		ID:        childID,
-		ParentID:  parent.ID,
-		CWD:       parent.CWD(),
-		Model:     parent.Model,
-		Endpoint:  parent.Endpoint,
-		Depth:     1,
-		StartedAt: child.StartedAt,
+		ID:          childID,
+		ParentID:    parent.ID,
+		CWD:         parent.CWD(),
+		Model:       parent.Model,
+		ModelConfig: parent.ModelConfig,
+		Depth:       1,
+		StartedAt:   child.StartedAt,
 	})
 
 	// Write the task as the child's first user message event.
@@ -76,13 +76,12 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 		sys = a.System
 	}
 
-	// Build the child Agent (shares Client / Guard / Frontend with parent).
+	// Build the child Agent (shares Guard / Frontend with parent).
 	childAgent := &Agent{
-		Client:         a.Client,
 		Tools:          a.Tools.Without("subagent"),
 		Guard:          a.Guard,
 		Frontend:       a.Frontend,
-		State:          NewSessionState(child, cw),
+		State:          NewSessionState(child, cw, a.State.Client()),
 		System:         sys,
 		MaxTokens:      a.MaxTokens,
 		ThinkingBudget: a.ThinkingBudget,

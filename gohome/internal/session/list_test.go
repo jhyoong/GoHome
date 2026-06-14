@@ -17,7 +17,7 @@ func writeTestJSONL(t *testing.T, home, cwd, id string, startedAt time.Time, use
 	if err != nil {
 		t.Fatalf("OpenWriter: %v", err)
 	}
-	w.Emit(SessionStart{ID: id, CWD: cwd, Model: "m", Endpoint: "e", Depth: 0, StartedAt: startedAt})
+	w.Emit(SessionStart{ID: id, CWD: cwd, Model: "m", ModelConfig: "e", Depth: 0, StartedAt: startedAt})
 	w.Emit(UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: userText}}})
 	w.Emit(SessionEnd{Reason: "done"})
 	if err := w.Close(); err != nil {
@@ -155,7 +155,7 @@ func writeBlankJSONL(t *testing.T, home, cwd, id string, startedAt time.Time) st
 	if err != nil {
 		t.Fatalf("OpenWriter: %v", err)
 	}
-	w.Emit(SessionStart{ID: id, CWD: cwd, Model: "m", Endpoint: "e", Depth: 0, StartedAt: startedAt})
+	w.Emit(SessionStart{ID: id, CWD: cwd, Model: "m", ModelConfig: "e", Depth: 0, StartedAt: startedAt})
 	w.Emit(SessionEnd{Reason: "user_quit"})
 	if err := w.Close(); err != nil {
 		t.Fatalf("Close: %v", err)

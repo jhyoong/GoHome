@@ -19,7 +19,7 @@ func TestWriter(t *testing.T) {
 		t.Fatalf("OpenWriter: %v", err)
 	}
 
-	w.Emit(SessionStart{ID: "s1", CWD: "/tmp", Model: "m", Endpoint: "e"})
+	w.Emit(SessionStart{ID: "s1", CWD: "/tmp", Model: "m", ModelConfig: "e"})
 	w.Emit(UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: "hello"}}})
 	w.Emit(SessionEnd{Reason: "done"})
 

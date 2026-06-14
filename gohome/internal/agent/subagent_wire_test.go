@@ -14,11 +14,10 @@ func TestRegisterSubagentTool(t *testing.T) {
 	fe := &fakeRecorder{}
 
 	a := &Agent{
-		Client:   nil, // not needed for this test
 		Tools:    tools.NewRegistry(),
 		Guard:    g,
 		Frontend: fe,
-		State:    NewSessionState(nil, nil),
+		State:    NewSessionState(nil, nil, nil),
 		System:   "sys",
 	}
 

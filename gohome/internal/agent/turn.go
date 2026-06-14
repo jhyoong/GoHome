@@ -31,7 +31,7 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, error)
 		ThinkingBudget: a.ThinkingBudget,
 	}
 
-	events, err := a.Client.Stream(ctx, req)
+	events, err := a.State.Client().Stream(ctx, req)
 	if err != nil {
 		return "", err
 	}

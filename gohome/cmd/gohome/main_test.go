@@ -76,10 +76,10 @@ func TestRunLoop_CancelMidTurn(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = writer.Close() })
 
-	state := agent.NewSessionState(sess, writer)
+	client := &blockingClient{bgCtx: bgCtx}
+	state := agent.NewSessionState(sess, writer, client)
 
 	a := &agent.Agent{
-		Client:   &blockingClient{bgCtx: bgCtx},
 		Tools:    tools.NewRegistry(),
 		Guard:    g,
 		Frontend: fe,
@@ -190,11 +190,11 @@ func TestConcurrentSwapAndRun(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = writer.Close() })
 
-	state := agent.NewSessionState(sess, writer)
+	client := &blockingClient{bgCtx: bgCtx}
+	state := agent.NewSessionState(sess, writer, client)
 	t.Cleanup(func() { _ = state.Writer().Close() })
 
 	a := &agent.Agent{
-		Client:   &blockingClient{bgCtx: bgCtx},
 		Tools:    tools.NewRegistry(),
 		Guard:    g,
 		Frontend: fe,
@@ -239,7 +239,7 @@ func TestConcurrentSwapAndRun(t *testing.T) {
 	newSess := session.NewSession("swapped", t.TempDir(), "model", "ep")
 	newWriterPath := t.TempDir() + "/swapped.jsonl"
 
-	queued, err := state.Swap("new swapped", func() (*session.Session, *session.Writer, error) {
+	queued, err := state.Swap("new swapped", func(_ *session.Session, _ *session.Writer) (*session.Session, *session.Writer, error) {
 		newW, err := session.OpenWriter(newWriterPath)
 		if err != nil {
 			return nil, nil, err

@@ -10,7 +10,7 @@ import (
 )
 
 func TestNew_Anthropic(t *testing.T) {
-	c, err := llm.New(config.Endpoint{Wire: config.WireAnthropic, BaseURL: "http://x"}, "key")
+	c, err := llm.New(config.ModelConfig{Wire: config.WireAnthropic, BaseURL: "http://x"}, "key")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -20,7 +20,7 @@ func TestNew_Anthropic(t *testing.T) {
 }
 
 func TestNew_OpenAI(t *testing.T) {
-	c, err := llm.New(config.Endpoint{Wire: config.WireOpenAI, BaseURL: "http://x"}, "key")
+	c, err := llm.New(config.ModelConfig{Wire: config.WireOpenAI, BaseURL: "http://x"}, "key")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -30,7 +30,7 @@ func TestNew_OpenAI(t *testing.T) {
 }
 
 func TestNew_UnknownWire(t *testing.T) {
-	c, err := llm.New(config.Endpoint{Wire: "bogus"}, "key")
+	c, err := llm.New(config.ModelConfig{Wire: "bogus"}, "key")
 	if err == nil {
 		t.Fatalf("want error for unknown wire, got client %v", c)
 	}

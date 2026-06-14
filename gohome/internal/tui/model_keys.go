@@ -13,45 +13,18 @@ import (
 )
 
 // handleKeyMsg is the top-level key dispatch. It implements a priority cascade:
-// Ctrl+C, approval mode, fullscreen overlays, Esc-during-spinner, modal
-// components, then normal editing/navigation keys.
+// Ctrl+C, approval mode, activeModal, then normal editing/navigation keys.
 func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// 1. Ctrl+C double-tap / cancel
 	if msg.Type == tea.KeyCtrlC {
 		return m.handleCtrlC()
 	}
-
-	// 2. Approval mode
 	if m.activeApproval != nil {
 		return m, m.handleApprovalKey(msg)
 	}
-
-	// 3. Fullscreen overlays
-	if m.showTokens {
-		return m.handleTokensKey(msg)
+	if m.activeModal != nil {
+		cmd := m.activeModal.HandleInput(msg)
+		return m, cmd
 	}
-	if m.showHelp {
-		return m.handleHelpKey(msg)
-	}
-
-	// 4. Esc-during-spinner
-	if msg.Type == tea.KeyEsc && m.spinner.Active() &&
-		!m.browsing && !m.selectingModel {
-		m.spinner.HandleInput(msg)
-		return m, nil
-	}
-
-	// 5. Modal components
-	if m.browsing && m.sessionBrowser != nil {
-		m.sessionBrowser.HandleInput(msg)
-		return m, nil
-	}
-	if m.selectingModel && m.modelSelector != nil {
-		m.modelSelector.HandleInput(msg)
-		return m, nil
-	}
-
-	// 6. Normal mode
 	return m.handleNormalKey(msg)
 }
 
@@ -87,6 +60,11 @@ func (m *Model) handleCtrlC() (tea.Model, tea.Cmd) {
 // enter/submit, external editor, file search navigation, timeline cursor,
 // clipboard copy, and editor text input with @-query file search.
 func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if msg.Type == tea.KeyEsc && m.spinner.Active() {
+		m.spinner.HandleInput(msg)
+		return m, nil
+	}
+
 	var cmds []tea.Cmd
 
 	switch msg.Type {
@@ -95,8 +73,11 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyCtrlOpenBracket:
 		m.focusPrev()
 	case tea.KeyCtrlH:
-		m.showHelp = true
-		m.helpScroll = 0
+		helpH := m.winH - stripHeight - statusHeight - 2
+		if helpH < 1 {
+			helpH = 1
+		}
+		m.activeModal = NewHelpOverlay(helpH, func() { m.activeModal = nil })
 		return m, nil
 	case tea.KeyPgUp:
 		m.chat.ScrollUp(5)

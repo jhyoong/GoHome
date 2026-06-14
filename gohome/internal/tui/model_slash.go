@@ -14,7 +14,7 @@ import (
 
 // slashCommands is the static list of available slash commands.
 var slashCommands = []string{
-	"/help", "/new", "/resume", "/yolo", "/endpoint", "/model", "/cancel", "/tokens", "/quit",
+	"/help", "/new", "/resume", "/yolo", "/model", "/cancel", "/tokens", "/quit",
 }
 
 // slashComplete returns all commands in slashCommands that have prefix as a prefix.
@@ -50,12 +50,18 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 			m.onYoloChange(m.yolo)
 		}
 	case "/help":
-		m.showHelp = true
-		m.helpScroll = 0
+		helpH := m.winH - stripHeight - statusHeight - 2
+		if helpH < 1 {
+			helpH = 1
+		}
+		m.activeModal = NewHelpOverlay(helpH, func() { m.activeModal = nil })
 		m.statusMsg = ""
 	case "/tokens":
-		m.showTokens = true
-		m.statusMsg = ""
+		sv := m.sessions[m.focused]
+		if sv != nil {
+			m.activeModal = NewTokensOverlay(sv, m.modelName, m.contextWindow, func() { m.activeModal = nil })
+			m.statusMsg = ""
+		}
 	case "/cancel":
 		m.cancelFocusedSession()
 	case "/new":
@@ -88,8 +94,7 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 		}
 		sb := NewSessionBrowser(listings)
 		sb.SetOnSelect(func(id string) {
-			m.browsing = false
-			m.sessionBrowser = nil
+			m.activeModal = nil
 			var history []common.Message
 			if m.slashCB.ResumeSession != nil {
 				var err error
@@ -107,8 +112,7 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 			m.rebuildViewport()
 		})
 		sb.SetOnCancel(func() {
-			m.browsing = false
-			m.sessionBrowser = nil
+			m.activeModal = nil
 		})
 		sb.SetOnDelete(func(l session.Listing) {
 			_ = os.Remove(l.Path)
@@ -117,17 +121,20 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 		if len(fields) >= 2 {
 			sb.SetFilter(fields[1])
 		}
-		m.sessionBrowser = sb
-		m.browsing = true
+		m.activeModal = sb
 	case "/model":
 		if len(fields) >= 2 {
 			name := fields[1]
 			if m.slashCB.SetModel != nil {
-				err := m.slashCB.SetModel(name)
+				model, ctxWin, err := m.slashCB.SetModel(name)
 				if err != nil {
 					m.statusMsg = fmt.Sprintf("/model: %v", err)
 				} else {
-					m.modelName = name
+					m.modelName = model
+					if ctxWin > 0 {
+						m.contextWindow = ctxWin
+					}
+					m.settings.DefaultModel = name
 					m.statusMsg = "Model set to " + name
 				}
 			} else {
@@ -135,30 +142,33 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 			}
 			break
 		}
-		if len(m.settings.Endpoints) == 0 {
+		if len(m.settings.ModelConfig) == 0 {
 			m.statusMsg = fmt.Sprintf("Current model: %s", m.modelName)
 			break
 		}
-		ms := NewModelSelector(m.settings.Endpoints, m.settings.DefaultEndpoint)
-		ms.SetOnSelect(func(endpoint, model string) {
-			m.selectingModel = false
-			m.modelSelector = nil
-			if m.slashCB.SetModel != nil {
-				if err := m.slashCB.SetModel(model); err != nil {
-					m.statusMsg = fmt.Sprintf("/model: %v", err)
-					return
-				}
+		ms := NewModelSelector(m.settings.ModelConfig, m.settings.DefaultModel)
+		ms.SetOnSelect(func(configName, _ string) {
+			m.activeModal = nil
+			if m.slashCB.SetModel == nil {
+				m.statusMsg = "/model: not configured"
+				return
+			}
+			model, ctxWin, err := m.slashCB.SetModel(configName)
+			if err != nil {
+				m.statusMsg = fmt.Sprintf("/model: %v", err)
+				return
 			}
 			m.modelName = model
-			m.settings.DefaultEndpoint = endpoint
-			m.statusMsg = "Model set to " + model
+			if ctxWin > 0 {
+				m.contextWindow = ctxWin
+			}
+			m.settings.DefaultModel = configName
+			m.statusMsg = "Model set to " + configName
 		})
 		ms.SetOnCancel(func() {
-			m.selectingModel = false
-			m.modelSelector = nil
+			m.activeModal = nil
 		})
-		m.modelSelector = ms
-		m.selectingModel = true
+		m.activeModal = ms
 	default:
 		m.statusMsg = cmd + ": unknown command"
 	}

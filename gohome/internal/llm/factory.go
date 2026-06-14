@@ -1,5 +1,5 @@
 // Package llm provides a factory that builds the right wire-format adapter
-// for a configured endpoint.
+// for a configured model config.
 package llm
 
 import (
@@ -11,9 +11,9 @@ import (
 	"github.com/jhyoong/GoHome/gohome/internal/llm/openai"
 )
 
-// New returns a common.Client for the endpoint's wire format.
+// New returns a common.Client for the model config's wire format.
 // It returns an error for an unknown wire.
-func New(e config.Endpoint, apiKey string) (common.Client, error) {
+func New(e config.ModelConfig, apiKey string) (common.Client, error) {
 	switch e.Wire {
 	case config.WireAnthropic:
 		return anthropic.New(e, apiKey), nil

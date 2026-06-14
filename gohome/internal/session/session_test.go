@@ -20,8 +20,8 @@ func TestNewSession(t *testing.T) {
 	if s.Model != "gpt-4o" {
 		t.Errorf("Model: got %q, want %q", s.Model, "gpt-4o")
 	}
-	if s.Endpoint != "https://api.example.com" {
-		t.Errorf("Endpoint: got %q, want %q", s.Endpoint, "https://api.example.com")
+	if s.ModelConfig != "https://api.example.com" {
+		t.Errorf("ModelConfig: got %q, want %q", s.ModelConfig, "https://api.example.com")
 	}
 	if s.StartedAt.Before(before) || s.StartedAt.After(after) {
 		t.Errorf("StartedAt %v not in [%v, %v]", s.StartedAt, before, after)

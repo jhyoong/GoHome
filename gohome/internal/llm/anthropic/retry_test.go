@@ -34,9 +34,9 @@ func TestClientStream_RetryOn5xx(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ep := config.Endpoint{
-		BaseURL:      srv.URL,
-		DefaultModel: "claude-3-5-haiku-20241022",
+	ep := config.ModelConfig{
+		BaseURL:   srv.URL,
+		ModelName: "claude-3-5-haiku-20241022",
 	}
 	client := New(ep, "test-key")
 	client.backoff = []time.Duration{0, 0, 0}
@@ -71,9 +71,9 @@ func TestClientStream_NoRetryOn4xx(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ep := config.Endpoint{
-		BaseURL:      srv.URL,
-		DefaultModel: "claude-3-5-haiku-20241022",
+	ep := config.ModelConfig{
+		BaseURL:   srv.URL,
+		ModelName: "claude-3-5-haiku-20241022",
 	}
 	client := New(ep, "test-key")
 	client.backoff = []time.Duration{0, 0, 0}
@@ -101,9 +101,9 @@ func TestClientStream_NoRetryOnContextCancel(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ep := config.Endpoint{
-		BaseURL:      srv.URL,
-		DefaultModel: "claude-3-5-haiku-20241022",
+	ep := config.ModelConfig{
+		BaseURL:   srv.URL,
+		ModelName: "claude-3-5-haiku-20241022",
 	}
 	client := New(ep, "test-key")
 	client.backoff = []time.Duration{0, 0, 0}

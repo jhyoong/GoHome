@@ -32,9 +32,9 @@ func TestClientStream_RetryOn5xx(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ep := config.Endpoint{
-		BaseURL:      srv.URL,
-		DefaultModel: "gpt-4o",
+	ep := config.ModelConfig{
+		BaseURL:   srv.URL,
+		ModelName: "gpt-4o",
 	}
 	client := New(ep, "test-key")
 	client.backoff = []time.Duration{0, 0, 0}
@@ -68,9 +68,9 @@ func TestClientStream_NoRetryOn4xx(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ep := config.Endpoint{
-		BaseURL:      srv.URL,
-		DefaultModel: "gpt-4o",
+	ep := config.ModelConfig{
+		BaseURL:   srv.URL,
+		ModelName: "gpt-4o",
 	}
 	client := New(ep, "test-key")
 	client.backoff = []time.Duration{0, 0, 0}
@@ -98,9 +98,9 @@ func TestClientStream_NoRetryOnContextCancel(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ep := config.Endpoint{
-		BaseURL:      srv.URL,
-		DefaultModel: "gpt-4o",
+	ep := config.ModelConfig{
+		BaseURL:   srv.URL,
+		ModelName: "gpt-4o",
 	}
 	client := New(ep, "test-key")
 	client.backoff = []time.Duration{0, 0, 0}
