@@ -17,21 +17,14 @@ go build -ldflags "-X main.version=v0.2.3" -o bin/gohome ./gohome/cmd/gohome
 ### Run
 
 ```sh
-./bin/gohome --endpoint <name>
-```
-
-Override the model for a single run:
-
-```sh
-./bin/gohome --endpoint local-anthropic --model claude-haiku-4-5
+./bin/gohome --model <name>
 ```
 
 ### CLI flags
 
 | Flag | Description |
 |---|---|
-| `--endpoint <name>` | Select a configured endpoint by name |
-| `--model <name>` | Override the default model for this run |
+| `--model <name>` | Select a configured model config by name |
 | `--yolo` | Start with all approval prompts disabled |
 | `--resume` | Resume the most recent session for the current working directory |
 | `--version` | Print version and exit |
@@ -44,12 +37,12 @@ Override the model for a single run:
 
 ```json
 {
-  "endpoints": {
+  "modelConfig": {
     "local-anthropic": {
       "wire": "anthropic",
       "baseURL": "http://localhost:8080",
       "apiKeyEnv": "GOHOME_API_KEY",
-      "defaultModel": "claude-opus-4-7",
+      "modelName": "claude-opus-4-7",
       "contextWindow": 200000,
       "maxTokens": 16384,
       "thinkingBudget": 10240
@@ -58,13 +51,13 @@ Override the model for a single run:
       "wire": "openai",
       "baseURL": "http://localhost:8081/v1",
       "apiKeyEnv": "GOHOME_API_KEY",
-      "defaultModel": "gpt-4o",
+      "modelName": "gpt-4o",
       "contextWindow": 128000,
       "maxTokens": 16384,
       "thinkingBudget": 10240
     }
   },
-  "defaultEndpoint": "local-anthropic",
+  "defaultModel": "local-anthropic",
   "bashTimeoutMs": 120000,
   "maxBashTimeoutMs": 600000,
   "contextWarnPct": 0.80,
@@ -75,7 +68,7 @@ Override the model for a single run:
 
 Both `"anthropic"` and `"openai"` wires are supported. Set `apiKey` for a literal key or `apiKeyEnv` to read from an environment variable.
 
-**Endpoint fields:**
+**Model config fields:**
 
 | Field | Default | Description |
 |---|---|---|
@@ -83,7 +76,7 @@ Both `"anthropic"` and `"openai"` wires are supported. Set `apiKey` for a litera
 | `baseURL` | — | Base URL of the LLM endpoint |
 | `apiKey` | — | Literal API key (use `apiKeyEnv` instead to avoid storing secrets) |
 | `apiKeyEnv` | — | Environment variable name whose value is used as the API key |
-| `defaultModel` | — | Model name sent to the endpoint |
+| `modelName` | — | Model name sent to the LLM provider |
 | `contextWindow` | — | Context window size in tokens (used for usage display) |
 | `maxTokens` | `16384` | Max output tokens per LLM turn |
 | `thinkingBudget` | `10240` | Extended thinking token budget (Anthropic wire only; ignored by OpenAI) |
@@ -92,7 +85,7 @@ Both `"anthropic"` and `"openai"` wires are supported. Set `apiKey` for a litera
 
 | Field | Default | Description |
 |---|---|---|
-| `defaultEndpoint` | — | Name of the endpoint used when `--endpoint` is not passed |
+| `defaultModel` | — | Name of the model config used when `--model` is not passed |
 | `bashTimeoutMs` | `120000` | Default bash command timeout in milliseconds |
 | `maxBashTimeoutMs` | `600000` | Maximum bash command timeout in milliseconds |
 | `contextWarnPct` | `0.80` | Context window usage ratio at which a warning is shown (must be < `contextCritPct`) |
@@ -104,7 +97,7 @@ Both `"anthropic"` and `"openai"` wires are supported. Set `apiKey` for a litera
 
 ```sh
 export GOHOME_API_KEY=<your-key>
-./bin/gohome --endpoint local-anthropic
+./bin/gohome --model local-anthropic
 ```
 
 Project-level settings live in `./.gohome/settings.json` and are merged on top of global settings at startup.
@@ -150,8 +143,7 @@ When the input editor is empty, `Up` and `Down` arrow keys move a `>` cursor thr
 | `/cancel` | Cancels the current LLM turn, clears pending message queue |
 | `/new` | Starts a new session (requires backend callback via `SetSlashCallbacks`; shows "not configured" until wired) |
 | `/resume <id>` | Resumes a previous session by ID (requires backend callback; shows "not configured" until wired) |
-| `/model <name>` | Switches the active model (requires backend callback; shows "not configured" until wired). Without arguments, shows the current model name |
-| `/endpoint` | Listed in autocomplete but not yet implemented |
+| `/model <name>` | Switches the active model config (rebuilds the LLM client). Without arguments, opens a selector listing all configured model configs |
 
 ---
 
@@ -159,13 +151,13 @@ When the input editor is empty, `Up` and `Down` arrow keys move a `>` cursor thr
 
 ```
 ~/.gohome/
-  settings.json          # global endpoint config
+  settings.json          # global model config
   whitelist.json         # global auto-approve rules
   sessions/              # JSONL session transcripts, grouped by project
   logs/                  # structured log files (one per day)
 
 ./.gohome/               # project-level overrides (in the working directory)
-  settings.json          # project endpoint/model overrides
+  settings.json          # project model config overrides
   whitelist.json         # project whitelist; "Allow always" entries land here
 ```
 

@@ -13,7 +13,7 @@ A single-binary terminal coding agent written in Go. It targets custom LLM endpo
 go build -ldflags "-X main.version=dev" -o bin/gohome ./gohome/cmd/gohome
 
 # Run
-./bin/gohome --endpoint <name>
+./bin/gohome --model <name>
 ```
 
 ## Test commands

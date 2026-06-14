@@ -65,10 +65,10 @@ func TestE2ESmokeRoundtrip(t *testing.T) {
 		t.Fatal("GOHOME_E2E_API_KEY must be set")
 	}
 
-	ep := config.Endpoint{
-		Wire:         wire,
-		BaseURL:      baseURL,
-		DefaultModel: model,
+	ep := config.ModelConfig{
+		Wire:      wire,
+		BaseURL:   baseURL,
+		ModelName: model,
 	}
 
 	client, err := llm.New(ep, apiKey)
