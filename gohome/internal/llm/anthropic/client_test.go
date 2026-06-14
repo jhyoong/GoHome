@@ -32,9 +32,9 @@ func TestClientStream_TextFixture(t *testing.T) {
 	srv := serveFixture(t, "testdata/simple_text.sse")
 	defer srv.Close()
 
-	ep := config.Endpoint{
+	ep := config.ModelConfig{
 		BaseURL:      srv.URL,
-		DefaultModel: "claude-3-5-haiku-20241022",
+		ModelName: "claude-3-5-haiku-20241022",
 	}
 	client := New(ep, "test-key")
 
@@ -97,9 +97,9 @@ func TestClientStream_HTTPError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ep := config.Endpoint{
+	ep := config.ModelConfig{
 		BaseURL:      srv.URL,
-		DefaultModel: "claude-3-5-haiku-20241022",
+		ModelName: "claude-3-5-haiku-20241022",
 	}
 	client := New(ep, "bad-key")
 

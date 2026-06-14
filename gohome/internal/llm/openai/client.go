@@ -22,12 +22,12 @@ type Client struct {
 	backoff []time.Duration
 }
 
-// New creates a Client from an Endpoint and resolved API key.
-func New(e config.Endpoint, apiKey string) *Client {
+// New creates a Client from a ModelConfig and resolved API key.
+func New(e config.ModelConfig, apiKey string) *Client {
 	return &Client{
 		base:    e.BaseURL,
 		apiKey:  apiKey,
-		model:   e.DefaultModel,
+		model:   e.ModelName,
 		headers: e.Headers,
 		hc:      &http.Client{},
 		backoff: defaultRetryBackoff,
