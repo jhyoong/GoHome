@@ -29,10 +29,10 @@ import (
 var version = "dev"
 
 var (
-	modelFlag = flag.String("model", "", "model config name override")
-	yolo         = flag.Bool("yolo", false, "disable all approval prompts")
-	resume       = flag.Bool("resume", false, "resume a past session")
-	showVersion  = flag.Bool("version", false, "print version and exit")
+	modelFlag   = flag.String("model", "", "model config name override")
+	yolo        = flag.Bool("yolo", false, "disable all approval prompts")
+	resume      = flag.Bool("resume", false, "resume a past session")
+	showVersion = flag.Bool("version", false, "print version and exit")
 )
 
 // newSessionID generates an 8-char lowercase base32 session ID using crypto/rand.
@@ -291,13 +291,13 @@ func main() {
 	// Emit session_start only for fresh sessions (resume appends to existing file).
 	if !isResumed {
 		writer.Emit(session.SessionStart{
-			ID:        sess.ID,
-			ParentID:  sess.ParentID,
-			CWD:       cwd,
+			ID:          sess.ID,
+			ParentID:    sess.ParentID,
+			CWD:         cwd,
 			Model:       mc.ModelName,
 			ModelConfig: cfgName,
-			Depth:     sess.Depth,
-			StartedAt: sess.StartedAt,
+			Depth:       sess.Depth,
+			StartedAt:   sess.StartedAt,
 		})
 	}
 

@@ -34,15 +34,15 @@ type ModelConfig struct {
 
 // Settings is the top-level configuration structure.
 type Settings struct {
-	ModelConfig  map[string]ModelConfig `json:"modelConfig"`
-	DefaultModel string                 `json:"defaultModel"`
-	SystemPrompt     string              `json:"systemPrompt,omitempty"`
-	BashTimeoutMs    int                 `json:"bashTimeoutMs,omitempty"`
-	MaxBashTimeoutMs int                 `json:"maxBashTimeoutMs,omitempty"`
-	ContextWarnPct   float64             `json:"contextWarnPct,omitempty"`
-	ContextCritPct   float64             `json:"contextCritPct,omitempty"`
-	RetryBackoffMs   []int               `json:"retryBackoffMs,omitempty"`
-	RenderThrottleMs int                 `json:"renderThrottleMs,omitempty"`
+	ModelConfig      map[string]ModelConfig `json:"modelConfig"`
+	DefaultModel     string                 `json:"defaultModel"`
+	SystemPrompt     string                 `json:"systemPrompt,omitempty"`
+	BashTimeoutMs    int                    `json:"bashTimeoutMs,omitempty"`
+	MaxBashTimeoutMs int                    `json:"maxBashTimeoutMs,omitempty"`
+	ContextWarnPct   float64                `json:"contextWarnPct,omitempty"`
+	ContextCritPct   float64                `json:"contextCritPct,omitempty"`
+	RetryBackoffMs   []int                  `json:"retryBackoffMs,omitempty"`
+	RenderThrottleMs int                    `json:"renderThrottleMs,omitempty"`
 }
 
 // load reads and decodes a Settings file at path.

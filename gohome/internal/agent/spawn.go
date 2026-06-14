@@ -58,13 +58,13 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 
 	// Write the child session start event.
 	cw.Emit(session.SessionStart{
-		ID:        childID,
-		ParentID:  parent.ID,
-		CWD:       parent.CWD(),
-		Model:     parent.Model,
+		ID:          childID,
+		ParentID:    parent.ID,
+		CWD:         parent.CWD(),
+		Model:       parent.Model,
 		ModelConfig: parent.ModelConfig,
-		Depth:     1,
-		StartedAt: child.StartedAt,
+		Depth:       1,
+		StartedAt:   child.StartedAt,
 	})
 
 	// Write the task as the child's first user message event.
