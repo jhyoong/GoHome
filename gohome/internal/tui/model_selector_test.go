@@ -8,21 +8,21 @@ import (
 	"github.com/jhyoong/GoHome/gohome/internal/config"
 )
 
-func sampleEndpoints() map[string]config.Endpoint {
-	return map[string]config.Endpoint{
+func sampleModelConfigs() map[string]config.ModelConfig {
+	return map[string]config.ModelConfig{
 		"anthropic": {
-			Wire:         config.WireAnthropic,
-			DefaultModel: "claude-sonnet-4-20250514",
+			Wire:      config.WireAnthropic,
+			ModelName: "claude-sonnet-4-20250514",
 		},
 		"openai": {
-			Wire:         config.WireOpenAI,
-			DefaultModel: "gpt-4o",
+			Wire:      config.WireOpenAI,
+			ModelName: "gpt-4o",
 		},
 	}
 }
 
 func TestModelSelectorRender(t *testing.T) {
-	ms := NewModelSelector(sampleEndpoints(), "anthropic")
+	ms := NewModelSelector(sampleModelConfigs(), "anthropic")
 	lines := ms.Render(80)
 	if len(lines) < 3 {
 		t.Fatalf("expected at least 3 lines (search + 2 items), got %d", len(lines))
@@ -34,7 +34,7 @@ func TestModelSelectorRender(t *testing.T) {
 }
 
 func TestModelSelectorCurrentFirst(t *testing.T) {
-	ms := NewModelSelector(sampleEndpoints(), "openai")
+	ms := NewModelSelector(sampleModelConfigs(), "openai")
 	lines := ms.Render(80)
 	firstItem := StripAnsi(lines[1])
 	if !strings.Contains(firstItem, "openai") {
@@ -43,7 +43,7 @@ func TestModelSelectorCurrentFirst(t *testing.T) {
 }
 
 func TestModelSelectorCurrentMarked(t *testing.T) {
-	ms := NewModelSelector(sampleEndpoints(), "anthropic")
+	ms := NewModelSelector(sampleModelConfigs(), "anthropic")
 	lines := ms.Render(80)
 	joined := StripAnsi(strings.Join(lines, "\n"))
 	if !strings.Contains(joined, "(current)") {
@@ -53,7 +53,7 @@ func TestModelSelectorCurrentMarked(t *testing.T) {
 
 func TestModelSelectorSelectReturnsModelName(t *testing.T) {
 	var gotEndpoint, gotModel string
-	ms := NewModelSelector(sampleEndpoints(), "anthropic")
+	ms := NewModelSelector(sampleModelConfigs(), "anthropic")
 	ms.SetOnSelect(func(endpoint, model string) {
 		gotEndpoint = endpoint
 		gotModel = model
@@ -67,7 +67,7 @@ func TestModelSelectorSelectReturnsModelName(t *testing.T) {
 
 func TestModelSelectorCancel(t *testing.T) {
 	cancelled := false
-	ms := NewModelSelector(sampleEndpoints(), "anthropic")
+	ms := NewModelSelector(sampleModelConfigs(), "anthropic")
 	ms.SetOnCancel(func() { cancelled = true })
 	ms.list.HandleInput(tea.KeyMsg{Type: tea.KeyEsc})
 	if !cancelled {

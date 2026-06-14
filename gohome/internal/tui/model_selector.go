@@ -8,27 +8,27 @@ import (
 )
 
 type ModelSelectorComponent struct {
-	list      *SelectListComponent
-	endpoints map[string]config.Endpoint
+	list    *SelectListComponent
+	configs map[string]config.ModelConfig
 }
 
-func NewModelSelector(endpoints map[string]config.Endpoint, currentEndpoint string) *ModelSelectorComponent {
-	names := make([]string, 0, len(endpoints))
-	for name := range endpoints {
-		if name != currentEndpoint {
+func NewModelSelector(configs map[string]config.ModelConfig, current string) *ModelSelectorComponent {
+	names := make([]string, 0, len(configs))
+	for name := range configs {
+		if name != current {
 			names = append(names, name)
 		}
 	}
 	sort.Strings(names)
-	if _, ok := endpoints[currentEndpoint]; ok {
-		names = append([]string{currentEndpoint}, names...)
+	if _, ok := configs[current]; ok {
+		names = append([]string{current}, names...)
 	}
 
 	items := make([]SelectItem, len(names))
 	for i, name := range names {
-		ep := endpoints[name]
-		desc := ep.DefaultModel
-		if name == currentEndpoint {
+		ep := configs[name]
+		desc := ep.ModelName
+		if name == current {
 			desc += " (current)"
 		}
 		items[i] = SelectItem{
@@ -39,16 +39,16 @@ func NewModelSelector(endpoints map[string]config.Endpoint, currentEndpoint stri
 	}
 
 	ms := &ModelSelectorComponent{
-		list:      NewSelectList(items, nil),
-		endpoints: endpoints,
+		list:    NewSelectList(items, nil),
+		configs: configs,
 	}
 	return ms
 }
 
 func (ms *ModelSelectorComponent) SetOnSelect(fn func(endpoint, model string)) {
 	ms.list.onSelect = func(item SelectItem) {
-		ep := ms.endpoints[item.Value]
-		fn(item.Value, ep.DefaultModel)
+		ep := ms.configs[item.Value]
+		fn(item.Value, ep.ModelName)
 	}
 }
 
