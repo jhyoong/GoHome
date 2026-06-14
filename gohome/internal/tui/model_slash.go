@@ -14,7 +14,7 @@ import (
 
 // slashCommands is the static list of available slash commands.
 var slashCommands = []string{
-	"/help", "/new", "/resume", "/yolo", "/endpoint", "/model", "/cancel", "/tokens", "/quit",
+	"/help", "/new", "/resume", "/yolo", "/model", "/cancel", "/tokens", "/quit",
 }
 
 // slashComplete returns all commands in slashCommands that have prefix as a prefix.
@@ -126,11 +126,15 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 		if len(fields) >= 2 {
 			name := fields[1]
 			if m.slashCB.SetModel != nil {
-				err := m.slashCB.SetModel(name)
+				model, ctxWin, err := m.slashCB.SetModel(name)
 				if err != nil {
 					m.statusMsg = fmt.Sprintf("/model: %v", err)
 				} else {
-					m.modelName = name
+					m.modelName = model
+					if ctxWin > 0 {
+						m.contextWindow = ctxWin
+					}
+					m.settings.DefaultModel = name
 					m.statusMsg = "Model set to " + name
 				}
 			} else {
@@ -138,55 +142,33 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 			}
 			break
 		}
-		if len(m.settings.Endpoints) == 0 {
+		if len(m.settings.ModelConfig) == 0 {
 			m.statusMsg = fmt.Sprintf("Current model: %s", m.modelName)
 			break
 		}
-		ms := NewModelSelector(m.settings.Endpoints, m.settings.DefaultEndpoint)
-		ms.SetOnSelect(func(endpoint, model string) {
+		ms := NewModelSelector(m.settings.ModelConfig, m.settings.DefaultModel)
+		ms.SetOnSelect(func(configName, model string) {
 			m.activeModal = nil
-			if m.slashCB.SetModel != nil {
-				if err := m.slashCB.SetModel(model); err != nil {
-					m.statusMsg = fmt.Sprintf("/model: %v", err)
-					return
-				}
-			}
-			m.modelName = model
-			m.settings.DefaultEndpoint = endpoint
-			m.statusMsg = "Model set to " + model
-		})
-		ms.SetOnCancel(func() {
-			m.activeModal = nil
-		})
-		m.activeModal = ms
-	case "/endpoint":
-		if len(m.settings.Endpoints) == 0 {
-			m.statusMsg = "/endpoint: no endpoints configured"
-			break
-		}
-		es := NewModelSelector(m.settings.Endpoints, m.settings.DefaultEndpoint)
-		es.SetOnSelect(func(endpoint, _ string) {
-			m.activeModal = nil
-			if m.slashCB.SetEndpoint == nil {
-				m.statusMsg = "/endpoint: not configured"
+			if m.slashCB.SetModel == nil {
+				m.statusMsg = "/model: not configured"
 				return
 			}
-			model, ctxWin, err := m.slashCB.SetEndpoint(endpoint)
+			model, ctxWin, err := m.slashCB.SetModel(configName)
 			if err != nil {
-				m.statusMsg = fmt.Sprintf("/endpoint: %v", err)
+				m.statusMsg = fmt.Sprintf("/model: %v", err)
 				return
 			}
 			m.modelName = model
 			if ctxWin > 0 {
 				m.contextWindow = ctxWin
 			}
-			m.settings.DefaultEndpoint = endpoint
-			m.statusMsg = "Endpoint set to " + endpoint
+			m.settings.DefaultModel = configName
+			m.statusMsg = "Model set to " + configName
 		})
-		es.SetOnCancel(func() {
+		ms.SetOnCancel(func() {
 			m.activeModal = nil
 		})
-		m.activeModal = es
+		m.activeModal = ms
 	default:
 		m.statusMsg = cmd + ": unknown command"
 	}
