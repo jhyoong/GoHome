@@ -104,13 +104,18 @@ func runLoop(
 	turnCancel *context.CancelFunc,
 ) {
 	for {
-		sess := a.State.Session()
-		writer := a.State.Writer()
+		sessID := a.State.Session().ID
 
-		text, err := fe.AwaitUserInput(ctx, sess.ID)
+		text, err := fe.AwaitUserInput(ctx, sessID)
 		if err != nil {
 			return
 		}
+
+		// Re-fetch after blocking: the session and writer may have been
+		// swapped (via /resume or /new) while we waited for input.
+		sess := a.State.Session()
+		writer := a.State.Writer()
+
 		sess.History = append(sess.History, common.Message{
 			Role: common.RoleUser,
 			Content: []common.Block{

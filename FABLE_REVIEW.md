@@ -92,7 +92,7 @@ Suggested fix (KISS): in `buildOpenAIBody` (`request.go:92-98`), flatten
 (the builder already owns the `msgs []any` slice). Add a translate test with
 two results in one message.
 
-### H4. `tui.Model` is a god object with a modal mega-Update — VERIFIED — PARTIALLY RESOLVED in v0.2.3
+### H4. `tui.Model` is a god object with a modal mega-Update — VERIFIED — RESOLVED in v0.2.4
 
 `gohome/internal/tui/model.go` is 1407 lines; the next-largest production file
 is `main.go` at 449. `Model` has roughly 30 fields spanning every concern
@@ -138,7 +138,7 @@ Suggested fix (KISS): add a shared helper in `llm/common`, e.g.
 plus a shared event-pump. Each adapter keeps only body building, headers/URL,
 and translation (legitimately wire-specific). Delete both `retry.go` files.
 
-### M2. `/endpoint` and `/model` are half-implemented — VERIFIED
+### M2. `/endpoint` and `/model` are half-implemented — VERIFIED — RESOLVED in v0.2.4
 
 - `/endpoint` is listed in `slashCommands` (`model.go:1011`) and documented in
   the help overlay (`gohome/internal/tui/help.go:26`), but `handleSlashCommand`
@@ -368,8 +368,7 @@ re-checked against the current source.
 
 1. ~~H1 + H2 together~~ -- Done in v0.2.3 (PR #9). Per-turn cancellation and mutex-guarded `agent.State`.
 2. ~~H3~~ -- Done in v0.2.3 (PR #10). OpenAI adapter flattens tool results correctly.
-3. M2, M3, M8: small correctness/consistency fixes, each under an hour of
-   review surface, no design decisions needed.
-4. ~~H4 (partial)~~ and M1: H4 partially addressed in v0.2.3 (PR #9, model split into subfiles). M1 (LLM client scaffold dedup) and further H4 work (mode delegation) remain.
+3. ~~M2~~, M3, M8: M2 resolved in v0.2.4 (PR #13, consolidated `/model` command with runtime client rebuild). M3 and M8 remain as small correctness/consistency fixes.
+4. ~~H4~~ and M1: H4 fully resolved in v0.2.4 (PR #13, `activeModal` slot with `Interactive` interface). M1 (LLM client scaffold dedup) remains.
 5. M4-M7, L1-L4: opportunistic cleanups; safe to batch or do when touching
    the surrounding code.
