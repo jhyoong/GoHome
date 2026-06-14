@@ -9,18 +9,18 @@ import (
 	"testing"
 )
 
-// Task 2.1: Endpoint + Settings structs
-func TestSettings_ParseEndpoint(t *testing.T) {
-	raw := `{"endpoints":{"e1":{"wire":"anthropic","baseURL":"http://x","apiKeyEnv":"K","defaultModel":"m","contextWindow":200000}},"defaultEndpoint":"e1"}`
+// Task 2.1: ModelConfig + Settings structs
+func TestSettings_ParseModelConfig(t *testing.T) {
+	raw := `{"modelConfig":{"e1":{"wire":"anthropic","baseURL":"http://x","apiKeyEnv":"K","modelName":"m","contextWindow":200000}},"defaultModel":"e1"}`
 
 	var s Settings
 	if err := json.Unmarshal([]byte(raw), &s); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
 
-	e, ok := s.Endpoints["e1"]
+	e, ok := s.ModelConfig["e1"]
 	if !ok {
-		t.Fatal("expected endpoint 'e1' to exist")
+		t.Fatal("expected model config 'e1' to exist")
 	}
 	if e.Wire != WireAnthropic {
 		t.Errorf("Wire: got %q, want %q", e.Wire, WireAnthropic)
@@ -28,8 +28,8 @@ func TestSettings_ParseEndpoint(t *testing.T) {
 	if e.ContextWindow != 200000 {
 		t.Errorf("ContextWindow: got %d, want 200000", e.ContextWindow)
 	}
-	if s.DefaultEndpoint != "e1" {
-		t.Errorf("DefaultEndpoint: got %q, want %q", s.DefaultEndpoint, "e1")
+	if s.DefaultModel != "e1" {
+		t.Errorf("DefaultModel: got %q, want %q", s.DefaultModel, "e1")
 	}
 }
 
@@ -51,18 +51,18 @@ func TestLoad_MergesGlobalAndProject(t *testing.T) {
 	dir := t.TempDir()
 
 	global := Settings{
-		Endpoints: map[string]Endpoint{
-			"shared":      {Wire: WireAnthropic, BaseURL: "http://global", DefaultModel: "g"},
-			"only-global": {Wire: WireOpenAI, BaseURL: "http://og", DefaultModel: "og"},
+		ModelConfig: map[string]ModelConfig{
+			"shared":      {Wire: WireAnthropic, BaseURL: "http://global", ModelName: "g"},
+			"only-global": {Wire: WireOpenAI, BaseURL: "http://og", ModelName: "og"},
 		},
-		DefaultEndpoint: "shared",
+		DefaultModel: "shared",
 	}
 	project := Settings{
-		Endpoints: map[string]Endpoint{
-			"shared":       {Wire: WireOpenAI, BaseURL: "http://project", DefaultModel: "p"},
-			"only-project": {Wire: WireAnthropic, BaseURL: "http://op", DefaultModel: "op"},
+		ModelConfig: map[string]ModelConfig{
+			"shared":       {Wire: WireOpenAI, BaseURL: "http://project", ModelName: "p"},
+			"only-project": {Wire: WireAnthropic, BaseURL: "http://op", ModelName: "op"},
 		},
-		DefaultEndpoint: "shared",
+		DefaultModel: "shared",
 	}
 
 	gPath := writeJSON(t, dir, "global.json", global)
@@ -74,34 +74,34 @@ func TestLoad_MergesGlobalAndProject(t *testing.T) {
 	}
 
 	// Project overrides shared key
-	if merged.Endpoints["shared"].Wire != WireOpenAI {
-		t.Errorf("shared.Wire: got %q, want %q", merged.Endpoints["shared"].Wire, WireOpenAI)
+	if merged.ModelConfig["shared"].Wire != WireOpenAI {
+		t.Errorf("shared.Wire: got %q, want %q", merged.ModelConfig["shared"].Wire, WireOpenAI)
 	}
-	if merged.Endpoints["shared"].BaseURL != "http://project" {
-		t.Errorf("shared.BaseURL: got %q, want http://project", merged.Endpoints["shared"].BaseURL)
+	if merged.ModelConfig["shared"].BaseURL != "http://project" {
+		t.Errorf("shared.BaseURL: got %q, want http://project", merged.ModelConfig["shared"].BaseURL)
 	}
 
 	// Global-only key preserved
-	if _, ok := merged.Endpoints["only-global"]; !ok {
-		t.Error("expected only-global endpoint to be present")
+	if _, ok := merged.ModelConfig["only-global"]; !ok {
+		t.Error("expected only-global model config to be present")
 	}
 
 	// Project-only key present
-	if _, ok := merged.Endpoints["only-project"]; !ok {
-		t.Error("expected only-project endpoint to be present")
+	if _, ok := merged.ModelConfig["only-project"]; !ok {
+		t.Error("expected only-project model config to be present")
 	}
 
-	// Project defaultEndpoint wins
-	if merged.DefaultEndpoint != "shared" {
-		t.Errorf("DefaultEndpoint: got %q, want shared", merged.DefaultEndpoint)
+	// Project defaultModel wins
+	if merged.DefaultModel != "shared" {
+		t.Errorf("DefaultModel: got %q, want shared", merged.DefaultModel)
 	}
 }
 
-func TestLoad_ProjectDefaultEndpointWins(t *testing.T) {
+func TestLoad_ProjectDefaultModelWins(t *testing.T) {
 	dir := t.TempDir()
 
-	global := Settings{DefaultEndpoint: "global-default"}
-	project := Settings{DefaultEndpoint: "project-default"}
+	global := Settings{DefaultModel: "global-default"}
+	project := Settings{DefaultModel: "project-default"}
 
 	gPath := writeJSON(t, dir, "global.json", global)
 	pPath := writeJSON(t, dir, "project.json", project)
@@ -110,16 +110,16 @@ func TestLoad_ProjectDefaultEndpointWins(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if merged.DefaultEndpoint != "project-default" {
-		t.Errorf("DefaultEndpoint: got %q, want project-default", merged.DefaultEndpoint)
+	if merged.DefaultModel != "project-default" {
+		t.Errorf("DefaultModel: got %q, want project-default", merged.DefaultModel)
 	}
 }
 
 func TestLoad_GlobalDefaultKeptWhenProjectEmpty(t *testing.T) {
 	dir := t.TempDir()
 
-	global := Settings{DefaultEndpoint: "global-default"}
-	project := Settings{} // no defaultEndpoint
+	global := Settings{DefaultModel: "global-default"}
+	project := Settings{} // no defaultModel
 
 	gPath := writeJSON(t, dir, "global.json", global)
 	pPath := writeJSON(t, dir, "project.json", project)
@@ -128,8 +128,8 @@ func TestLoad_GlobalDefaultKeptWhenProjectEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if merged.DefaultEndpoint != "global-default" {
-		t.Errorf("DefaultEndpoint: got %q, want global-default", merged.DefaultEndpoint)
+	if merged.DefaultModel != "global-default" {
+		t.Errorf("DefaultModel: got %q, want global-default", merged.DefaultModel)
 	}
 }
 
@@ -147,7 +147,7 @@ func TestLoad_MalformedJSONTreatedAsEmpty(t *testing.T) {
 	if err := os.WriteFile(bad, []byte("{not json"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	global := Settings{DefaultEndpoint: "g"}
+	global := Settings{DefaultModel: "g"}
 	gPath := writeJSON(t, dir, "global.json", global)
 
 	merged, err := Load(gPath, bad)
@@ -155,14 +155,14 @@ func TestLoad_MalformedJSONTreatedAsEmpty(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 	// malformed project treated as empty; global default kept
-	if merged.DefaultEndpoint != "g" {
-		t.Errorf("DefaultEndpoint: got %q, want g", merged.DefaultEndpoint)
+	if merged.DefaultModel != "g" {
+		t.Errorf("DefaultModel: got %q, want g", merged.DefaultModel)
 	}
 }
 
 // Task 2.3: API key resolution
 func TestResolveAPIKey_LiteralKey(t *testing.T) {
-	key, err := ResolveAPIKey(Endpoint{APIKey: "literal-key"})
+	key, err := ResolveAPIKey(ModelConfig{APIKey: "literal-key"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestResolveAPIKey_LiteralKey(t *testing.T) {
 
 func TestResolveAPIKey_EnvVar(t *testing.T) {
 	t.Setenv("TEST_API_KEY_VAR", "env-value")
-	key, err := ResolveAPIKey(Endpoint{APIKeyEnv: "TEST_API_KEY_VAR"})
+	key, err := ResolveAPIKey(ModelConfig{APIKeyEnv: "TEST_API_KEY_VAR"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -184,7 +184,7 @@ func TestResolveAPIKey_EnvVar(t *testing.T) {
 
 func TestResolveAPIKey_LiteralTakesPrecedenceOverEnv(t *testing.T) {
 	t.Setenv("TEST_API_KEY_BOTH", "env-value")
-	key, err := ResolveAPIKey(Endpoint{APIKey: "literal", APIKeyEnv: "TEST_API_KEY_BOTH"})
+	key, err := ResolveAPIKey(ModelConfig{APIKey: "literal", APIKeyEnv: "TEST_API_KEY_BOTH"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -194,7 +194,7 @@ func TestResolveAPIKey_LiteralTakesPrecedenceOverEnv(t *testing.T) {
 }
 
 func TestResolveAPIKey_NeitherReturnsError(t *testing.T) {
-	_, err := ResolveAPIKey(Endpoint{})
+	_, err := ResolveAPIKey(ModelConfig{})
 	if !errors.Is(err, ErrNoAPIKey) {
 		t.Errorf("got %v, want ErrNoAPIKey", err)
 	}
@@ -282,20 +282,20 @@ func TestLoad_ZeroValuesPreserveGlobal(t *testing.T) {
 	}
 }
 
-func TestLoad_EndpointMaxTokensAndThinkingBudget(t *testing.T) {
+func TestLoad_ModelConfigMaxTokensAndThinkingBudget(t *testing.T) {
 	dir := t.TempDir()
 
 	global := Settings{
-		Endpoints: map[string]Endpoint{
+		ModelConfig: map[string]ModelConfig{
 			"main": {
 				Wire:           WireAnthropic,
 				BaseURL:        "http://x",
-				DefaultModel:   "m",
+				ModelName:      "m",
 				MaxTokens:      8192,
 				ThinkingBudget: 4096,
 			},
 		},
-		DefaultEndpoint: "main",
+		DefaultModel: "main",
 	}
 
 	gPath := writeJSON(t, dir, "global.json", global)
@@ -305,9 +305,9 @@ func TestLoad_EndpointMaxTokensAndThinkingBudget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	ep, ok := merged.Endpoints["main"]
+	ep, ok := merged.ModelConfig["main"]
 	if !ok {
-		t.Fatal("expected endpoint 'main' to be present")
+		t.Fatal("expected model config 'main' to be present")
 	}
 	if ep.MaxTokens != 8192 {
 		t.Errorf("MaxTokens: got %d, want 8192", ep.MaxTokens)

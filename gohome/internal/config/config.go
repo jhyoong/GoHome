@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 )
 
-// ErrNoAPIKey is returned when an endpoint has no usable API key.
+// ErrNoAPIKey is returned when a model config has no usable API key.
 var ErrNoAPIKey = errors.New("no API key configured")
 
-// Wire identifies which LLM HTTP protocol an endpoint speaks.
+// Wire identifies which LLM HTTP protocol a model config speaks.
 type Wire string
 
 const (
@@ -19,13 +19,13 @@ const (
 	WireOpenAI    Wire = "openai"
 )
 
-// Endpoint holds connection details for a single LLM endpoint.
-type Endpoint struct {
+// ModelConfig holds connection details for a single LLM model config.
+type ModelConfig struct {
 	Wire           Wire              `json:"wire"`
 	BaseURL        string            `json:"baseURL"`
 	APIKey         string            `json:"apiKey,omitempty"`
 	APIKeyEnv      string            `json:"apiKeyEnv,omitempty"`
-	DefaultModel   string            `json:"defaultModel"`
+	ModelName      string            `json:"modelName"`
 	ContextWindow  int               `json:"contextWindow,omitempty"`
 	MaxTokens      int               `json:"maxTokens,omitempty"`
 	ThinkingBudget int               `json:"thinkingBudget,omitempty"`
@@ -34,8 +34,8 @@ type Endpoint struct {
 
 // Settings is the top-level configuration structure.
 type Settings struct {
-	Endpoints        map[string]Endpoint `json:"endpoints"`
-	DefaultEndpoint  string              `json:"defaultEndpoint"`
+	ModelConfig  map[string]ModelConfig `json:"modelConfig"`
+	DefaultModel string                 `json:"defaultModel"`
 	SystemPrompt     string              `json:"systemPrompt,omitempty"`
 	BashTimeoutMs    int                 `json:"bashTimeoutMs,omitempty"`
 	MaxBashTimeoutMs int                 `json:"maxBashTimeoutMs,omitempty"`
@@ -71,8 +71,8 @@ func Load(globalPath, projectPath string) (Settings, error) {
 	project := load(projectPath)
 
 	merged := Settings{
-		Endpoints:        make(map[string]Endpoint),
-		DefaultEndpoint:  global.DefaultEndpoint,
+		ModelConfig:      make(map[string]ModelConfig),
+		DefaultModel:     global.DefaultModel,
 		BashTimeoutMs:    global.BashTimeoutMs,
 		MaxBashTimeoutMs: global.MaxBashTimeoutMs,
 		ContextWarnPct:   global.ContextWarnPct,
@@ -81,15 +81,15 @@ func Load(globalPath, projectPath string) (Settings, error) {
 		RenderThrottleMs: global.RenderThrottleMs,
 	}
 
-	for k, v := range global.Endpoints {
-		merged.Endpoints[k] = v
+	for k, v := range global.ModelConfig {
+		merged.ModelConfig[k] = v
 	}
-	for k, v := range project.Endpoints {
-		merged.Endpoints[k] = v
+	for k, v := range project.ModelConfig {
+		merged.ModelConfig[k] = v
 	}
 
-	if project.DefaultEndpoint != "" {
-		merged.DefaultEndpoint = project.DefaultEndpoint
+	if project.DefaultModel != "" {
+		merged.DefaultModel = project.DefaultModel
 	}
 	if global.SystemPrompt != "" {
 		merged.SystemPrompt = global.SystemPrompt
@@ -119,10 +119,10 @@ func Load(globalPath, projectPath string) (Settings, error) {
 	return merged, nil
 }
 
-// ResolveAPIKey returns the API key for e.
+// ResolveAPIKey returns the API key for the given model config.
 // A literal APIKey field takes precedence over APIKeyEnv.
 // Returns ErrNoAPIKey when neither is configured.
-func ResolveAPIKey(e Endpoint) (string, error) {
+func ResolveAPIKey(e ModelConfig) (string, error) {
 	if e.APIKey != "" {
 		return e.APIKey, nil
 	}
