@@ -354,7 +354,7 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		thinkingBudget = config.DefaultThinkingBudget
 	}
 
-	state := agent.NewSessionState(sess, writer)
+	state := agent.NewSessionState(sess, writer, client)
 
 	a := &agent.Agent{
 		Client:         client,

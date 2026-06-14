@@ -82,7 +82,7 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 		Tools:          a.Tools.Without("subagent"),
 		Guard:          a.Guard,
 		Frontend:       a.Frontend,
-		State:          NewSessionState(child, cw),
+		State:          NewSessionState(child, cw, a.State.Client()),
 		System:         sys,
 		MaxTokens:      a.MaxTokens,
 		ThinkingBudget: a.ThinkingBudget,

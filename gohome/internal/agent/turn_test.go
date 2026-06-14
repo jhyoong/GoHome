@@ -55,7 +55,7 @@ func newTestAgent(t *testing.T, client common.Client, fe Frontend) (*Agent, *ses
 		Client:   client,
 		Tools:    tools.NewRegistry(),
 		Frontend: fe,
-		State:    NewSessionState(sess, w),
+		State:    NewSessionState(sess, w, client),
 		System:   "you are a test assistant",
 	}
 	return a, sess, w
@@ -117,7 +117,7 @@ func TestTurn_TextDeltaAndTurnDone(t *testing.T) {
 		Client:   client,
 		Tools:    tools.NewRegistry(),
 		Frontend: fe,
-		State:    NewSessionState(sess, w),
+		State:    NewSessionState(sess, w, client),
 		System:   "system prompt",
 	}
 

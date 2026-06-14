@@ -18,7 +18,7 @@ func TestRegisterSubagentTool(t *testing.T) {
 		Tools:    tools.NewRegistry(),
 		Guard:    g,
 		Frontend: fe,
-		State:    NewSessionState(nil, nil),
+		State:    NewSessionState(nil, nil, nil),
 		System:   "sys",
 	}
 

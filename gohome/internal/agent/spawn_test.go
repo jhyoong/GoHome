@@ -43,7 +43,7 @@ func buildSpawnParent(t *testing.T, client common.Client, home string) *Agent {
 		Tools:    tools.NewRegistry(),
 		Guard:    g,
 		Frontend: fe,
-		State:    NewSessionState(parentSess, nil), // no parent writer for basic Spawn test
+		State:    NewSessionState(parentSess, nil, client), // no parent writer for basic Spawn test
 		System:   "parent system",
 		Home:     home,
 	}
@@ -196,7 +196,7 @@ func TestSpawn_ParentWriterMarkers(t *testing.T) {
 		Tools:    tools.NewRegistry(),
 		Guard:    g,
 		Frontend: fe,
-		State:    NewSessionState(parentSess, pw),
+		State:    NewSessionState(parentSess, pw, client),
 		System:   "parent system",
 		Home:     home,
 	}
@@ -312,7 +312,7 @@ func TestSpawn_ChildJSONLHasUserMessage(t *testing.T) {
 		Tools:    tools.NewRegistry(),
 		Guard:    g,
 		Frontend: fe,
-		State:    NewSessionState(parentSess, nil),
+		State:    NewSessionState(parentSess, nil, client),
 		System:   "sys",
 		Home:     home,
 	}
@@ -376,7 +376,7 @@ func TestSpawn_ChildJSONLHasSessionEnd(t *testing.T) {
 		Tools:    tools.NewRegistry(),
 		Guard:    g,
 		Frontend: fe,
-		State:    NewSessionState(parentSess, nil),
+		State:    NewSessionState(parentSess, nil, client),
 		System:   "sys",
 		Home:     home,
 	}

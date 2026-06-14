@@ -26,7 +26,7 @@ func TestAgentStructFields(t *testing.T) {
 		Tools:    reg,
 		Guard:    g,
 		Frontend: fe,
-		State:    NewSessionState(nil, nil),
+		State:    NewSessionState(nil, nil, nil),
 		System:   "you are an assistant",
 	}
 	if a.System != "you are an assistant" {

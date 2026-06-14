@@ -1,12 +1,24 @@
 package agent
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"testing"
 
+	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 	"github.com/jhyoong/GoHome/gohome/internal/session"
 )
+
+type fakeStateClient struct {
+	name string
+}
+
+func (c *fakeStateClient) Stream(_ context.Context, _ common.Request) (<-chan common.StreamEvent, error) {
+	ch := make(chan common.StreamEvent)
+	close(ch)
+	return ch, nil
+}
 
 func openTestWriter(t *testing.T) *session.Writer {
 	t.Helper()
@@ -21,7 +33,7 @@ func openTestWriter(t *testing.T) *session.Writer {
 func TestSwapWhileIdle(t *testing.T) {
 	sess1 := session.NewSession("s1", t.TempDir(), "m", "ep")
 	w1 := openTestWriter(t)
-	st := NewSessionState(sess1, w1)
+	st := NewSessionState(sess1, w1, nil)
 
 	sess2 := session.NewSession("s2", t.TempDir(), "m", "ep")
 	w2 := openTestWriter(t)
@@ -46,7 +58,7 @@ func TestSwapWhileIdle(t *testing.T) {
 func TestSwapWhileBusy(t *testing.T) {
 	sess1 := session.NewSession("s1", t.TempDir(), "m", "ep")
 	w1 := openTestWriter(t)
-	st := NewSessionState(sess1, w1)
+	st := NewSessionState(sess1, w1, nil)
 	st.MarkBusy()
 
 	sess2 := session.NewSession("s2", t.TempDir(), "m", "ep")
@@ -69,7 +81,7 @@ func TestSwapWhileBusy(t *testing.T) {
 func TestDrainPendingExecutesSwap(t *testing.T) {
 	sess1 := session.NewSession("s1", t.TempDir(), "m", "ep")
 	w1 := openTestWriter(t)
-	st := NewSessionState(sess1, w1)
+	st := NewSessionState(sess1, w1, nil)
 	st.MarkBusy()
 
 	sess2 := session.NewSession("s2", t.TempDir(), "m", "ep")
@@ -96,7 +108,7 @@ func TestDrainPendingExecutesSwap(t *testing.T) {
 func TestDrainPendingNoop(t *testing.T) {
 	sess1 := session.NewSession("s1", t.TempDir(), "m", "ep")
 	w1 := openTestWriter(t)
-	st := NewSessionState(sess1, w1)
+	st := NewSessionState(sess1, w1, nil)
 
 	tag, err := st.DrainPending()
 	if err != nil {
@@ -110,7 +122,7 @@ func TestDrainPendingNoop(t *testing.T) {
 func TestClearPendingDiscardsSwap(t *testing.T) {
 	sess1 := session.NewSession("s1", t.TempDir(), "m", "ep")
 	w1 := openTestWriter(t)
-	st := NewSessionState(sess1, w1)
+	st := NewSessionState(sess1, w1, nil)
 	st.MarkBusy()
 
 	sess2 := session.NewSession("s2", t.TempDir(), "m", "ep")
@@ -138,7 +150,7 @@ func TestClearPendingDiscardsSwap(t *testing.T) {
 func TestSwapError(t *testing.T) {
 	sess1 := session.NewSession("s1", t.TempDir(), "m", "ep")
 	w1 := openTestWriter(t)
-	st := NewSessionState(sess1, w1)
+	st := NewSessionState(sess1, w1, nil)
 
 	_, err := st.Swap("bad", func() (*session.Session, *session.Writer, error) {
 		return nil, nil, errors.New("writer open failed")
@@ -151,10 +163,29 @@ func TestSwapError(t *testing.T) {
 	}
 }
 
+func TestClientGetterSetter(t *testing.T) {
+	sess := session.NewSession("s1", t.TempDir(), "m", "ep")
+	w := openTestWriter(t)
+
+	fakeC := &fakeStateClient{name: "initial"}
+	st := NewSessionState(sess, w, fakeC)
+
+	if st.Client() != fakeC {
+		t.Error("Client() did not return initial client")
+	}
+
+	fakeC2 := &fakeStateClient{name: "swapped"}
+	st.SetClient(fakeC2)
+
+	if st.Client() != fakeC2 {
+		t.Error("Client() did not return swapped client after SetClient")
+	}
+}
+
 func TestSetModelGuarded(t *testing.T) {
 	sess1 := session.NewSession("s1", t.TempDir(), "m", "ep")
 	w1 := openTestWriter(t)
-	st := NewSessionState(sess1, w1)
+	st := NewSessionState(sess1, w1, nil)
 
 	var wg sync.WaitGroup
 	for i := 0; i < 100; i++ {

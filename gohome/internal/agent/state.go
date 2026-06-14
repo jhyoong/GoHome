@@ -3,6 +3,7 @@ package agent
 import (
 	"sync"
 
+	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 	"github.com/jhyoong/GoHome/gohome/internal/session"
 )
 
@@ -14,14 +15,15 @@ type SessionState struct {
 	mu         sync.Mutex
 	sess       *session.Session
 	writer     *session.Writer
+	client     common.Client
 	busy       bool
 	pending    func() (*session.Session, *session.Writer, error)
 	pendingTag string
 }
 
-// NewSessionState creates a SessionState with an initial session and writer.
-func NewSessionState(sess *session.Session, writer *session.Writer) *SessionState {
-	return &SessionState{sess: sess, writer: writer}
+// NewSessionState creates a SessionState with an initial session, writer, and LLM client.
+func NewSessionState(sess *session.Session, writer *session.Writer, client common.Client) *SessionState {
+	return &SessionState{sess: sess, writer: writer, client: client}
 }
 
 // Session returns the current session.
@@ -114,4 +116,18 @@ func (s *SessionState) SetModel(name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.sess.Model = name
+}
+
+// Client returns the current LLM client.
+func (s *SessionState) Client() common.Client {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.client
+}
+
+// SetClient replaces the current LLM client.
+func (s *SessionState) SetClient(c common.Client) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.client = c
 }

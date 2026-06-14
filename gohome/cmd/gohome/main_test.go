@@ -76,7 +76,7 @@ func TestRunLoop_CancelMidTurn(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = writer.Close() })
 
-	state := agent.NewSessionState(sess, writer)
+	state := agent.NewSessionState(sess, writer, nil)
 
 	a := &agent.Agent{
 		Client:   &blockingClient{bgCtx: bgCtx},
@@ -190,7 +190,7 @@ func TestConcurrentSwapAndRun(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = writer.Close() })
 
-	state := agent.NewSessionState(sess, writer)
+	state := agent.NewSessionState(sess, writer, nil)
 	t.Cleanup(func() { _ = state.Writer().Close() })
 
 	a := &agent.Agent{

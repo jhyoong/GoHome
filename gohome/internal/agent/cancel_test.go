@@ -60,7 +60,7 @@ func TestRun_CancelMidTurn(t *testing.T) {
 		Tools:    tools.NewRegistry(),
 		Guard:    g,
 		Frontend: fe,
-		State:    NewSessionState(sess, nil), // Run never emits session_end; no writer needed here
+		State:    NewSessionState(sess, nil, client), // Run never emits session_end; no writer needed here
 		System:   "system",
 	}
 
