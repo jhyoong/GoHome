@@ -12,5 +12,6 @@ type SlashCallbacks struct {
 	ResumeSession func(id string) ([]common.Message, error)
 	CancelSession func(id string)
 	SetModel      func(name string) error
+	SetEndpoint   func(name string) (model string, contextWindow int, err error)
 	ListSessions  func() ([]session.Listing, error)
 }

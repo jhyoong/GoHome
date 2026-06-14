@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/exp/teatest"
+	"github.com/jhyoong/GoHome/gohome/internal/config"
 	"github.com/jhyoong/GoHome/gohome/internal/tui"
 	"github.com/muesli/termenv"
 )
@@ -218,4 +219,66 @@ func TestTabCompletesFirstMatchFromSlash(t *testing.T) {
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("/help x"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
+
+func TestSlashEndpointNotConfigured(t *testing.T) {
+	m := tui.New(nil, "")
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("─"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	tm.Type("/endpoint")
+	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("no endpoints configured"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
+
+func TestSlashEndpointCallsCallback(t *testing.T) {
+	m := tui.New(nil, "")
+	m.SetSettings(config.Settings{
+		Endpoints: map[string]config.Endpoint{
+			"ep1": {DefaultModel: "model-a"},
+			"ep2": {DefaultModel: "model-b"},
+		},
+		DefaultEndpoint: "ep1",
+	})
+
+	var calledWith string
+	m.SetSlashCallbacks(tui.SlashCallbacks{
+		SetEndpoint: func(name string) (string, int, error) {
+			calledWith = name
+			return "model-b", 200000, nil
+		},
+	})
+
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("─"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	tm.Type("/endpoint")
+	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// Wait for the selector to appear (it should show endpoint names).
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("ep1")) || bytes.Contains(out, []byte("ep2"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// Press Enter to select the first item (ep1, since it's the current/default).
+	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Endpoint set to"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	if calledWith == "" {
+		t.Error("SetEndpoint callback was not called")
+	}
 }

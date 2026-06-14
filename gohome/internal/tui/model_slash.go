@@ -159,6 +159,34 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 			m.activeModal = nil
 		})
 		m.activeModal = ms
+	case "/endpoint":
+		if len(m.settings.Endpoints) == 0 {
+			m.statusMsg = "/endpoint: no endpoints configured"
+			break
+		}
+		es := NewModelSelector(m.settings.Endpoints, m.settings.DefaultEndpoint)
+		es.SetOnSelect(func(endpoint, _ string) {
+			m.activeModal = nil
+			if m.slashCB.SetEndpoint == nil {
+				m.statusMsg = "/endpoint: not configured"
+				return
+			}
+			model, ctxWin, err := m.slashCB.SetEndpoint(endpoint)
+			if err != nil {
+				m.statusMsg = fmt.Sprintf("/endpoint: %v", err)
+				return
+			}
+			m.modelName = model
+			if ctxWin > 0 {
+				m.contextWindow = ctxWin
+			}
+			m.settings.DefaultEndpoint = endpoint
+			m.statusMsg = "Endpoint set to " + endpoint
+		})
+		es.SetOnCancel(func() {
+			m.activeModal = nil
+		})
+		m.activeModal = es
 	default:
 		m.statusMsg = cmd + ": unknown command"
 	}
