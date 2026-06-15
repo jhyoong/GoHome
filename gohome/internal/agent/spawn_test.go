@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 	"github.com/jhyoong/GoHome/gohome/internal/session"
@@ -444,6 +445,55 @@ func TestSpawn_EmitsSessionEndedEvent(t *testing.T) {
 	}
 	if sessionID != "sub-1" {
 		t.Errorf("EventSessionEnded.SessionID = %q, want %q", sessionID, "sub-1")
+	}
+}
+
+// TestSpawn_EmitsSessionEndedOnCancel verifies that EventSessionEnded fires
+// for the child session even when the context is cancelled mid-run.
+func TestSpawn_EmitsSessionEndedOnCancel(t *testing.T) {
+	home := t.TempDir()
+
+	bgCtx, bgCancel := context.WithCancel(context.Background())
+	t.Cleanup(bgCancel)
+	client := &blockingClient{firstDelta: "partial", bgCtx: bgCtx}
+
+	wl, err := guardCompileEmpty(t)
+	if err != nil {
+		t.Fatalf("guard compile: %v", err)
+	}
+	g := guardNewYolo(wl)
+	fe := &fakeRecorder{}
+
+	parentSess := session.NewSession("parent", home, "model", "anthropic")
+	a := &Agent{
+		Tools:    tools.NewRegistry(),
+		Guard:    g,
+		Frontend: fe,
+		State:    NewSessionState(parentSess, nil, client),
+		System:   "system",
+		Home:     home,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		cancel()
+	}()
+
+	_, _, err = a.Spawn(ctx, "task that hangs", "")
+	if err == nil {
+		t.Fatal("Spawn: expected error from cancelled context, got nil")
+	}
+
+	var found bool
+	for _, ev := range fe.events {
+		if ev.Kind == EventSessionEnded && ev.SessionID == "sub-1" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("no EventSessionEnded for sub-1 after cancel; got kinds: %v", eventKinds(fe.events))
 	}
 }
 
