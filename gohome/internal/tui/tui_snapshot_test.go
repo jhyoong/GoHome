@@ -95,6 +95,45 @@ func TestSnapshots(t *testing.T) {
 		golden.RequireEqual(t, []byte(m.View()))
 	})
 
+	// (e2) Full subagent lifecycle: start -> thinking -> text -> session_ended.
+	t.Run("subagent_lifecycle", func(t *testing.T) {
+		m := newSized()
+		// Start the subagent session.
+		m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+			Kind:      agent.EventSessionStarted,
+			SessionID: "sub-1",
+		}})
+		// Thinking begins (sets InFlight=true → "running").
+		m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+			Kind:          agent.EventThinkingDelta,
+			SessionID:     "sub-1",
+			ThinkingDelta: "Let me investigate...",
+		}})
+		// Thinking ends (collapses block).
+		m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+			Kind:      agent.EventThinkingDone,
+			SessionID: "sub-1",
+		}})
+		// Assistant text arrives.
+		m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+			Kind:      agent.EventTokenDelta,
+			SessionID: "sub-1",
+			TextDelta: "This is a Go project.",
+		}})
+		// Turn ends.
+		m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+			Kind:       agent.EventTurnDone,
+			SessionID:  "sub-1",
+			StopReason: "end_turn",
+		}})
+		// Session ends (the fix we're testing).
+		m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+			Kind:      agent.EventSessionEnded,
+			SessionID: "sub-1",
+		}})
+		golden.RequireEqual(t, []byte(m.View()))
+	})
+
 	// (f) With the /tokens overlay open.
 	t.Run("with_tokens_overlay", func(t *testing.T) {
 		m := newSized()
