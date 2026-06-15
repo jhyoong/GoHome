@@ -32,14 +32,13 @@ func New(e config.ModelConfig, apiKey string) *Client {
 		model:   e.ModelName,
 		headers: e.Headers,
 		hc:      &http.Client{},
-		backoff: defaultRetryBackoff,
+		backoff: common.DefaultBackoff,
 	}
 }
 
 // Stream sends req to Anthropic and returns a channel of StreamEvent values.
-// On non-2xx responses it returns an error immediately.
-// On success it spawns a goroutine that reads the SSE stream and forwards events.
-// Transient 5xx and connection errors are retried according to defaultRetryBackoff.
+// It delegates to common.StreamRequest for retry, error handling, and goroutine
+// management.
 func (c *Client) Stream(ctx context.Context, req common.Request) (<-chan common.StreamEvent, error) {
 	if req.Model == "" {
 		req.Model = c.model
@@ -50,7 +49,11 @@ func (c *Client) Stream(ctx context.Context, req common.Request) (<-chan common.
 		return nil, fmt.Errorf("anthropic: build body: %w", err)
 	}
 
-	resp, err := common.DoWithRetry(ctx, c.hc, c.backoff, func() (*http.Request, error) {
+	return common.StreamRequest(ctx, common.StreamConfig{
+		HTTPClient: c.hc,
+		Backoff:    c.backoff,
+		Prefix:     "anthropic",
+	}, func() (*http.Request, error) {
 		r, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/v1/messages", bytes.NewReader(body))
 		if err != nil {
 			return nil, err
@@ -62,41 +65,11 @@ func (c *Client) Stream(ctx context.Context, req common.Request) (<-chan common.
 			r.Header.Set(k, v)
 		}
 		return r, nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("anthropic: http: %w", err)
-	}
+	}, pumpEvents)
+}
 
-	if resp.StatusCode >= 400 {
-		defer func() { _ = resp.Body.Close() }()
-		errBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("anthropic %d: %s", resp.StatusCode, errBody)
-	}
-
-	out := make(chan common.StreamEvent, 16)
-	go func() {
-		defer func() { _ = resp.Body.Close() }()
-		defer close(out)
-
-		frames := parseSSE(ctx, resp.Body)
-		events := translateEvents(ctx, frames)
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case e, ok := <-events:
-				if !ok {
-					return
-				}
-				select {
-				case out <- e:
-				case <-ctx.Done():
-					return
-				}
-			}
-		}
-	}()
-
-	return out, nil
+// pumpEvents wires parseSSE -> translateEvents for the Anthropic SSE stream.
+func pumpEvents(ctx context.Context, body io.Reader) <-chan common.StreamEvent {
+	frames := parseSSE(ctx, body)
+	return translateEvents(ctx, frames)
 }
