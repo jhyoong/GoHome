@@ -417,6 +417,45 @@ func TestSpawn_ChildJSONLHasSessionEnd(t *testing.T) {
 	}
 }
 
+// TestSpawn_EmitsSessionEndedEvent verifies that after Spawn returns, the
+// frontend has received an EventSessionEnded for the child session ID.
+func TestSpawn_EmitsSessionEndedEvent(t *testing.T) {
+	home := t.TempDir()
+	client := oneTextTurnClient("done")
+	a := buildSpawnParent(t, client, home)
+	fe := a.Frontend.(*fakeRecorder)
+
+	_, _, err := a.Spawn(context.Background(), "task", "")
+	if err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+
+	var found bool
+	var sessionID string
+	for _, ev := range fe.events {
+		if ev.Kind == EventSessionEnded {
+			found = true
+			sessionID = ev.SessionID
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("no EventSessionEnded found in frontend events; got kinds: %v", eventKinds(fe.events))
+	}
+	if sessionID != "sub-1" {
+		t.Errorf("EventSessionEnded.SessionID = %q, want %q", sessionID, "sub-1")
+	}
+}
+
+// eventKinds returns a slice of EventKind strings for test diagnostics.
+func eventKinds(events []Event) []string {
+	out := make([]string, len(events))
+	for i, ev := range events {
+		out[i] = string(ev.Kind)
+	}
+	return out
+}
+
 // readJSONLLines opens path and returns each decoded JSON line as a map.
 func readJSONLLines(t *testing.T, path string) []map[string]json.RawMessage {
 	t.Helper()
