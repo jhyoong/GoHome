@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 	"github.com/jhyoong/GoHome/gohome/internal/session"
@@ -415,6 +416,94 @@ func TestSpawn_ChildJSONLHasSessionEnd(t *testing.T) {
 	if sessionEndReason != "done" {
 		t.Errorf("child JSONL: session_end reason = %q, want %q", sessionEndReason, "done")
 	}
+}
+
+// TestSpawn_EmitsSessionEndedEvent verifies that after Spawn returns, the
+// frontend has received an EventSessionEnded for the child session ID.
+func TestSpawn_EmitsSessionEndedEvent(t *testing.T) {
+	home := t.TempDir()
+	client := oneTextTurnClient("done")
+	a := buildSpawnParent(t, client, home)
+	fe := a.Frontend.(*fakeRecorder)
+
+	_, _, err := a.Spawn(context.Background(), "task", "")
+	if err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+
+	var found bool
+	var sessionID string
+	for _, ev := range fe.events {
+		if ev.Kind == EventSessionEnded {
+			found = true
+			sessionID = ev.SessionID
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("no EventSessionEnded found in frontend events; got kinds: %v", eventKinds(fe.events))
+	}
+	if sessionID != "sub-1" {
+		t.Errorf("EventSessionEnded.SessionID = %q, want %q", sessionID, "sub-1")
+	}
+}
+
+// TestSpawn_EmitsSessionEndedOnCancel verifies that EventSessionEnded fires
+// for the child session even when the context is cancelled mid-run.
+func TestSpawn_EmitsSessionEndedOnCancel(t *testing.T) {
+	home := t.TempDir()
+
+	bgCtx, bgCancel := context.WithCancel(context.Background())
+	t.Cleanup(bgCancel)
+	client := &blockingClient{firstDelta: "partial", bgCtx: bgCtx}
+
+	wl, err := guardCompileEmpty(t)
+	if err != nil {
+		t.Fatalf("guard compile: %v", err)
+	}
+	g := guardNewYolo(wl)
+	fe := &fakeRecorder{}
+
+	parentSess := session.NewSession("parent", home, "model", "anthropic")
+	a := &Agent{
+		Tools:    tools.NewRegistry(),
+		Guard:    g,
+		Frontend: fe,
+		State:    NewSessionState(parentSess, nil, client),
+		System:   "system",
+		Home:     home,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		cancel()
+	}()
+
+	_, _, err = a.Spawn(ctx, "task that hangs", "")
+	if err == nil {
+		t.Fatal("Spawn: expected error from cancelled context, got nil")
+	}
+
+	var found bool
+	for _, ev := range fe.events {
+		if ev.Kind == EventSessionEnded && ev.SessionID == "sub-1" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("no EventSessionEnded for sub-1 after cancel; got kinds: %v", eventKinds(fe.events))
+	}
+}
+
+// eventKinds returns a slice of EventKind strings for test diagnostics.
+func eventKinds(events []Event) []string {
+	out := make([]string, len(events))
+	for i, ev := range events {
+		out[i] = string(ev.Kind)
+	}
+	return out
 }
 
 // readJSONLLines opens path and returns each decoded JSON line as a map.

@@ -106,6 +106,11 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 	// Run the child agent.
 	runErr := childAgent.Run(ctx, child)
 
+	a.Frontend.Emit(childID, Event{
+		Kind:      EventSessionEnded,
+		SessionID: childID,
+	})
+
 	// Determine whether the run ended in error.
 	isError := runErr != nil
 
