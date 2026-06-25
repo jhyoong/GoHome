@@ -313,6 +313,43 @@ func TestShadowEntries_SlidingWindowMax3(t *testing.T) {
 	}
 }
 
+func TestShadowEntries_UpdatedOnChildToolResult(t *testing.T) {
+	m := newSized()
+	m.AddTimelineEntry("main", tui.TimelineEntry{
+		Kind:     tui.KindTool,
+		ToolName: "subagent",
+		Text:     `{"task":"investigate"}`,
+		Status:   "pending",
+	})
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventSessionStarted,
+		SessionID: "sub-1",
+	}})
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventToolCallDone,
+		SessionID: "sub-1",
+		ToolName:  "bash",
+		InputJSON: `{"command":"ls"}`,
+	}})
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventToolResult,
+		SessionID: "sub-1",
+		Result: &agent.ToolResult{
+			Content: "file1.go\nfile2.go",
+			IsError: false,
+		},
+	}})
+
+	sv := m.Sessions()["main"]
+	shadow := sv.Timeline[1]
+	if shadow.Status != "success" {
+		t.Fatalf("shadow Status = %q, want %q", shadow.Status, "success")
+	}
+	if shadow.ToolResult != "file1.go\nfile2.go" {
+		t.Fatalf("shadow ToolResult = %q, want content", shadow.ToolResult)
+	}
+}
+
 func TestToggleExpansion_PreservesScrollPosition(t *testing.T) {
 	m := newSized()
 

@@ -98,6 +98,9 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 				Status:     status,
 			})
 		}
+		if sv.Depth > 0 {
+			m.updateShadowResult(msg.SessionID, content, isErr)
+		}
 
 	case agent.EventUsageUpdated:
 		if ev.Usage != nil {
@@ -271,6 +274,31 @@ func (m *Model) insertShadowEntry(childID string, entry TimelineEntry) {
 	ps.Timeline = append(ps.Timeline[:insertIdx], append([]TimelineEntry{entry}, ps.Timeline[insertIdx:]...)...)
 	if parentID == m.focused && m.cursor >= insertIdx {
 		m.cursor++
+	}
+}
+
+// updateShadowResult updates the most recent pending shadow entry for childID
+// in the parent's timeline with the tool result.
+func (m *Model) updateShadowResult(childID string, content string, isError bool) {
+	parentID, ok := m.childToParent[childID]
+	if !ok {
+		return
+	}
+	ps, ok := m.sessions[parentID]
+	if !ok {
+		return
+	}
+	for i := len(ps.Timeline) - 1; i >= 0; i-- {
+		e := &ps.Timeline[i]
+		if e.Shadow && e.ChildSessionID == childID && e.ToolResult == "" {
+			e.ToolResult = content
+			if isError {
+				e.Status = "error"
+			} else {
+				e.Status = "success"
+			}
+			return
+		}
 	}
 }
 
