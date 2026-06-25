@@ -123,12 +123,22 @@ func (c *ChatComponent) countLines(maxWidth int) int {
 		case KindTool:
 			count++
 			if e.Expanded {
-				if e.Text != "" {
-					count += len(WrapText("args: "+e.Text, maxWidth-7))
-				}
-				if e.ToolResult != "" {
-					count++
-					count += len(WrapText(e.ToolResult, maxWidth-9))
+				if e.Shadow {
+					if e.Text != "" {
+						count += len(WrapText("args: "+e.Text, maxWidth-11))
+					}
+					if e.ToolResult != "" {
+						count++
+						count += len(WrapText(e.ToolResult, maxWidth-13))
+					}
+				} else {
+					if e.Text != "" {
+						count += len(WrapText("args: "+e.Text, maxWidth-7))
+					}
+					if e.ToolResult != "" {
+						count++
+						count += len(WrapText(e.ToolResult, maxWidth-9))
+					}
 				}
 			}
 		case KindNotice:
@@ -250,18 +260,36 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 		}
 
 	case KindTool:
-		line := renderToolLine(*e, maxWidth-2)
-		lines = append(lines, marker+line)
-		if e.Expanded {
-			if e.Text != "" {
-				for _, l := range WrapText("args: "+e.Text, maxWidth-7) {
-					lines = append(lines, expandedBg.Render("       "+l))
+		if e.Shadow {
+			line := renderToolLine(*e, maxWidth-6)
+			lines = append(lines, marker+"    "+ansiDim+line+ansiReset)
+			if e.Expanded {
+				if e.Text != "" {
+					for _, l := range WrapText("args: "+e.Text, maxWidth-11) {
+						lines = append(lines, expandedBg.Render("           "+ansiDim+l+ansiReset))
+					}
+				}
+				if e.ToolResult != "" {
+					lines = append(lines, expandedBg.Render("           "+ansiDim+"result:"+ansiReset))
+					for _, l := range WrapText(e.ToolResult, maxWidth-13) {
+						lines = append(lines, expandedBg.Render("             "+ansiDim+l+ansiReset))
+					}
 				}
 			}
-			if e.ToolResult != "" {
-				lines = append(lines, expandedBg.Render("       result:"))
-				for _, l := range WrapText(e.ToolResult, maxWidth-9) {
-					lines = append(lines, expandedBg.Render("         "+l))
+		} else {
+			line := renderToolLine(*e, maxWidth-2)
+			lines = append(lines, marker+line)
+			if e.Expanded {
+				if e.Text != "" {
+					for _, l := range WrapText("args: "+e.Text, maxWidth-7) {
+						lines = append(lines, expandedBg.Render("       "+l))
+					}
+				}
+				if e.ToolResult != "" {
+					lines = append(lines, expandedBg.Render("       result:"))
+					for _, l := range WrapText(e.ToolResult, maxWidth-9) {
+						lines = append(lines, expandedBg.Render("         "+l))
+					}
 				}
 			}
 		}

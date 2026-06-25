@@ -161,6 +161,35 @@ func TestSnapshots(t *testing.T) {
 		m.OpenHelpOverlay()
 		golden.RequireEqual(t, []byte(m.View()))
 	})
+
+	t.Run("subagent_shadow_entries", func(t *testing.T) {
+		m := newSized()
+		m.AddTimelineEntry("main", tui.TimelineEntry{
+			Kind:           tui.KindTool,
+			ToolName:       "subagent",
+			Text:           `{"task":"investigate"}`,
+			Status:         "pending",
+			ChildSessionID: "sub-1",
+		})
+		m.AddTimelineEntry("main", tui.TimelineEntry{
+			Kind:           tui.KindTool,
+			ToolName:       "bash",
+			Text:           `{"command":"ls"}`,
+			ToolResult:     "file1.go",
+			Status:         "success",
+			Shadow:         true,
+			ChildSessionID: "sub-1",
+		})
+		m.AddTimelineEntry("main", tui.TimelineEntry{
+			Kind:           tui.KindTool,
+			ToolName:       "read",
+			Text:           `{"path":"main.go"}`,
+			Status:         "pending",
+			Shadow:         true,
+			ChildSessionID: "sub-1",
+		})
+		golden.RequireEqual(t, []byte(m.View()))
+	})
 }
 
 func TestCopyKey_SetsStatusMessage(t *testing.T) {
