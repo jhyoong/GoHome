@@ -200,6 +200,23 @@ func TestCopyKey_ToolEntry_IncludesAllContent(t *testing.T) {
 	}
 }
 
+func TestShadowEntryFields(t *testing.T) {
+	e := tui.TimelineEntry{
+		Kind:           tui.KindTool,
+		ToolName:       "bash",
+		Text:           `{"command":"ls"}`,
+		Status:         "success",
+		Shadow:         true,
+		ChildSessionID: "sub-1",
+	}
+	if !e.Shadow {
+		t.Fatal("Shadow should be true")
+	}
+	if e.ChildSessionID != "sub-1" {
+		t.Fatalf("ChildSessionID = %q, want %q", e.ChildSessionID, "sub-1")
+	}
+}
+
 func TestToggleExpansion_PreservesScrollPosition(t *testing.T) {
 	m := newSized()
 

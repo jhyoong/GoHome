@@ -28,6 +28,9 @@ type TimelineEntry struct {
 	Expanded   bool
 	Status     string // "" | "pending" | "success" | "error" (tool entries only)
 
+	Shadow         bool   // true for shadow copies of child tool calls
+	ChildSessionID string // links subagent tool entry to child session
+
 	cachedLines    []string
 	cachedWidth    int
 	cachedExpanded bool
