@@ -92,3 +92,8 @@ Seam: SSE parsing is isolated in `internal/llm/anthropic/sse.go` and
 `internal/llm/openai/sse.go`. Both are pure functions over byte slices,
 making them natural fuzzing targets. Benchmark entry points can be added to
 existing `_test.go` files with no structural changes.
+
+
+## Additional findings
+- Subagent sessions should disable text input when properly completed - meaning a response has been sent back to the main session. Manual cancels, tool call steering of subagents shouldn't end/complete a subagent session.
+- When swapping session views, it seems like tool calls and subagent sessions might get cancelled accidentally? To investigate. 
