@@ -114,6 +114,25 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 	case agent.EventSessionStarted:
 		// Subagent session -- depth 1, add to order if not already present.
 		m.getOrCreateSession(ev.SessionID, 1)
+		// Link child to parent: find the parent session that has a pending
+		// subagent tool entry without a ChildSessionID.
+		for _, parentID := range m.order {
+			ps := m.sessions[parentID]
+			if ps == nil {
+				continue
+			}
+			for i := len(ps.Timeline) - 1; i >= 0; i-- {
+				e := &ps.Timeline[i]
+				if e.Kind == KindTool && e.ToolName == "subagent" && e.ChildSessionID == "" {
+					e.ChildSessionID = ev.SessionID
+					m.childToParent[ev.SessionID] = parentID
+					break
+				}
+			}
+			if _, ok := m.childToParent[ev.SessionID]; ok {
+				break
+			}
+		}
 
 	case agent.EventSessionEnded:
 		sv.InFlight = false

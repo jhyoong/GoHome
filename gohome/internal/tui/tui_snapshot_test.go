@@ -217,6 +217,33 @@ func TestShadowEntryFields(t *testing.T) {
 	}
 }
 
+func TestChildToParentMapping(t *testing.T) {
+	m := newSized()
+	// Simulate subagent tool call in parent timeline first.
+	m.AddTimelineEntry("main", tui.TimelineEntry{
+		Kind:     tui.KindTool,
+		ToolName: "subagent",
+		Text:     `{"task":"do stuff"}`,
+		Status:   "pending",
+	})
+	// Start child session.
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventSessionStarted,
+		SessionID: "sub-1",
+	}})
+	// The parent's subagent tool entry should now have ChildSessionID set.
+	sv := m.Sessions()["main"]
+	found := false
+	for _, e := range sv.Timeline {
+		if e.ToolName == "subagent" && e.ChildSessionID == "sub-1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected subagent tool entry to have ChildSessionID='sub-1'")
+	}
+}
+
 func TestToggleExpansion_PreservesScrollPosition(t *testing.T) {
 	m := newSized()
 

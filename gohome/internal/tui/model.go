@@ -71,9 +71,10 @@ const stripHeight = 1
 // Model is the root Bubble Tea model for gohome.
 type Model struct {
 	theme    style.Theme
-	sessions map[string]*SessionView
-	order    []string
-	focused  string
+	sessions      map[string]*SessionView
+	order         []string
+	focused       string
+	childToParent map[string]string
 
 	editor  *EditorComponent
 	chat    *ChatComponent
@@ -165,6 +166,7 @@ func New(fe *Frontend, sessionID string) *Model {
 		sessions:         map[string]*SessionView{sessionID: main},
 		order:            []string{sessionID},
 		focused:          sessionID,
+		childToParent:    make(map[string]string),
 		inputCh:          inputCh,
 		contextWindow:    config.DefaultContextWindow,
 		contextWarnPct:   config.DefaultContextWarnPct,
@@ -231,6 +233,11 @@ func (m *Model) SetContextThresholds(warn, crit float64) {
 // Exported for tests that need to inspect focus state.
 func (m *Model) Focused() string {
 	return m.focused
+}
+
+// Sessions returns the session views map. Exported for tests.
+func (m *Model) Sessions() map[string]*SessionView {
+	return m.sessions
 }
 
 // Init implements tea.Model.
