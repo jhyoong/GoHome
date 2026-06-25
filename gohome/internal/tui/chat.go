@@ -88,6 +88,97 @@ func (c *ChatComponent) DisableAutoScroll(maxWidth int) {
 	c.autoScroll = false
 }
 
+// EnsureCursorVisible adjusts scrollTop so the cursor entry is within the
+// visible viewport. Call after changing the cursor via arrow keys.
+func (c *ChatComponent) EnsureCursorVisible(maxWidth int) {
+	if c.timeline == nil || c.cursor < 0 || c.cursor >= len(*c.timeline) {
+		return
+	}
+	if c.maxHeight <= 0 {
+		return
+	}
+
+	cursorTop := 0
+	for i := 0; i < c.cursor; i++ {
+		cursorTop += c.entryLineCount(&(*c.timeline)[i], maxWidth)
+	}
+	cursorHeight := c.entryLineCount(&(*c.timeline)[c.cursor], maxWidth)
+
+	total := c.countLines(maxWidth)
+	if total <= c.maxHeight {
+		return
+	}
+
+	effectiveTop := c.scrollTop
+	if c.autoScroll {
+		effectiveTop = total - c.maxHeight
+	}
+
+	needsAdjust := false
+	if cursorTop < effectiveTop {
+		c.scrollTop = cursorTop
+		needsAdjust = true
+	} else if cursorTop+cursorHeight > effectiveTop+c.maxHeight {
+		c.scrollTop = cursorTop + cursorHeight - c.maxHeight
+		needsAdjust = true
+	}
+
+	if needsAdjust {
+		c.autoScroll = false
+	}
+}
+
+// entryLineCount returns the number of rendered lines for a single timeline entry.
+func (c *ChatComponent) entryLineCount(e *TimelineEntry, maxWidth int) int {
+	if e.cacheValid(maxWidth) {
+		return len(e.cachedLines)
+	}
+	switch e.Kind {
+	case KindUser:
+		return len(WrapText(e.Text, maxWidth-len("you: ")-2))
+	case KindAssistant:
+		lines := RenderMarkdown(e.Text, maxWidth-2)
+		if len(lines) == 0 {
+			lines = WrapText(e.Text, maxWidth-2)
+		}
+		return len(lines)
+	case KindThinking:
+		if e.Expanded {
+			lines := RenderMarkdown(e.Text, maxWidth-4)
+			if len(lines) == 0 {
+				lines = WrapText(e.Text, maxWidth-4)
+			}
+			return 1 + len(lines)
+		}
+		return 1
+	case KindTool:
+		count := 1
+		if e.Expanded {
+			if e.Shadow {
+				if e.Text != "" {
+					count += len(WrapText("args: "+e.Text, maxWidth-11))
+				}
+				if e.ToolResult != "" {
+					count++
+					count += len(WrapText(e.ToolResult, maxWidth-13))
+				}
+			} else {
+				if e.Text != "" {
+					count += len(WrapText("args: "+e.Text, maxWidth-7))
+				}
+				if e.ToolResult != "" {
+					count++
+					count += len(WrapText(e.ToolResult, maxWidth-9))
+				}
+			}
+		}
+		return count
+	case KindNotice:
+		return 1
+	}
+	return 1
+}
+
 // countLines returns the total number of rendered lines for all timeline entries
 // at the given maxWidth. Uses cached line counts when available.
 func (c *ChatComponent) countLines(maxWidth int) int {

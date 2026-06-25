@@ -379,6 +379,37 @@ func TestShadowEntries_UpdatedOnChildToolResult(t *testing.T) {
 	}
 }
 
+func TestEnsureCursorVisible_ScrollsDown(t *testing.T) {
+	m := newSized()
+	for i := 0; i < 20; i++ {
+		m.AddTimelineEntry("main", tui.TimelineEntry{Kind: tui.KindUser, Text: fmt.Sprintf("msg %d", i)})
+	}
+	for i := 0; i < 19; i++ {
+		m = apply(m, tea.KeyMsg{Type: tea.KeyDown})
+	}
+	view := m.View()
+	if !strings.Contains(view, "msg 19") {
+		t.Fatalf("expected 'msg 19' to be visible after scrolling down, got:\n%s", view)
+	}
+}
+
+func TestEnsureCursorVisible_ScrollsUp(t *testing.T) {
+	m := newSized()
+	for i := 0; i < 20; i++ {
+		m.AddTimelineEntry("main", tui.TimelineEntry{Kind: tui.KindUser, Text: fmt.Sprintf("msg %d", i)})
+	}
+	for i := 0; i < 19; i++ {
+		m = apply(m, tea.KeyMsg{Type: tea.KeyDown})
+	}
+	for i := 0; i < 19; i++ {
+		m = apply(m, tea.KeyMsg{Type: tea.KeyUp})
+	}
+	view := m.View()
+	if !strings.Contains(view, "msg 0") {
+		t.Fatalf("expected 'msg 0' to be visible after scrolling up, got:\n%s", view)
+	}
+}
+
 func TestToggleExpansion_PreservesScrollPosition(t *testing.T) {
 	m := newSized()
 

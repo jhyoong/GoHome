@@ -177,6 +177,8 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.cursor--
 				}
 				m.rebuildViewportKeepScroll()
+				m.syncChatHeight()
+				m.chat.EnsureCursorVisible(m.winW)
 				return m, nil
 			}
 			if msg.Type == tea.KeyDown {
@@ -185,6 +187,8 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.cursor++
 				}
 				m.rebuildViewportKeepScroll()
+				m.syncChatHeight()
+				m.chat.EnsureCursorVisible(m.winW)
 				return m, nil
 			}
 		}

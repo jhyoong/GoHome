@@ -256,6 +256,17 @@ func (m *Model) getOrCreateSession(id string, depth int) *SessionView {
 	return sv
 }
 
+// syncChatHeight recomputes the chat area height from the current window
+// dimensions and pushes it to the chat component. This ensures methods like
+// EnsureCursorVisible use the correct viewport size even before View() runs.
+func (m *Model) syncChatHeight() {
+	chatH := m.winH - editorMinHeight - 2 - stripHeight - statusHeight - 2
+	if chatH < 1 {
+		chatH = 1
+	}
+	m.chat.SetMaxHeight(chatH)
+}
+
 // rebuildViewportKeepScroll refreshes the chat cursor and timeline without
 // resetting scroll position. Used after toggling block expansion.
 func (m *Model) rebuildViewportKeepScroll() {
