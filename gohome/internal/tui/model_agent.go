@@ -57,6 +57,14 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 			Text:     ev.InputJSON,
 			Status:   "pending",
 		})
+		if sv.Depth > 0 {
+			m.insertShadowEntry(msg.SessionID, TimelineEntry{
+				Kind:     KindTool,
+				ToolName: ev.ToolName,
+				Text:     ev.InputJSON,
+				Status:   "pending",
+			})
+		}
 
 	case agent.EventToolResult:
 		// Set ToolResult on the most recent tool entry without a result.
@@ -211,6 +219,59 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 		return SpinnerTickCmd()
 	}
 	return nil
+}
+
+// insertShadowEntry inserts a shadow tool entry into the parent session's
+// timeline after the subagent tool entry linked to childID. Maintains a
+// sliding window of maxShadow entries, removing the oldest if needed.
+func (m *Model) insertShadowEntry(childID string, entry TimelineEntry) {
+	parentID, ok := m.childToParent[childID]
+	if !ok {
+		return
+	}
+	ps, ok := m.sessions[parentID]
+	if !ok {
+		return
+	}
+
+	anchorIdx := -1
+	for i := range ps.Timeline {
+		if ps.Timeline[i].Kind == KindTool && ps.Timeline[i].ChildSessionID == childID {
+			anchorIdx = i
+			break
+		}
+	}
+	if anchorIdx < 0 {
+		return
+	}
+
+	const maxShadow = 3
+	shadowStart := anchorIdx + 1
+	shadowCount := 0
+	for j := shadowStart; j < len(ps.Timeline); j++ {
+		if ps.Timeline[j].Shadow && ps.Timeline[j].ChildSessionID == childID {
+			shadowCount++
+		} else {
+			break
+		}
+	}
+
+	if shadowCount >= maxShadow {
+		removeIdx := shadowStart
+		ps.Timeline = append(ps.Timeline[:removeIdx], ps.Timeline[removeIdx+1:]...)
+		if parentID == m.focused && m.cursor > removeIdx {
+			m.cursor--
+		}
+		shadowCount--
+	}
+
+	insertIdx := shadowStart + shadowCount
+	entry.Shadow = true
+	entry.ChildSessionID = childID
+	ps.Timeline = append(ps.Timeline[:insertIdx], append([]TimelineEntry{entry}, ps.Timeline[insertIdx:]...)...)
+	if parentID == m.focused && m.cursor >= insertIdx {
+		m.cursor++
+	}
 }
 
 // sendInputCmd returns a Cmd that delivers text to the input channel

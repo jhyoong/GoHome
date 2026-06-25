@@ -244,6 +244,75 @@ func TestChildToParentMapping(t *testing.T) {
 	}
 }
 
+func TestShadowEntries_InsertedOnChildToolCall(t *testing.T) {
+	m := newSized()
+	m.AddTimelineEntry("main", tui.TimelineEntry{
+		Kind:     tui.KindTool,
+		ToolName: "subagent",
+		Text:     `{"task":"investigate"}`,
+		Status:   "pending",
+	})
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventSessionStarted,
+		SessionID: "sub-1",
+	}})
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventToolCallDone,
+		SessionID: "sub-1",
+		ToolName:  "bash",
+		InputJSON: `{"command":"ls"}`,
+	}})
+	sv := m.Sessions()["main"]
+	if len(sv.Timeline) < 2 {
+		t.Fatalf("expected at least 2 entries in parent timeline, got %d", len(sv.Timeline))
+	}
+	shadow := sv.Timeline[1]
+	if !shadow.Shadow {
+		t.Fatal("second entry should be a shadow entry")
+	}
+	if shadow.ToolName != "bash" {
+		t.Fatalf("shadow ToolName = %q, want %q", shadow.ToolName, "bash")
+	}
+}
+
+func TestShadowEntries_SlidingWindowMax3(t *testing.T) {
+	m := newSized()
+	m.AddTimelineEntry("main", tui.TimelineEntry{
+		Kind:     tui.KindTool,
+		ToolName: "subagent",
+		Text:     `{"task":"investigate"}`,
+		Status:   "pending",
+	})
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventSessionStarted,
+		SessionID: "sub-1",
+	}})
+	// Insert 4 tool calls -- only 3 shadows should remain.
+	for i := 0; i < 4; i++ {
+		m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+			Kind:      agent.EventToolCallDone,
+			SessionID: "sub-1",
+			ToolName:  "bash",
+			InputJSON: fmt.Sprintf(`{"command":"cmd%d"}`, i),
+		}})
+	}
+	sv := m.Sessions()["main"]
+	shadowCount := 0
+	for _, e := range sv.Timeline {
+		if e.Shadow {
+			shadowCount++
+		}
+	}
+	if shadowCount != 3 {
+		t.Fatalf("expected 3 shadow entries, got %d", shadowCount)
+	}
+	// The oldest shadow (cmd0) should have been evicted; first shadow should be cmd1.
+	firstShadow := sv.Timeline[1]
+	if firstShadow.Text != `{"command":"cmd1"}` {
+		t.Fatalf("first shadow Text = %q, want %q", firstShadow.Text, `{"command":"cmd1"}`)
+	}
+}
+
 func TestToggleExpansion_PreservesScrollPosition(t *testing.T) {
 	m := newSized()
 
