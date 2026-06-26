@@ -13,6 +13,7 @@ package tui_test
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -28,6 +29,14 @@ const snapshotW = 80
 const snapshotH = 24
 
 // apply sends msg to m synchronously and returns the updated *Model.
+var editPathRe = regexp.MustCompile(`\[tool\] edit \{[^}]*\.\.\.`)
+
+// normEditPath replaces the truncated edit tool arg line (which contains a
+// machine-specific temp path) with a fixed string for golden-file stability.
+func normEditPath(s string) string {
+	return editPathRe.ReplaceAllString(s, `[tool] edit {"path":"/test/test.go",...`)
+}
+
 func apply(m *tui.Model, msg tea.Msg) *tui.Model {
 	nm, _ := m.Update(msg)
 	return nm.(*tui.Model)
@@ -265,7 +274,7 @@ func TestSnapshots(t *testing.T) {
 			ToolName:  "edit",
 			InputJSON: fmt.Sprintf(`{"path":%q,"old_string":"func Old() {","new_string":"func New() {"}`, tmpFile),
 		}})
-		golden.RequireEqual(t, []byte(m.View()))
+		golden.RequireEqual(t, []byte(normEditPath(m.View())))
 	})
 
 	// Edit tool diff box: success state (completed successfully).
@@ -286,7 +295,7 @@ func TestSnapshots(t *testing.T) {
 			SessionID: "main",
 			Result:    &agent.ToolResult{Content: fmt.Sprintf(`edit: replaced 1 occurrence(s) in %q`, tmpFile)},
 		}})
-		golden.RequireEqual(t, []byte(m.View()))
+		golden.RequireEqual(t, []byte(normEditPath(m.View())))
 	})
 
 	// Edit tool diff box: denied/error state (red border, dimmed text).
@@ -307,7 +316,7 @@ func TestSnapshots(t *testing.T) {
 			SessionID: "main",
 			Result:    &agent.ToolResult{Content: "denied", IsError: true},
 		}})
-		golden.RequireEqual(t, []byte(m.View()))
+		golden.RequireEqual(t, []byte(normEditPath(m.View())))
 	})
 
 	t.Run("subagent_shadow_entries", func(t *testing.T) {
