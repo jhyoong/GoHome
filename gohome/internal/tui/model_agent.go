@@ -51,19 +51,25 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 		}
 
 	case agent.EventToolCallDone:
-		sv.Timeline = append(sv.Timeline, TimelineEntry{
+		entry := TimelineEntry{
 			Kind:     KindTool,
 			ToolName: ev.ToolName,
 			Text:     ev.InputJSON,
 			Status:   "pending",
-		})
+		}
+		if ev.ToolName == "edit" {
+			entry.DiffPreview = buildDiffPreview(ev.InputJSON)
+		}
+		sv.Timeline = append(sv.Timeline, entry)
 		if sv.Depth > 0 {
-			m.insertShadowEntry(msg.SessionID, TimelineEntry{
-				Kind:     KindTool,
-				ToolName: ev.ToolName,
-				Text:     ev.InputJSON,
-				Status:   "pending",
-			})
+			shadow := TimelineEntry{
+				Kind:        KindTool,
+				ToolName:    ev.ToolName,
+				Text:        ev.InputJSON,
+				Status:      "pending",
+				DiffPreview: entry.DiffPreview,
+			}
+			m.insertShadowEntry(msg.SessionID, shadow)
 		}
 
 	case agent.EventToolResult:
