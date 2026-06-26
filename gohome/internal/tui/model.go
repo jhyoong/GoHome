@@ -22,21 +22,23 @@ const (
 
 // TimelineEntry is a single item in a session's conversation history.
 type TimelineEntry struct {
-	Kind       string // KindUser | KindAssistant | KindTool | KindNotice
-	Text       string
-	ToolName   string
-	ToolResult string
-	Expanded   bool
-	Status     string // "" | "pending" | "success" | "error" (tool entries only)
+	Kind        string // KindUser | KindAssistant | KindTool | KindNotice
+	Text        string
+	ToolName    string
+	ToolResult  string
+	Expanded    bool
+	Status      string // "" | "pending" | "success" | "error" (tool entries only)
+	DiffPreview string // pre-formatted unified diff for edit tool calls
 
 	Shadow         bool   // true for shadow copies of child tool calls
 	ChildSessionID string // links subagent tool entry to child session
 
-	cachedLines    []string
-	cachedWidth    int
-	cachedExpanded bool
-	cachedText     string
-	cachedResult   string
+	cachedLines      []string
+	cachedWidth      int
+	cachedExpanded   bool
+	cachedText       string
+	cachedResult     string
+	cachedDiffStatus string
 }
 
 // cacheValid reports whether the cached render output is still usable
@@ -46,7 +48,8 @@ func (e *TimelineEntry) cacheValid(width int) bool {
 		e.cachedWidth == width &&
 		e.cachedExpanded == e.Expanded &&
 		e.cachedText == e.Text &&
-		e.cachedResult == e.ToolResult
+		e.cachedResult == e.ToolResult &&
+		e.cachedDiffStatus == e.Status
 }
 
 // SessionView holds the display state for one agent session.

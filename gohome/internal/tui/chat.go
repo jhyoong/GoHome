@@ -302,6 +302,7 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 			e.cachedExpanded = e.Expanded
 			e.cachedText = e.Text
 			e.cachedResult = e.ToolResult
+			e.cachedDiffStatus = e.Status
 		}
 
 		all = append(all, e.cachedLines...)
