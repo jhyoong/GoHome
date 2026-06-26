@@ -43,6 +43,7 @@ type Event struct {
 	Result        *ToolResult
 	Usage         *common.Usage
 	StopReason    string
+	EndReason     string // "done" or "cancelled" (EventSessionEnded only)
 	Err           error
 	ThinkingDelta string
 }
