@@ -346,6 +346,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case approvalReqMsg:
 		m.handleApprovalReq(msg)
 
+	case ClientApprovalReqMsg:
+		m.handleClientApprovalReq(msg)
+
 	case tea.KeyMsg:
 		return m.handleKeyMsg(msg)
 

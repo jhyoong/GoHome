@@ -20,6 +20,17 @@ func (m *Model) handleApprovalReq(msg approvalReqMsg) {
 	}
 }
 
+// handleClientApprovalReq processes an incoming daemon-mode approval request.
+// It works like handleApprovalReq but creates a daemon approval prompt (with
+// rpcID instead of a reply channel).
+func (m *Model) handleClientApprovalReq(msg ClientApprovalReqMsg) {
+	if msg.Req.SessionID == m.focused && m.activeApproval == nil {
+		m.activeApproval = newDaemonApprovalPrompt(msg.Req, msg.RPCID)
+	} else {
+		m.pendingApprovals[msg.Req.SessionID] = newDaemonApprovalPrompt(msg.Req, msg.RPCID)
+	}
+}
+
 // handleApprovalKey routes a key press when an approval prompt is active.
 // It returns a Cmd (may be nil).
 func (m *Model) handleApprovalKey(msg tea.KeyMsg) tea.Cmd {
@@ -117,14 +128,22 @@ func (m *Model) handleApprovalKey(msg tea.KeyMsg) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-// resolveApproval sends dec on the active approval's reply channel and clears
-// the active approval. If another pending approval exists for the focused
-// session, it is promoted to active.
+// resolveApproval sends dec back through the appropriate channel and clears
+// the active approval. In daemon mode (rpcID set) the decision is sent via
+// JSON-RPC; in standalone mode it goes through the reply channel. If another
+// pending approval exists for the focused session, it is promoted to active.
 func (m *Model) resolveApproval(dec guard.ApprovalDecision) {
 	if m.activeApproval == nil {
 		return
 	}
-	m.activeApproval.reply <- dec
+	ap := m.activeApproval
+	if ap.rpcID != nil && m.cfe != nil {
+		// Daemon mode: respond via JSON-RPC.
+		_ = m.cfe.RespondApproval(ap.rpcID, dec)
+	} else if ap.reply != nil {
+		// Standalone mode: write to reply channel.
+		ap.reply <- dec
+	}
 	m.activeApproval = nil
 	// Promote any pending approval for the now-focused session.
 	m.promoteApproval()

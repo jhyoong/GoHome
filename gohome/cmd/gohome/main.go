@@ -388,6 +388,13 @@ func runClient(sockPath string, settings config.Settings, mc config.ModelConfig)
 		}
 	}()
 
+	// Feed approval requests from the daemon into Bubble Tea.
+	go func() {
+		for areq := range cfe.Approvals() {
+			p.Send(areq)
+		}
+	}()
+
 	// Handle signals.
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
