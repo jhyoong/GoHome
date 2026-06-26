@@ -395,6 +395,13 @@ func runClient(sockPath string, settings config.Settings, mc config.ModelConfig)
 		}
 	}()
 
+	// Feed state sync messages from the daemon into Bubble Tea.
+	go func() {
+		for ss := range cfe.StateSync() {
+			p.Send(ss)
+		}
+	}()
+
 	// Handle signals.
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)

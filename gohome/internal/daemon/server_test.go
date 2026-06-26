@@ -18,6 +18,8 @@ import (
 )
 
 // helper: send a JSON-RPC request over a raw connection and read the response.
+// It skips any notifications (e.g. session.state) that may arrive before the
+// response to the request.
 func sendRequest(t *testing.T, conn net.Conn, id int64, method string, params json.RawMessage) *rpc.Message {
 	t.Helper()
 
@@ -36,13 +38,23 @@ func sendRequest(t *testing.T, conn net.Conn, id int64, method string, params js
 		t.Fatalf("write request: %v", err)
 	}
 
-	// Read response (newline-delimited).
-	rc := rpc.NewConn(conn)
-	msg, err := rc.Read()
-	if err != nil {
-		t.Fatalf("read response: %v", err)
+	// Read messages until we get a response (skip notifications).
+	scanner := bufio.NewScanner(conn)
+	for scanner.Scan() {
+		msg, err := rpc.Decode(scanner.Bytes())
+		if err != nil {
+			t.Fatalf("decode message: %v", err)
+		}
+		if msg.IsResponse() {
+			return msg
+		}
+		// Skip notifications (e.g. session.state sent on connect).
 	}
-	return msg
+	if err := scanner.Err(); err != nil {
+		t.Fatalf("scanner error: %v", err)
+	}
+	t.Fatal("connection closed before response received")
+	return nil
 }
 
 func TestServer_HealthCheck(t *testing.T) {
@@ -431,6 +443,109 @@ func TestServer_SessionList(t *testing.T) {
 	}
 	if len(result.Sessions) > 0 && result.Sessions[0].ID != "list-test-1" {
 		t.Errorf("session ID = %q, want %q", result.Sessions[0].ID, "list-test-1")
+	}
+
+	srv.Stop()
+	wg.Wait()
+}
+
+func TestServer_Reconnect_SendsState(t *testing.T) {
+	dir := t.TempDir()
+	sockDir, err := os.MkdirTemp("/tmp", "gh-daemon-test-*")
+	if err != nil {
+		t.Fatalf("MkdirTemp: %v", err)
+	}
+	defer os.RemoveAll(sockDir)
+	sock := filepath.Join(sockDir, "t.sock")
+
+	wl := &guard.Whitelist{}
+	g := guard.NewGuard(wl, &noopApprover{})
+	g.SetYolo(true)
+
+	registry := tools.NewRegistry()
+
+	srv, err := NewServer(sock, ServerConfig{
+		Version:      "test-reconnect",
+		LLMClient:    &echoClient{},
+		Guard:        g,
+		Registry:     registry,
+		SystemPrompt: "test",
+		MaxTokens:    1024,
+		Home:         dir,
+		CWD:          dir,
+		SessionID:    "reconnect-sess-1",
+	})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		srv.Serve()
+	}()
+	time.Sleep(50 * time.Millisecond)
+
+	// Client 1 connects and disconnects.
+	conn1, err := net.Dial("unix", sock)
+	if err != nil {
+		t.Fatalf("dial client 1: %v", err)
+	}
+
+	// Read the session.state notification sent on connect.
+	conn1.SetReadDeadline(time.Now().Add(3 * time.Second))
+	rc1 := rpc.NewConn(conn1)
+	msg1, err := rc1.Read()
+	if err != nil {
+		t.Fatalf("client 1 read: %v", err)
+	}
+	if msg1.Method != rpc.MethodSessionState {
+		t.Fatalf("client 1: expected method %q, got %q", rpc.MethodSessionState, msg1.Method)
+	}
+
+	var state1 rpc.SessionStateParams
+	if err := json.Unmarshal(msg1.Params, &state1); err != nil {
+		t.Fatalf("unmarshal state1: %v", err)
+	}
+	if state1.SessionID != "reconnect-sess-1" {
+		t.Errorf("client 1 sessionID = %q, want %q", state1.SessionID, "reconnect-sess-1")
+	}
+	if !state1.Yolo {
+		t.Error("client 1 yolo = false, want true")
+	}
+
+	// Disconnect client 1.
+	conn1.Close()
+	time.Sleep(100 * time.Millisecond) // let server notice disconnect
+
+	// Client 2 connects.
+	conn2, err := net.Dial("unix", sock)
+	if err != nil {
+		t.Fatalf("dial client 2: %v", err)
+	}
+	defer conn2.Close()
+
+	// Read the session.state notification sent on connect.
+	conn2.SetReadDeadline(time.Now().Add(3 * time.Second))
+	rc2 := rpc.NewConn(conn2)
+	msg2, err := rc2.Read()
+	if err != nil {
+		t.Fatalf("client 2 read: %v", err)
+	}
+	if msg2.Method != rpc.MethodSessionState {
+		t.Fatalf("client 2: expected method %q, got %q", rpc.MethodSessionState, msg2.Method)
+	}
+
+	var state2 rpc.SessionStateParams
+	if err := json.Unmarshal(msg2.Params, &state2); err != nil {
+		t.Fatalf("unmarshal state2: %v", err)
+	}
+	if state2.SessionID != "reconnect-sess-1" {
+		t.Errorf("client 2 sessionID = %q, want %q", state2.SessionID, "reconnect-sess-1")
+	}
+	if !state2.Yolo {
+		t.Error("client 2 yolo = false, want true")
 	}
 
 	srv.Stop()

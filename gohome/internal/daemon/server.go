@@ -166,6 +166,10 @@ func (s *Server) handleClient(conn net.Conn) {
 	s.fe = fe
 	s.mu.Unlock()
 
+	// Send current state to the new client so it can display the correct
+	// model name, yolo status, and session ID immediately.
+	s.sendStateSync(c)
+
 	// Start the agent loop on first connection (if agent is configured).
 	if s.agent != nil {
 		s.agentOnce.Do(func() {
@@ -397,6 +401,30 @@ func (s *Server) runLoop() {
 			}
 		}
 	}
+}
+
+// sendStateSync sends a session.state notification to the given connection so
+// a newly connected TUI client can display the correct model, yolo status,
+// and session ID.
+func (s *Server) sendStateSync(c *rpc.Conn) {
+	if s.agent == nil {
+		return
+	}
+	sess := s.agent.State.Session()
+	model := s.agent.State.Model()
+
+	yolo := false
+	if s.agent.Guard != nil {
+		yolo = s.agent.Guard.Yolo()
+	}
+
+	params := rpc.SessionStateParams{
+		SessionID: sess.ID,
+		Model:     model,
+		Yolo:      yolo,
+	}
+	data, _ := json.Marshal(params)
+	_ = c.Notify(rpc.MethodSessionState, data)
 }
 
 // ---------- RPC handler methods ----------

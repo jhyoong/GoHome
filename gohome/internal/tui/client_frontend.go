@@ -20,6 +20,15 @@ type ClientApprovalReqMsg struct {
 	RPCID *rpc.ID
 }
 
+// StateSyncMsg carries session state from the daemon to the TUI when a client
+// connects (or reconnects). The TUI model uses it to set the model name, yolo
+// flag, and focused session ID.
+type StateSyncMsg struct {
+	SessionID string
+	Model     string
+	Yolo      bool
+}
+
 // ClientFrontend connects the TUI to a daemon over JSON-RPC. It receives
 // agent.event notifications and converts them to Bubble Tea messages, and
 // sends user input and approval decisions as JSON-RPC requests.
@@ -27,6 +36,7 @@ type ClientFrontend struct {
 	conn      *rpc.Conn
 	events    chan<- AgentEventMsg
 	approvals chan ClientApprovalReqMsg
+	stateSync chan StateSyncMsg
 	pending   *rpc.Pending
 	idSeq     atomic.Int64
 }
@@ -39,6 +49,7 @@ func NewClientFrontend(conn *rpc.Conn, events chan<- AgentEventMsg) *ClientFront
 		conn:      conn,
 		events:    events,
 		approvals: make(chan ClientApprovalReqMsg, 4),
+		stateSync: make(chan StateSyncMsg, 4),
 		pending:   rpc.NewPending(),
 	}
 }
@@ -48,6 +59,13 @@ func NewClientFrontend(conn *rpc.Conn, events chan<- AgentEventMsg) *ClientFront
 // RespondApproval with the decision.
 func (cf *ClientFrontend) Approvals() <-chan ClientApprovalReqMsg {
 	return cf.approvals
+}
+
+// StateSync returns a read-only channel that delivers session state snapshots
+// from the daemon. The TUI reads from this channel on connect/reconnect to
+// set the model name, yolo flag, and session ID.
+func (cf *ClientFrontend) StateSync() <-chan StateSyncMsg {
+	return cf.stateSync
 }
 
 // ReadLoop reads messages from the daemon in a loop. It should be run in a
@@ -90,7 +108,19 @@ func (cf *ClientFrontend) handleNotification(msg *rpc.Message) {
 		}
 
 	case rpc.MethodSessionState:
-		// Ignored for now; will be handled in Task 15.
+		var params rpc.SessionStateParams
+		if err := json.Unmarshal(msg.Params, &params); err != nil {
+			return
+		}
+		select {
+		case cf.stateSync <- StateSyncMsg{
+			SessionID: params.SessionID,
+			Model:     params.Model,
+			Yolo:      params.Yolo,
+		}:
+		default:
+			// Drop if channel is full; the next sync will update.
+		}
 	}
 }
 

@@ -367,6 +367,51 @@ func TestClientFrontend_ReceivesApprovalRequest(t *testing.T) {
 	}
 }
 
+func TestClientFrontend_ReceivesSessionState(t *testing.T) {
+	daemonRaw, tuiRaw := net.Pipe()
+	defer daemonRaw.Close()
+	defer tuiRaw.Close()
+
+	daemonConn := rpc.NewConn(daemonRaw)
+	tuiConn := rpc.NewConn(tuiRaw)
+
+	events := make(chan AgentEventMsg, 4)
+	cf := NewClientFrontend(tuiConn, events)
+
+	go cf.ReadLoop()
+
+	// Daemon sends a session.state notification.
+	params := rpc.SessionStateParams{
+		SessionID: "sess-42",
+		Model:     "claude-opus-4-20250514",
+		Yolo:      true,
+	}
+	paramsData, err := json.Marshal(params)
+	if err != nil {
+		t.Fatalf("marshal params: %v", err)
+	}
+	err = daemonConn.Notify(rpc.MethodSessionState, paramsData)
+	if err != nil {
+		t.Fatalf("send notification: %v", err)
+	}
+
+	// Wait for the state sync message.
+	select {
+	case ss := <-cf.StateSync():
+		if ss.SessionID != "sess-42" {
+			t.Errorf("sessionID = %q, want %q", ss.SessionID, "sess-42")
+		}
+		if ss.Model != "claude-opus-4-20250514" {
+			t.Errorf("model = %q, want %q", ss.Model, "claude-opus-4-20250514")
+		}
+		if !ss.Yolo {
+			t.Error("yolo = false, want true")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for state sync message")
+	}
+}
+
 func TestClientFrontend_Close(t *testing.T) {
 	daemonRaw, tuiRaw := net.Pipe()
 	defer daemonRaw.Close()

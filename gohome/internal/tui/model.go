@@ -364,6 +364,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.rebuildViewport()
 		}
 
+	case StateSyncMsg:
+		m.modelName = msg.Model
+		m.yolo = msg.Yolo
+		if msg.SessionID != "" && msg.SessionID != m.focused {
+			m.getOrCreateSession(msg.SessionID, 0)
+			m.focused = msg.SessionID
+		}
+
 	case agentEventMsg:
 		if cmd := m.handleAgentEvent(msg); cmd != nil {
 			return m, cmd
