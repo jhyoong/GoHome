@@ -7,6 +7,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+const maxPreviewLines = 3
+
 var (
 	userPrefix  = lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
 	noticeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
@@ -161,7 +163,7 @@ func (c *ChatComponent) entryLineCount(e *TimelineEntry, maxWidth int) int {
 	case KindTool:
 		count := 1
 		if !e.Expanded {
-			if pv := previewLines(e.ToolResult, 3); len(pv) > 0 {
+			if pv := previewLines(e.ToolResult, maxPreviewLines); len(pv) > 0 {
 				indent := maxWidth - 9
 				if e.Shadow {
 					indent = maxWidth - 15
@@ -231,7 +233,7 @@ func (c *ChatComponent) countLines(maxWidth int) int {
 		case KindTool:
 			count++
 			if !e.Expanded {
-				if pv := previewLines(e.ToolResult, 3); len(pv) > 0 {
+				if pv := previewLines(e.ToolResult, maxPreviewLines); len(pv) > 0 {
 					indent := maxWidth - 9
 					if e.Shadow {
 						indent = maxWidth - 15
@@ -382,7 +384,7 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 			line := renderToolLine(*e, maxWidth-6)
 			lines = append(lines, marker+"    "+ansiDim+line+ansiReset)
 			if !e.Expanded {
-				if pv := previewLines(e.ToolResult, 3); len(pv) > 0 {
+				if pv := previewLines(e.ToolResult, maxPreviewLines); len(pv) > 0 {
 					for _, pl := range pv {
 						for _, wl := range WrapText(pl, maxWidth-15) {
 							lines = append(lines, "             "+ansiDim+wl+ansiReset)
@@ -406,7 +408,7 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 			line := renderToolLine(*e, maxWidth-2)
 			lines = append(lines, marker+line)
 			if !e.Expanded {
-				if pv := previewLines(e.ToolResult, 3); len(pv) > 0 {
+				if pv := previewLines(e.ToolResult, maxPreviewLines); len(pv) > 0 {
 					for _, pl := range pv {
 						for _, wl := range WrapText(pl, maxWidth-9) {
 							lines = append(lines, "       "+ansiDim+wl+ansiReset)
