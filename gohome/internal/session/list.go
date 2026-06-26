@@ -11,12 +11,12 @@ import (
 
 // Listing holds metadata about a previously persisted session.
 type Listing struct {
-	Path       string
-	ID         string
-	StartedAt  time.Time
-	LastActive time.Time
-	Title      string // first user_message text block, truncated to <=60 runes
-	Depth      int
+	Path       string    `json:"path"`
+	ID         string    `json:"id"`
+	StartedAt  time.Time `json:"startedAt"`
+	LastActive time.Time `json:"lastActive"`
+	Title      string    `json:"title"` // first user_message text block, truncated to <=60 runes
+	Depth      int       `json:"depth"`
 }
 
 // List returns all resumable sessions stored under home for the given cwd.
