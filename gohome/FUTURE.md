@@ -95,5 +95,5 @@ existing `_test.go` files with no structural changes.
 
 
 ## Additional findings
-- Subagent sessions should disable text input when properly completed - meaning a response has been sent back to the main session. Manual cancels, tool call steering of subagents shouldn't end/complete a subagent session.
-- When swapping session views, it seems like tool calls and subagent sessions might get cancelled accidentally? To investigate. 
+- Tool calls to show last 3 rows of output 
+- Edit tool to show the changes made (git diff style)

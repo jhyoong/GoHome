@@ -80,13 +80,13 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.activeModal = NewHelpOverlay(helpH, func() { m.activeModal = nil })
 		return m, nil
 	case tea.KeyPgUp:
-		scrollAmt := m.chat.maxHeight - 2
+		scrollAmt := m.chat.maxHeight / 2
 		if scrollAmt < 1 {
 			scrollAmt = 1
 		}
 		m.chat.ScrollUp(scrollAmt)
 	case tea.KeyPgDown:
-		scrollAmt := m.chat.maxHeight - 2
+		scrollAmt := m.chat.maxHeight / 2
 		if scrollAmt < 1 {
 			scrollAmt = 1
 		}
