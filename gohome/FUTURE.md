@@ -92,3 +92,8 @@ Seam: SSE parsing is isolated in `internal/llm/anthropic/sse.go` and
 `internal/llm/openai/sse.go`. Both are pure functions over byte slices,
 making them natural fuzzing targets. Benchmark entry points can be added to
 existing `_test.go` files with no structural changes.
+
+
+## Additional findings
+- Tool calls to show last 3 rows of output 
+- Edit tool to show the changes made (git diff style)

@@ -57,6 +57,14 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 			Text:     ev.InputJSON,
 			Status:   "pending",
 		})
+		if sv.Depth > 0 {
+			m.insertShadowEntry(msg.SessionID, TimelineEntry{
+				Kind:     KindTool,
+				ToolName: ev.ToolName,
+				Text:     ev.InputJSON,
+				Status:   "pending",
+			})
+		}
 
 	case agent.EventToolResult:
 		// Set ToolResult on the most recent tool entry without a result.
@@ -90,6 +98,9 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 				Status:     status,
 			})
 		}
+		if sv.Depth > 0 {
+			m.updateShadowResult(msg.SessionID, content, isErr)
+		}
 
 	case agent.EventUsageUpdated:
 		if ev.Usage != nil {
@@ -114,9 +125,31 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 	case agent.EventSessionStarted:
 		// Subagent session -- depth 1, add to order if not already present.
 		m.getOrCreateSession(ev.SessionID, 1)
+		// Link child to parent: find the parent session that has a pending
+		// subagent tool entry without a ChildSessionID.
+		for _, parentID := range m.order {
+			ps := m.sessions[parentID]
+			if ps == nil {
+				continue
+			}
+			for i := len(ps.Timeline) - 1; i >= 0; i-- {
+				e := &ps.Timeline[i]
+				if e.Kind == KindTool && e.ToolName == "subagent" && e.ChildSessionID == "" {
+					e.ChildSessionID = ev.SessionID
+					m.childToParent[ev.SessionID] = parentID
+					break
+				}
+			}
+			if _, ok := m.childToParent[ev.SessionID]; ok {
+				break
+			}
+		}
 
 	case agent.EventSessionEnded:
 		sv.InFlight = false
+		if ev.EndReason == "done" {
+			sv.Completed = true
+		}
 
 	case agent.EventSessionSwapped:
 		m.focused = ev.SessionID
@@ -192,6 +225,84 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 		return SpinnerTickCmd()
 	}
 	return nil
+}
+
+// insertShadowEntry inserts a shadow tool entry into the parent session's
+// timeline after the subagent tool entry linked to childID. Maintains a
+// sliding window of maxShadow entries, removing the oldest if needed.
+func (m *Model) insertShadowEntry(childID string, entry TimelineEntry) {
+	parentID, ok := m.childToParent[childID]
+	if !ok {
+		return
+	}
+	ps, ok := m.sessions[parentID]
+	if !ok {
+		return
+	}
+
+	anchorIdx := -1
+	for i := range ps.Timeline {
+		if ps.Timeline[i].Kind == KindTool && ps.Timeline[i].ChildSessionID == childID {
+			anchorIdx = i
+			break
+		}
+	}
+	if anchorIdx < 0 {
+		return
+	}
+
+	const maxShadow = 3
+	shadowStart := anchorIdx + 1
+	shadowCount := 0
+	for j := shadowStart; j < len(ps.Timeline); j++ {
+		if ps.Timeline[j].Shadow && ps.Timeline[j].ChildSessionID == childID {
+			shadowCount++
+		} else {
+			break
+		}
+	}
+
+	if shadowCount >= maxShadow {
+		removeIdx := shadowStart
+		ps.Timeline = append(ps.Timeline[:removeIdx], ps.Timeline[removeIdx+1:]...)
+		if parentID == m.focused && m.cursor > removeIdx {
+			m.cursor--
+		}
+		shadowCount--
+	}
+
+	insertIdx := shadowStart + shadowCount
+	entry.Shadow = true
+	entry.ChildSessionID = childID
+	ps.Timeline = append(ps.Timeline[:insertIdx], append([]TimelineEntry{entry}, ps.Timeline[insertIdx:]...)...)
+	if parentID == m.focused && m.cursor >= insertIdx {
+		m.cursor++
+	}
+}
+
+// updateShadowResult updates the most recent pending shadow entry for childID
+// in the parent's timeline with the tool result.
+func (m *Model) updateShadowResult(childID string, content string, isError bool) {
+	parentID, ok := m.childToParent[childID]
+	if !ok {
+		return
+	}
+	ps, ok := m.sessions[parentID]
+	if !ok {
+		return
+	}
+	for i := len(ps.Timeline) - 1; i >= 0; i-- {
+		e := &ps.Timeline[i]
+		if e.Shadow && e.ChildSessionID == childID && e.ToolResult == "" {
+			e.ToolResult = content
+			if isError {
+				e.Status = "error"
+			} else {
+				e.Status = "success"
+			}
+			return
+		}
+	}
 }
 
 // sendInputCmd returns a Cmd that delivers text to the input channel

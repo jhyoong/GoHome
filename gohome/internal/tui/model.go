@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/jhyoong/GoHome/gohome/internal/config"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 	"github.com/jhyoong/GoHome/gohome/internal/tui/style"
@@ -28,6 +29,9 @@ type TimelineEntry struct {
 	Expanded   bool
 	Status     string // "" | "pending" | "success" | "error" (tool entries only)
 
+	Shadow         bool   // true for shadow copies of child tool calls
+	ChildSessionID string // links subagent tool entry to child session
+
 	cachedLines    []string
 	cachedWidth    int
 	cachedExpanded bool
@@ -47,12 +51,13 @@ func (e *TimelineEntry) cacheValid(width int) bool {
 
 // SessionView holds the display state for one agent session.
 type SessionView struct {
-	ID       string
-	Depth    int
-	Title    string
-	Timeline []TimelineEntry
-	InFlight bool
-	Usage    common.Usage
+	ID        string
+	Depth     int
+	Title     string
+	Timeline  []TimelineEntry
+	InFlight  bool
+	Completed bool
+	Usage     common.Usage
 
 	// Context-fullness warning sentinels (Task 11.16).
 	warned80 bool
@@ -67,10 +72,11 @@ const stripHeight = 1
 
 // Model is the root Bubble Tea model for gohome.
 type Model struct {
-	theme    style.Theme
-	sessions map[string]*SessionView
-	order    []string
-	focused  string
+	theme         style.Theme
+	sessions      map[string]*SessionView
+	order         []string
+	focused       string
+	childToParent map[string]string
 
 	editor  *EditorComponent
 	chat    *ChatComponent
@@ -162,6 +168,7 @@ func New(fe *Frontend, sessionID string) *Model {
 		sessions:         map[string]*SessionView{sessionID: main},
 		order:            []string{sessionID},
 		focused:          sessionID,
+		childToParent:    make(map[string]string),
 		inputCh:          inputCh,
 		contextWindow:    config.DefaultContextWindow,
 		contextWarnPct:   config.DefaultContextWarnPct,
@@ -230,6 +237,11 @@ func (m *Model) Focused() string {
 	return m.focused
 }
 
+// Sessions returns the session views map. Exported for tests.
+func (m *Model) Sessions() map[string]*SessionView {
+	return m.sessions
+}
+
 // Init implements tea.Model.
 func (m *Model) Init() tea.Cmd {
 	return nil
@@ -244,6 +256,17 @@ func (m *Model) getOrCreateSession(id string, depth int) *SessionView {
 		m.order = append(m.order, id)
 	}
 	return sv
+}
+
+// syncChatHeight recomputes the chat area height from the current window
+// dimensions and pushes it to the chat component. This ensures methods like
+// EnsureCursorVisible use the correct viewport size even before View() runs.
+func (m *Model) syncChatHeight() {
+	chatH := m.winH - editorMinHeight - 2 - stripHeight - statusHeight - 2
+	if chatH < 1 {
+		chatH = 1
+	}
+	m.chat.SetMaxHeight(chatH)
 }
 
 // rebuildViewportKeepScroll refreshes the chat cursor and timeline without
@@ -500,13 +523,19 @@ func (m *Model) View() string {
 		modalLines := m.activeModal.Render(m.winW)
 		sections = append(sections, strings.Join(modalLines, "\n"))
 	} else {
-		palette := m.slashPalette()
-		if palette != "" {
-			sections = append(sections, palette)
+		sv, svOK := m.sessions[m.focused]
+		if svOK && sv.Completed {
+			completedLabel := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("[Session complete]")
+			sections = append(sections, completedLabel)
+		} else {
+			palette := m.slashPalette()
+			if palette != "" {
+				sections = append(sections, palette)
+			}
+			m.editor.SetTermHeight(m.winH)
+			editorLines := m.editor.Render(m.winW)
+			sections = append(sections, strings.Join(editorLines, "\n"))
 		}
-		m.editor.SetTermHeight(m.winH)
-		editorLines := m.editor.Render(m.winW)
-		sections = append(sections, strings.Join(editorLines, "\n"))
 	}
 
 	sections = append(sections, m.statusBar())

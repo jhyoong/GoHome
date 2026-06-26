@@ -106,19 +106,22 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 	// Run the child agent.
 	runErr := childAgent.Run(ctx, child)
 
+	// Determine end reason before emitting.
+	endReason := "done"
+	if errors.Is(runErr, context.Canceled) || ctx.Err() != nil {
+		endReason = "cancelled"
+	}
+
 	a.Frontend.Emit(childID, Event{
 		Kind:      EventSessionEnded,
 		SessionID: childID,
+		EndReason: endReason,
 	})
 
 	// Determine whether the run ended in error.
 	isError := runErr != nil
 
-	// Emit session_end on the child writer — exactly one per writer owner.
-	endReason := "done"
-	if errors.Is(runErr, context.Canceled) || ctx.Err() != nil {
-		endReason = "cancelled"
-	}
+	// Emit session_end on the child writer.
 	cw.Emit(session.SessionEnd{Reason: endReason})
 
 	// Persist done marker on the PARENT writer.

@@ -61,6 +61,12 @@ func TestWrapText(t *testing.T) {
 		{"force break", "abcdefghij", 5, []string{"abcde", "fghij"}},
 		{"empty", "", 80, []string{""}},
 		{"preserves ansi", "\x1b[31mhello world\x1b[0m", 5, []string{"\x1b[31mhello\x1b[0m", "\x1b[31mworld\x1b[0m"}},
+		{"single newline", "hello\nworld", 80, []string{"hello", "world"}},
+		{"newline mid wrap", "aaa bbb\nccc ddd", 7, []string{"aaa bbb", "ccc ddd"}},
+		{"multiple newlines", "a\n\nb", 80, []string{"a", "", "b"}},
+		{"trailing newline", "hello\n", 80, []string{"hello", ""}},
+		{"newline with wrapping", "hello world\nfoo bar baz", 11, []string{"hello world", "foo bar baz"}},
+		{"ansi across newlines", "\x1b[31mhello\nworld\x1b[0m", 80, []string{"\x1b[31mhello\x1b[0m", "\x1b[31mworld\x1b[0m"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -161,6 +161,60 @@ func TestSnapshots(t *testing.T) {
 		m.OpenHelpOverlay()
 		golden.RequireEqual(t, []byte(m.View()))
 	})
+
+	t.Run("completed_subagent_view", func(t *testing.T) {
+		m := newSized()
+		m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+			Kind:      agent.EventSessionStarted,
+			SessionID: "sub-1",
+		}})
+		m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+			Kind:      agent.EventTokenDelta,
+			SessionID: "sub-1",
+			TextDelta: "Subagent result text.",
+		}})
+		m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+			Kind:      agent.EventTurnDone,
+			SessionID: "sub-1",
+		}})
+		m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+			Kind:      agent.EventSessionEnded,
+			SessionID: "sub-1",
+			EndReason: "done",
+		}})
+		// Focus the completed session.
+		m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlCloseBracket})
+		golden.RequireEqual(t, []byte(m.View()))
+	})
+
+	t.Run("subagent_shadow_entries", func(t *testing.T) {
+		m := newSized()
+		m.AddTimelineEntry("main", tui.TimelineEntry{
+			Kind:           tui.KindTool,
+			ToolName:       "subagent",
+			Text:           `{"task":"investigate"}`,
+			Status:         "pending",
+			ChildSessionID: "sub-1",
+		})
+		m.AddTimelineEntry("main", tui.TimelineEntry{
+			Kind:           tui.KindTool,
+			ToolName:       "bash",
+			Text:           `{"command":"ls"}`,
+			ToolResult:     "file1.go",
+			Status:         "success",
+			Shadow:         true,
+			ChildSessionID: "sub-1",
+		})
+		m.AddTimelineEntry("main", tui.TimelineEntry{
+			Kind:           tui.KindTool,
+			ToolName:       "read",
+			Text:           `{"path":"main.go"}`,
+			Status:         "pending",
+			Shadow:         true,
+			ChildSessionID: "sub-1",
+		})
+		golden.RequireEqual(t, []byte(m.View()))
+	})
 }
 
 func TestCopyKey_SetsStatusMessage(t *testing.T) {
@@ -198,6 +252,311 @@ func TestCopyKey_ToolEntry_IncludesAllContent(t *testing.T) {
 	if msg == "" {
 		t.Fatal("expected a status message after pressing 'c'")
 	}
+}
+
+func TestShadowEntryFields(t *testing.T) {
+	e := tui.TimelineEntry{
+		Kind:           tui.KindTool,
+		ToolName:       "bash",
+		Text:           `{"command":"ls"}`,
+		Status:         "success",
+		Shadow:         true,
+		ChildSessionID: "sub-1",
+	}
+	if !e.Shadow {
+		t.Fatal("Shadow should be true")
+	}
+	if e.ChildSessionID != "sub-1" {
+		t.Fatalf("ChildSessionID = %q, want %q", e.ChildSessionID, "sub-1")
+	}
+}
+
+func TestChildToParentMapping(t *testing.T) {
+	m := newSized()
+	// Simulate subagent tool call in parent timeline first.
+	m.AddTimelineEntry("main", tui.TimelineEntry{
+		Kind:     tui.KindTool,
+		ToolName: "subagent",
+		Text:     `{"task":"do stuff"}`,
+		Status:   "pending",
+	})
+	// Start child session.
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventSessionStarted,
+		SessionID: "sub-1",
+	}})
+	// The parent's subagent tool entry should now have ChildSessionID set.
+	sv := m.Sessions()["main"]
+	found := false
+	for _, e := range sv.Timeline {
+		if e.ToolName == "subagent" && e.ChildSessionID == "sub-1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected subagent tool entry to have ChildSessionID='sub-1'")
+	}
+}
+
+func TestShadowEntries_InsertedOnChildToolCall(t *testing.T) {
+	m := newSized()
+	m.AddTimelineEntry("main", tui.TimelineEntry{
+		Kind:     tui.KindTool,
+		ToolName: "subagent",
+		Text:     `{"task":"investigate"}`,
+		Status:   "pending",
+	})
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventSessionStarted,
+		SessionID: "sub-1",
+	}})
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventToolCallDone,
+		SessionID: "sub-1",
+		ToolName:  "bash",
+		InputJSON: `{"command":"ls"}`,
+	}})
+	sv := m.Sessions()["main"]
+	if len(sv.Timeline) < 2 {
+		t.Fatalf("expected at least 2 entries in parent timeline, got %d", len(sv.Timeline))
+	}
+	shadow := sv.Timeline[1]
+	if !shadow.Shadow {
+		t.Fatal("second entry should be a shadow entry")
+	}
+	if shadow.ToolName != "bash" {
+		t.Fatalf("shadow ToolName = %q, want %q", shadow.ToolName, "bash")
+	}
+}
+
+func TestShadowEntries_SlidingWindowMax3(t *testing.T) {
+	m := newSized()
+	m.AddTimelineEntry("main", tui.TimelineEntry{
+		Kind:     tui.KindTool,
+		ToolName: "subagent",
+		Text:     `{"task":"investigate"}`,
+		Status:   "pending",
+	})
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventSessionStarted,
+		SessionID: "sub-1",
+	}})
+	// Insert 4 tool calls -- only 3 shadows should remain.
+	for i := 0; i < 4; i++ {
+		m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+			Kind:      agent.EventToolCallDone,
+			SessionID: "sub-1",
+			ToolName:  "bash",
+			InputJSON: fmt.Sprintf(`{"command":"cmd%d"}`, i),
+		}})
+	}
+	sv := m.Sessions()["main"]
+	shadowCount := 0
+	for _, e := range sv.Timeline {
+		if e.Shadow {
+			shadowCount++
+		}
+	}
+	if shadowCount != 3 {
+		t.Fatalf("expected 3 shadow entries, got %d", shadowCount)
+	}
+	// The oldest shadow (cmd0) should have been evicted; first shadow should be cmd1.
+	firstShadow := sv.Timeline[1]
+	if firstShadow.Text != `{"command":"cmd1"}` {
+		t.Fatalf("first shadow Text = %q, want %q", firstShadow.Text, `{"command":"cmd1"}`)
+	}
+}
+
+func TestShadowEntries_UpdatedOnChildToolResult(t *testing.T) {
+	m := newSized()
+	m.AddTimelineEntry("main", tui.TimelineEntry{
+		Kind:     tui.KindTool,
+		ToolName: "subagent",
+		Text:     `{"task":"investigate"}`,
+		Status:   "pending",
+	})
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventSessionStarted,
+		SessionID: "sub-1",
+	}})
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventToolCallDone,
+		SessionID: "sub-1",
+		ToolName:  "bash",
+		InputJSON: `{"command":"ls"}`,
+	}})
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventToolResult,
+		SessionID: "sub-1",
+		Result: &agent.ToolResult{
+			Content: "file1.go\nfile2.go",
+			IsError: false,
+		},
+	}})
+
+	sv := m.Sessions()["main"]
+	shadow := sv.Timeline[1]
+	if shadow.Status != "success" {
+		t.Fatalf("shadow Status = %q, want %q", shadow.Status, "success")
+	}
+	if shadow.ToolResult != "file1.go\nfile2.go" {
+		t.Fatalf("shadow ToolResult = %q, want content", shadow.ToolResult)
+	}
+}
+
+func TestEnsureCursorVisible_ScrollsDown(t *testing.T) {
+	m := newSized()
+	for i := 0; i < 20; i++ {
+		m.AddTimelineEntry("main", tui.TimelineEntry{Kind: tui.KindUser, Text: fmt.Sprintf("msg %d", i)})
+	}
+	for i := 0; i < 19; i++ {
+		m = apply(m, tea.KeyMsg{Type: tea.KeyDown})
+	}
+	view := m.View()
+	if !strings.Contains(view, "msg 19") {
+		t.Fatalf("expected 'msg 19' to be visible after scrolling down, got:\n%s", view)
+	}
+}
+
+func TestEnsureCursorVisible_ScrollsUp(t *testing.T) {
+	m := newSized()
+	for i := 0; i < 20; i++ {
+		m.AddTimelineEntry("main", tui.TimelineEntry{Kind: tui.KindUser, Text: fmt.Sprintf("msg %d", i)})
+	}
+	for i := 0; i < 19; i++ {
+		m = apply(m, tea.KeyMsg{Type: tea.KeyDown})
+	}
+	for i := 0; i < 19; i++ {
+		m = apply(m, tea.KeyMsg{Type: tea.KeyUp})
+	}
+	view := m.View()
+	if !strings.Contains(view, "msg 0") {
+		t.Fatalf("expected 'msg 0' to be visible after scrolling up, got:\n%s", view)
+	}
+}
+
+func TestSubagentCompleted_OnDone(t *testing.T) {
+	m := newSized()
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventSessionStarted,
+		SessionID: "sub-1",
+	}})
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventSessionEnded,
+		SessionID: "sub-1",
+		EndReason: "done",
+	}})
+	sv := m.Sessions()["sub-1"]
+	if !sv.Completed {
+		t.Fatal("expected Completed=true after EventSessionEnded with EndReason='done'")
+	}
+}
+
+func TestSubagentNotCompleted_OnCancel(t *testing.T) {
+	m := newSized()
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventSessionStarted,
+		SessionID: "sub-1",
+	}})
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventSessionEnded,
+		SessionID: "sub-1",
+		EndReason: "cancelled",
+	}})
+	sv := m.Sessions()["sub-1"]
+	if sv.Completed {
+		t.Fatal("expected Completed=false after EventSessionEnded with EndReason='cancelled'")
+	}
+}
+
+func TestCompletedSession_RejectsInput(t *testing.T) {
+	m := newSized()
+	// Create and complete a subagent session.
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventSessionStarted,
+		SessionID: "sub-1",
+	}})
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventSessionEnded,
+		SessionID: "sub-1",
+		EndReason: "done",
+	}})
+	// Focus the completed session.
+	m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlCloseBracket})
+
+	// Type something into the editor.
+	for _, r := range "hello" {
+		m = apply(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	m = apply(m, tea.KeyMsg{Type: tea.KeyEnter})
+
+	// Should show "Session complete" status, not add a user entry.
+	if m.StatusMsg() != "Session complete" {
+		t.Errorf("StatusMsg = %q, want %q", m.StatusMsg(), "Session complete")
+	}
+	sv := m.Sessions()["sub-1"]
+	for _, e := range sv.Timeline {
+		if e.Kind == tui.KindUser {
+			t.Fatal("user entry should not be added to completed session")
+		}
+	}
+}
+
+func TestCompletedSession_AllowsNavigation(t *testing.T) {
+	m := newSized()
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventSessionStarted,
+		SessionID: "sub-1",
+	}})
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventTokenDelta,
+		SessionID: "sub-1",
+		TextDelta: "Hello from subagent",
+	}})
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventSessionEnded,
+		SessionID: "sub-1",
+		EndReason: "done",
+	}})
+	// Focus the completed session.
+	m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlCloseBracket})
+
+	// Arrow down should work (not panic or be blocked).
+	_ = apply(m, tea.KeyMsg{Type: tea.KeyDown})
+	// No crash = pass.
+}
+
+func TestEnsureCursorVisible_TallEntry_NoFlicker(t *testing.T) {
+	m := newSized()
+	// Add a few short entries, then a very tall one (taller than viewport).
+	for i := 0; i < 3; i++ {
+		m.AddTimelineEntry("main", tui.TimelineEntry{Kind: tui.KindUser, Text: fmt.Sprintf("msg %d", i)})
+	}
+	var longText strings.Builder
+	for i := 0; i < 40; i++ {
+		if i > 0 {
+			longText.WriteString("\n")
+		}
+		fmt.Fprintf(&longText, "line %d of long response", i)
+	}
+	m.AddTimelineEntry("main", tui.TimelineEntry{Kind: tui.KindAssistant, Text: longText.String()})
+
+	// Navigate to the tall entry.
+	for i := 0; i < 3; i++ {
+		m = apply(m, tea.KeyMsg{Type: tea.KeyDown})
+	}
+
+	// Pressing down repeatedly should produce stable output (no oscillation).
+	view1 := m.View()
+	m = apply(m, tea.KeyMsg{Type: tea.KeyDown})
+	view2 := m.View()
+	m = apply(m, tea.KeyMsg{Type: tea.KeyDown})
+	view3 := m.View()
+
+	if view2 != view3 {
+		t.Fatalf("view oscillated between successive down presses on tall entry:\nview2:\n%s\nview3:\n%s", view2, view3)
+	}
+	_ = view1
 }
 
 func TestToggleExpansion_PreservesScrollPosition(t *testing.T) {

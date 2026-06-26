@@ -497,6 +497,76 @@ func TestSpawn_EmitsSessionEndedOnCancel(t *testing.T) {
 	}
 }
 
+// --- EndReason tests ---------------------------------------------------------
+
+// TestSpawn_EndReasonDone verifies that EventSessionEnded carries EndReason
+// "done" when the child agent completes normally.
+func TestSpawn_EndReasonDone(t *testing.T) {
+	home := t.TempDir()
+	client := oneTextTurnClient("answer")
+	a := buildSpawnParent(t, client, home)
+	fe := a.Frontend.(*fakeRecorder)
+
+	_, _, err := a.Spawn(context.Background(), "task", "")
+	if err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+
+	for _, ev := range fe.events {
+		if ev.Kind == EventSessionEnded {
+			if ev.EndReason != "done" {
+				t.Errorf("EndReason = %q, want %q", ev.EndReason, "done")
+			}
+			return
+		}
+	}
+	t.Fatal("no EventSessionEnded found")
+}
+
+// TestSpawn_EndReasonCancelled verifies that EventSessionEnded carries
+// EndReason "cancelled" when the context is cancelled during the child run.
+func TestSpawn_EndReasonCancelled(t *testing.T) {
+	home := t.TempDir()
+	bgCtx, bgCancel := context.WithCancel(context.Background())
+	t.Cleanup(bgCancel)
+	client := &blockingClient{firstDelta: "partial", bgCtx: bgCtx}
+
+	wl, err := guardCompileEmpty(t)
+	if err != nil {
+		t.Fatalf("guard compile: %v", err)
+	}
+	g := guardNewYolo(wl)
+	fe := &fakeRecorder{}
+
+	parentSess := session.NewSession("parent", home, "model", "anthropic")
+	a := &Agent{
+		Tools:    tools.NewRegistry(),
+		Guard:    g,
+		Frontend: fe,
+		State:    NewSessionState(parentSess, nil, client),
+		System:   "system",
+		Home:     home,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		cancel()
+	}()
+
+	_, _, _ = a.Spawn(ctx, "task", "")
+
+	for _, ev := range fe.events {
+		if ev.Kind == EventSessionEnded && ev.SessionID == "sub-1" {
+			if ev.EndReason != "cancelled" {
+				t.Errorf("EndReason = %q, want %q", ev.EndReason, "cancelled")
+			}
+			return
+		}
+	}
+	t.Fatal("no EventSessionEnded found for sub-1")
+}
+
 // eventKinds returns a slice of EventKind strings for test diagnostics.
 func eventKinds(events []Event) []string {
 	out := make([]string, len(events))

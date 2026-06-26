@@ -80,9 +80,17 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.activeModal = NewHelpOverlay(helpH, func() { m.activeModal = nil })
 		return m, nil
 	case tea.KeyPgUp:
-		m.chat.ScrollUp(5)
+		scrollAmt := m.chat.maxHeight / 2
+		if scrollAmt < 1 {
+			scrollAmt = 1
+		}
+		m.chat.ScrollUp(scrollAmt)
 	case tea.KeyPgDown:
-		m.chat.ScrollDown(5)
+		scrollAmt := m.chat.maxHeight / 2
+		if scrollAmt < 1 {
+			scrollAmt = 1
+		}
+		m.chat.ScrollDown(scrollAmt)
 	case tea.KeyTab:
 		if m.completeSlash() {
 			return m, nil
@@ -117,7 +125,10 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 			} else {
 				sv := m.getOrCreateSession(m.focused, 0)
-				if sv.InFlight {
+				if sv.Completed {
+					m.statusMsg = "Session complete"
+					m.editor.SetValue("")
+				} else if sv.InFlight {
 					if len(m.pendingMessages) >= 10 {
 						m.statusMsg = "Message queue full (10)"
 					} else {
@@ -177,6 +188,8 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.cursor--
 				}
 				m.rebuildViewportKeepScroll()
+				m.syncChatHeight()
+				m.chat.EnsureCursorVisible(m.winW)
 				return m, nil
 			}
 			if msg.Type == tea.KeyDown {
@@ -185,6 +198,8 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.cursor++
 				}
 				m.rebuildViewportKeepScroll()
+				m.syncChatHeight()
+				m.chat.EnsureCursorVisible(m.winW)
 				return m, nil
 			}
 		}
