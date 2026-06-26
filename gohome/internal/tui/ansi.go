@@ -85,9 +85,31 @@ func TruncateText(s string, maxWidth int) string {
 // WrapText wraps s at word boundaries so each line fits within maxWidth display
 // columns. ANSI SGR state is tracked: active SGR is re-emitted at the start of
 // each continuation line and reset at the end of a broken line.
+// Newline characters are respected: the text is split on \n first, then each
+// segment is wrapped individually, with SGR state carried across segments.
 func WrapText(s string, maxWidth int) []string {
 	if s == "" {
 		return []string{""}
+	}
+
+	segments := strings.Split(s, "\n")
+	var all []string
+	activeSGR := ""
+	for _, seg := range segments {
+		lines, nextSGR := wrapSingleLine(seg, maxWidth, activeSGR)
+		all = append(all, lines...)
+		activeSGR = nextSGR
+	}
+	return all
+}
+
+// wrapSingleLine wraps a single line (no newlines) at word boundaries so each
+// output line fits within maxWidth display columns. initialSGR is prepended to
+// the first output line's SGR state. Returns the wrapped lines and the final
+// active SGR state (for carrying across newline-separated segments).
+func wrapSingleLine(s string, maxWidth int, initialSGR string) ([]string, string) {
+	if s == "" {
+		return []string{""}, initialSGR
 	}
 
 	// Split into tokens (words and spaces). We'll process each word.
@@ -97,7 +119,7 @@ func WrapText(s string, maxWidth int) []string {
 	var lines []string
 	var currentLine strings.Builder
 	currentWidth := 0
-	activeSGR := "" // the last SGR sequence before truncation point
+	activeSGR := initialSGR
 
 	// We'll walk through the string rune by rune, tracking words and ANSI.
 	// Collect the current "word" (non-space run, possibly containing ANSI).
@@ -157,6 +179,11 @@ func WrapText(s string, maxWidth int) []string {
 	// Now wrap tokens into lines.
 	// activeSGR tracks the current SGR prefix to emit on new lines.
 	resetSeq := "\x1b[0m"
+
+	// If we have an initial SGR, emit it at the start of the first line.
+	if activeSGR != "" {
+		currentLine.WriteString(activeSGR)
+	}
 
 	for _, tok := range tokens {
 		// If this token is spaces, handle differently: spaces only go on the
@@ -238,7 +265,7 @@ func WrapText(s string, maxWidth int) []string {
 	}
 	lines = append(lines, currentLine.String())
 
-	return lines
+	return lines, activeSGR
 }
 
 // updateActiveSGR scans text for SGR sequences and returns the last active one
