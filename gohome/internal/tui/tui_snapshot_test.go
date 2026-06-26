@@ -444,6 +444,63 @@ func TestSubagentNotCompleted_OnCancel(t *testing.T) {
 	}
 }
 
+func TestCompletedSession_RejectsInput(t *testing.T) {
+	m := newSized()
+	// Create and complete a subagent session.
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventSessionStarted,
+		SessionID: "sub-1",
+	}})
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventSessionEnded,
+		SessionID: "sub-1",
+		EndReason: "done",
+	}})
+	// Focus the completed session.
+	m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlCloseBracket})
+
+	// Type something into the editor.
+	for _, r := range "hello" {
+		m = apply(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	m = apply(m, tea.KeyMsg{Type: tea.KeyEnter})
+
+	// Should show "Session complete" status, not add a user entry.
+	if m.StatusMsg() != "Session complete" {
+		t.Errorf("StatusMsg = %q, want %q", m.StatusMsg(), "Session complete")
+	}
+	sv := m.Sessions()["sub-1"]
+	for _, e := range sv.Timeline {
+		if e.Kind == tui.KindUser {
+			t.Fatal("user entry should not be added to completed session")
+		}
+	}
+}
+
+func TestCompletedSession_AllowsNavigation(t *testing.T) {
+	m := newSized()
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventSessionStarted,
+		SessionID: "sub-1",
+	}})
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventTokenDelta,
+		SessionID: "sub-1",
+		TextDelta: "Hello from subagent",
+	}})
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventSessionEnded,
+		SessionID: "sub-1",
+		EndReason: "done",
+	}})
+	// Focus the completed session.
+	m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlCloseBracket})
+
+	// Arrow down should work (not panic or be blocked).
+	m = apply(m, tea.KeyMsg{Type: tea.KeyDown})
+	// No crash = pass.
+}
+
 func TestToggleExpansion_PreservesScrollPosition(t *testing.T) {
 	m := newSized()
 

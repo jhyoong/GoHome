@@ -117,7 +117,10 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 			} else {
 				sv := m.getOrCreateSession(m.focused, 0)
-				if sv.InFlight {
+				if sv.Completed {
+					m.statusMsg = "Session complete"
+					m.editor.SetValue("")
+				} else if sv.InFlight {
 					if len(m.pendingMessages) >= 10 {
 						m.statusMsg = "Message queue full (10)"
 					} else {
