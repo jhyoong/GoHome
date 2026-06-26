@@ -241,7 +241,9 @@ func TestSnapshots(t *testing.T) {
 	t.Run("edit_tool_diff_pending", func(t *testing.T) {
 		m := newSized()
 		tmpFile := t.TempDir() + "/test.go"
-		os.WriteFile(tmpFile, []byte("line1\nline2\nfunc Old() {\nline4\nline5\n"), 0644)
+		if err := os.WriteFile(tmpFile, []byte("line1\nline2\nfunc Old() {\nline4\nline5\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
 		m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
 			Kind:      agent.EventToolCallDone,
 			SessionID: "main",
@@ -255,7 +257,9 @@ func TestSnapshots(t *testing.T) {
 	t.Run("edit_tool_diff_success", func(t *testing.T) {
 		m := newSized()
 		tmpFile := t.TempDir() + "/test.go"
-		os.WriteFile(tmpFile, []byte("line1\nline2\nfunc Old() {\nline4\nline5\n"), 0644)
+		if err := os.WriteFile(tmpFile, []byte("line1\nline2\nfunc Old() {\nline4\nline5\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
 		m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
 			Kind:      agent.EventToolCallDone,
 			SessionID: "main",
@@ -274,7 +278,9 @@ func TestSnapshots(t *testing.T) {
 	t.Run("edit_tool_diff_denied", func(t *testing.T) {
 		m := newSized()
 		tmpFile := t.TempDir() + "/test.go"
-		os.WriteFile(tmpFile, []byte("line1\nline2\nfunc Old() {\nline4\nline5\n"), 0644)
+		if err := os.WriteFile(tmpFile, []byte("line1\nline2\nfunc Old() {\nline4\nline5\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
 		m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
 			Kind:      agent.EventToolCallDone,
 			SessionID: "main",

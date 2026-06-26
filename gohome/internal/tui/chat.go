@@ -10,9 +10,9 @@ import (
 const maxPreviewLines = 3
 
 var (
-	userPrefix  = lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
-	noticeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
-	expandedBg  = lipgloss.NewStyle().Background(lipgloss.Color("236"))
+	userPrefix     = lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
+	noticeStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	expandedBg     = lipgloss.NewStyle().Background(lipgloss.Color("236"))
 	diffBoxDefault = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("8")).
