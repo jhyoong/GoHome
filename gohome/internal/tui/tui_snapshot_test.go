@@ -162,6 +162,31 @@ func TestSnapshots(t *testing.T) {
 		golden.RequireEqual(t, []byte(m.View()))
 	})
 
+	t.Run("completed_subagent_view", func(t *testing.T) {
+		m := newSized()
+		m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+			Kind:      agent.EventSessionStarted,
+			SessionID: "sub-1",
+		}})
+		m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+			Kind:      agent.EventTokenDelta,
+			SessionID: "sub-1",
+			TextDelta: "Subagent result text.",
+		}})
+		m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+			Kind:      agent.EventTurnDone,
+			SessionID: "sub-1",
+		}})
+		m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+			Kind:      agent.EventSessionEnded,
+			SessionID: "sub-1",
+			EndReason: "done",
+		}})
+		// Focus the completed session.
+		m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlCloseBracket})
+		golden.RequireEqual(t, []byte(m.View()))
+	})
+
 	t.Run("subagent_shadow_entries", func(t *testing.T) {
 		m := newSized()
 		m.AddTimelineEntry("main", tui.TimelineEntry{

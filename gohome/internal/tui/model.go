@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/jhyoong/GoHome/gohome/internal/config"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 	"github.com/jhyoong/GoHome/gohome/internal/tui/style"
@@ -522,13 +523,19 @@ func (m *Model) View() string {
 		modalLines := m.activeModal.Render(m.winW)
 		sections = append(sections, strings.Join(modalLines, "\n"))
 	} else {
-		palette := m.slashPalette()
-		if palette != "" {
-			sections = append(sections, palette)
+		sv, svOK := m.sessions[m.focused]
+		if svOK && sv.Completed {
+			completedLabel := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("[Session complete]")
+			sections = append(sections, completedLabel)
+		} else {
+			palette := m.slashPalette()
+			if palette != "" {
+				sections = append(sections, palette)
+			}
+			m.editor.SetTermHeight(m.winH)
+			editorLines := m.editor.Render(m.winW)
+			sections = append(sections, strings.Join(editorLines, "\n"))
 		}
-		m.editor.SetTermHeight(m.winH)
-		editorLines := m.editor.Render(m.winW)
-		sections = append(sections, strings.Join(editorLines, "\n"))
 	}
 
 	sections = append(sections, m.statusBar())
