@@ -140,6 +140,11 @@ type Model struct {
 	renderThrottleMs int
 	lastRenderTime   time.Time
 	renderPending    bool
+
+	// cfe is the optional ClientFrontend for daemon mode. When set,
+	// input submission goes through the daemon RPC instead of the local
+	// inputCh channel. Set via SetClientFrontend.
+	cfe *ClientFrontend
 }
 
 // renderThrottleMsg fires when a deferred render is due.
@@ -213,6 +218,7 @@ func (m *Model) SetHomeDir(dir string)         { m.homeDir = dir }
 func (m *Model) SetCWD(dir string)             { m.cwd = dir }
 func (m *Model) SetSettings(s config.Settings) { m.settings = s }
 func (m *Model) SetRenderThrottleMs(ms int)    { m.renderThrottleMs = ms }
+func (m *Model) SetClientFrontend(cfe *ClientFrontend) { m.cfe = cfe }
 
 // SetContextWindow sets the total context window size used in the token bar.
 // If size <= 0 the default is used.
