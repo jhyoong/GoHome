@@ -51,10 +51,10 @@ func (e *TimelineEntry) cacheValid(width int) bool {
 
 // SessionView holds the display state for one agent session.
 type SessionView struct {
-	ID       string
-	Depth    int
-	Title    string
-	Timeline []TimelineEntry
+	ID        string
+	Depth     int
+	Title     string
+	Timeline  []TimelineEntry
 	InFlight  bool
 	Completed bool
 	Usage     common.Usage
@@ -72,7 +72,7 @@ const stripHeight = 1
 
 // Model is the root Bubble Tea model for gohome.
 type Model struct {
-	theme    style.Theme
+	theme         style.Theme
 	sessions      map[string]*SessionView
 	order         []string
 	focused       string

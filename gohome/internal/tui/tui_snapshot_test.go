@@ -522,7 +522,7 @@ func TestCompletedSession_AllowsNavigation(t *testing.T) {
 	m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlCloseBracket})
 
 	// Arrow down should work (not panic or be blocked).
-	m = apply(m, tea.KeyMsg{Type: tea.KeyDown})
+	_ = apply(m, tea.KeyMsg{Type: tea.KeyDown})
 	// No crash = pass.
 }
 
@@ -537,7 +537,7 @@ func TestEnsureCursorVisible_TallEntry_NoFlicker(t *testing.T) {
 		if i > 0 {
 			longText.WriteString("\n")
 		}
-		longText.WriteString(fmt.Sprintf("line %d of long response", i))
+		fmt.Fprintf(&longText, "line %d of long response", i)
 	}
 	m.AddTimelineEntry("main", tui.TimelineEntry{Kind: tui.KindAssistant, Text: longText.String()})
 
