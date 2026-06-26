@@ -7,10 +7,20 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+const maxPreviewLines = 3
+
 var (
-	userPrefix  = lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
-	noticeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
-	expandedBg  = lipgloss.NewStyle().Background(lipgloss.Color("236"))
+	userPrefix     = lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
+	noticeStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	expandedBg     = lipgloss.NewStyle().Background(lipgloss.Color("236"))
+	diffBoxDefault = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("8")).
+			Padding(0, 1)
+	diffBoxDenied = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("1")).
+			Padding(0, 1)
 )
 
 // ChatComponent renders a timeline of entries with markdown support and scrolling.
@@ -160,7 +170,17 @@ func (c *ChatComponent) entryLineCount(e *TimelineEntry, maxWidth int) int {
 		return 1
 	case KindTool:
 		count := 1
-		if e.Expanded {
+		if !e.Expanded {
+			if pv := previewLines(e.ToolResult, maxPreviewLines); len(pv) > 0 {
+				indent := maxWidth - 9
+				if e.Shadow {
+					indent = maxWidth - 15
+				}
+				for _, pl := range pv {
+					count += len(WrapText(pl, indent))
+				}
+			}
+		} else {
 			if e.Shadow {
 				if e.Text != "" {
 					count += len(WrapText("args: "+e.Text, maxWidth-11))
@@ -178,6 +198,14 @@ func (c *ChatComponent) entryLineCount(e *TimelineEntry, maxWidth int) int {
 					count += len(WrapText(e.ToolResult, maxWidth-9))
 				}
 			}
+		}
+		if e.DiffPreview != "" {
+			indent := 2
+			if e.Shadow {
+				indent = 6
+			}
+			diffLines := renderDiffBox(e.DiffPreview, e.Status, maxWidth, indent)
+			count += len(diffLines)
 		}
 		return count
 	case KindNotice:
@@ -220,7 +248,17 @@ func (c *ChatComponent) countLines(maxWidth int) int {
 			}
 		case KindTool:
 			count++
-			if e.Expanded {
+			if !e.Expanded {
+				if pv := previewLines(e.ToolResult, maxPreviewLines); len(pv) > 0 {
+					indent := maxWidth - 9
+					if e.Shadow {
+						indent = maxWidth - 15
+					}
+					for _, pl := range pv {
+						count += len(WrapText(pl, indent))
+					}
+				}
+			} else {
 				if e.Shadow {
 					if e.Text != "" {
 						count += len(WrapText("args: "+e.Text, maxWidth-11))
@@ -238,6 +276,14 @@ func (c *ChatComponent) countLines(maxWidth int) int {
 						count += len(WrapText(e.ToolResult, maxWidth-9))
 					}
 				}
+			}
+			if e.DiffPreview != "" {
+				indent := 2
+				if e.Shadow {
+					indent = 6
+				}
+				diffLines := renderDiffBox(e.DiffPreview, e.Status, maxWidth, indent)
+				count += len(diffLines)
 			}
 		case KindNotice:
 			count++
@@ -280,6 +326,7 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 			e.cachedExpanded = e.Expanded
 			e.cachedText = e.Text
 			e.cachedResult = e.ToolResult
+			e.cachedDiffStatus = e.Status
 		}
 
 		all = append(all, e.cachedLines...)
@@ -361,7 +408,15 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 		if e.Shadow {
 			line := renderToolLine(*e, maxWidth-6)
 			lines = append(lines, marker+"    "+ansiDim+line+ansiReset)
-			if e.Expanded {
+			if !e.Expanded {
+				if pv := previewLines(e.ToolResult, maxPreviewLines); len(pv) > 0 {
+					for _, pl := range pv {
+						for _, wl := range WrapText(pl, maxWidth-15) {
+							lines = append(lines, "             "+ansiDim+wl+ansiReset)
+						}
+					}
+				}
+			} else {
 				if e.Text != "" {
 					for _, l := range WrapText("args: "+e.Text, maxWidth-11) {
 						lines = append(lines, expandedBg.Render("           "+ansiDim+l+ansiReset))
@@ -374,10 +429,25 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 					}
 				}
 			}
+			if e.DiffPreview != "" {
+				diffLines := renderDiffBox(e.DiffPreview, e.Status, maxWidth, 6)
+				for i, l := range diffLines {
+					diffLines[i] = ansiDim + l + ansiReset
+				}
+				lines = append(lines, diffLines...)
+			}
 		} else {
 			line := renderToolLine(*e, maxWidth-2)
 			lines = append(lines, marker+line)
-			if e.Expanded {
+			if !e.Expanded {
+				if pv := previewLines(e.ToolResult, maxPreviewLines); len(pv) > 0 {
+					for _, pl := range pv {
+						for _, wl := range WrapText(pl, maxWidth-9) {
+							lines = append(lines, "       "+ansiDim+wl+ansiReset)
+						}
+					}
+				}
+			} else {
 				if e.Text != "" {
 					for _, l := range WrapText("args: "+e.Text, maxWidth-7) {
 						lines = append(lines, expandedBg.Render("       "+l))
@@ -390,6 +460,11 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 					}
 				}
 			}
+			// Diff box for edit tools (always visible).
+			if e.DiffPreview != "" {
+				diffLines := renderDiffBox(e.DiffPreview, e.Status, maxWidth, 2)
+				lines = append(lines, diffLines...)
+			}
 		}
 
 	case KindNotice:
@@ -398,6 +473,112 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 	}
 
 	return lines
+}
+
+// renderDiffBox renders the diff preview as a bordered box with colored lines.
+func renderDiffBox(diff string, status string, maxWidth int, indent int) []string {
+	if diff == "" {
+		return nil
+	}
+
+	boxStyle := diffBoxDefault
+	if status == "error" {
+		boxStyle = diffBoxDenied
+	}
+
+	// Color the diff lines.
+	var colored []string
+	for _, line := range strings.Split(diff, "\n") {
+		if containsDiffMarker(line, "  - ") {
+			colored = append(colored, "\x1b[31m"+line+"\x1b[0m")
+		} else if containsDiffMarker(line, "  + ") {
+			colored = append(colored, "\x1b[32m"+line+"\x1b[0m")
+		} else {
+			colored = append(colored, ansiDim+line+ansiReset)
+		}
+	}
+
+	inner := strings.Join(colored, "\n")
+	if status == "error" {
+		inner = ansiDim + inner + ansiReset
+	}
+
+	boxWidth := maxWidth - indent - 4
+	if boxWidth < 20 {
+		boxWidth = 20
+	}
+	rendered := boxStyle.Width(boxWidth).Render(inner)
+
+	prefix := strings.Repeat(" ", indent)
+	var result []string
+	for _, l := range strings.Split(rendered, "\n") {
+		result = append(result, prefix+l)
+	}
+	return result
+}
+
+func containsDiffMarker(line, marker string) bool {
+	return strings.Contains(line, marker)
+}
+
+// previewLines returns the last maxLines lines from s for use as a dimmed
+// preview below collapsed tool entries. If s has 0 or 1 lines, it returns nil
+// (single-line results are already shown in the arrow summary). If s has 2-3
+// lines, all lines are returned. If more than maxLines, only the last maxLines
+// are returned.
+func previewLines(s string, maxLines int) []string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	lines := strings.Split(s, "\n")
+	if len(lines) <= 1 {
+		return nil
+	}
+	if len(lines) > maxLines {
+		lines = lines[len(lines)-maxLines:]
+	}
+	for i, l := range lines {
+		if strings.ContainsRune(l, '\t') {
+			lines[i] = expandTabs(l, 4)
+		}
+	}
+	return lines
+}
+
+// expandTabs replaces each tab with spaces to align to the next tabStop boundary,
+// skipping ANSI escape sequences when computing column position.
+func expandTabs(s string, tabStop int) string {
+	if tabStop <= 0 {
+		tabStop = 4
+	}
+	var b strings.Builder
+	b.Grow(len(s) + 16)
+	col := 0
+	i := 0
+	for i < len(s) {
+		if s[i] == '\x1b' {
+			loc := ansiEscape.FindStringIndex(s[i:])
+			if loc != nil && loc[0] == 0 {
+				b.WriteString(s[i : i+loc[1]])
+				i += loc[1]
+				continue
+			}
+		}
+		if s[i] == '\t' {
+			spaces := tabStop - (col % tabStop)
+			for j := 0; j < spaces; j++ {
+				b.WriteByte(' ')
+			}
+			col += spaces
+			i++
+			continue
+		}
+		b.WriteByte(s[i])
+		col++
+		i++
+	}
+	return b.String()
 }
 
 // renderToolLine builds the collapsed single-line representation of a tool entry.

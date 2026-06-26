@@ -1,4 +1,5 @@
-Session:  main done   sub-1 returning 
+Session:  main done 
+> [tool] bash {"command":"echo hello"}  ->  hello
 ────────────────────────────────────────────────────────────────────────────────
 [7m [0m
 

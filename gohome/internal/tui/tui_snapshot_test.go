@@ -12,6 +12,8 @@ package tui_test
 
 import (
 	"fmt"
+	"os"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -27,6 +29,14 @@ const snapshotW = 80
 const snapshotH = 24
 
 // apply sends msg to m synchronously and returns the updated *Model.
+var editPathRe = regexp.MustCompile(`\[tool\] edit \{[^}]*\.\.\.`)
+
+// normEditPath replaces the truncated edit tool arg line (which contains a
+// machine-specific temp path) with a fixed string for golden-file stability.
+func normEditPath(s string) string {
+	return editPathRe.ReplaceAllString(s, `[tool] edit {"path":"/test/test.go",...`)
+}
+
 func apply(m *tui.Model, msg tea.Msg) *tui.Model {
 	nm, _ := m.Update(msg)
 	return nm.(*tui.Model)
@@ -164,6 +174,13 @@ func TestSnapshots(t *testing.T) {
 
 	t.Run("completed_subagent_view", func(t *testing.T) {
 		m := newSized()
+		// Parent has a pending subagent tool entry.
+		m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+			Kind:      agent.EventToolCallDone,
+			SessionID: "main",
+			ToolName:  "subagent",
+			InputJSON: `{"task":"investigate"}`,
+		}})
 		m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
 			Kind:      agent.EventSessionStarted,
 			SessionID: "sub-1",
@@ -182,9 +199,124 @@ func TestSnapshots(t *testing.T) {
 			SessionID: "sub-1",
 			EndReason: "done",
 		}})
+		// Parent receives the subagent result, completing the child.
+		m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+			Kind:      agent.EventToolResult,
+			SessionID: "main",
+			Result: &agent.ToolResult{
+				Content: "Subagent result text.",
+			},
+		}})
 		// Focus the completed session.
 		m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlCloseBracket})
 		golden.RequireEqual(t, []byte(m.View()))
+	})
+
+	// Tool output preview: multi-line result (6 lines) shows last 3 as dimmed preview.
+	t.Run("tool_output_preview", func(t *testing.T) {
+		m := newSized()
+		m.AddTimelineEntry("main", tui.TimelineEntry{
+			Kind:     tui.KindTool,
+			ToolName: "bash",
+			Text:     `{"command":"find . -name '*.go'"}`,
+			ToolResult: "cmd/main.go\ninternal/agent/agent.go\ninternal/tui/model.go\n" +
+				"internal/tui/chat.go\ninternal/tools/bash.go\ninternal/guard/guard.go",
+			Status: "success",
+		})
+		golden.RequireEqual(t, []byte(m.View()))
+	})
+
+	// Tool output preview: single-line result produces NO preview lines.
+	t.Run("tool_output_preview_single_line", func(t *testing.T) {
+		m := newSized()
+		m.AddTimelineEntry("main", tui.TimelineEntry{
+			Kind:       tui.KindTool,
+			ToolName:   "bash",
+			Text:       `{"command":"echo hello"}`,
+			ToolResult: "hello",
+			Status:     "success",
+		})
+		golden.RequireEqual(t, []byte(m.View()))
+	})
+
+	// Tool output preview: shadow entry with multi-line result.
+	t.Run("tool_output_preview_shadow", func(t *testing.T) {
+		m := newSized()
+		m.AddTimelineEntry("main", tui.TimelineEntry{
+			Kind:           tui.KindTool,
+			ToolName:       "subagent",
+			Text:           `{"task":"investigate"}`,
+			Status:         "pending",
+			ChildSessionID: "sub-1",
+		})
+		m.AddTimelineEntry("main", tui.TimelineEntry{
+			Kind:           tui.KindTool,
+			ToolName:       "bash",
+			Text:           `{"command":"find . -name '*.go'"}`,
+			ToolResult:     "file1.go\nfile2.go\nfile3.go\nfile4.go\nfile5.go",
+			Status:         "success",
+			Shadow:         true,
+			ChildSessionID: "sub-1",
+		})
+		golden.RequireEqual(t, []byte(m.View()))
+	})
+
+	// Edit tool diff box: pending state (no result yet).
+	t.Run("edit_tool_diff_pending", func(t *testing.T) {
+		m := newSized()
+		tmpFile := t.TempDir() + "/test.go"
+		if err := os.WriteFile(tmpFile, []byte("line1\nline2\nfunc Old() {\nline4\nline5\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+			Kind:      agent.EventToolCallDone,
+			SessionID: "main",
+			ToolName:  "edit",
+			InputJSON: fmt.Sprintf(`{"path":%q,"old_string":"func Old() {","new_string":"func New() {"}`, tmpFile),
+		}})
+		golden.RequireEqual(t, []byte(normEditPath(m.View())))
+	})
+
+	// Edit tool diff box: success state (completed successfully).
+	t.Run("edit_tool_diff_success", func(t *testing.T) {
+		m := newSized()
+		tmpFile := t.TempDir() + "/test.go"
+		if err := os.WriteFile(tmpFile, []byte("line1\nline2\nfunc Old() {\nline4\nline5\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+			Kind:      agent.EventToolCallDone,
+			SessionID: "main",
+			ToolName:  "edit",
+			InputJSON: fmt.Sprintf(`{"path":%q,"old_string":"func Old() {","new_string":"func New() {"}`, tmpFile),
+		}})
+		m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+			Kind:      agent.EventToolResult,
+			SessionID: "main",
+			Result:    &agent.ToolResult{Content: fmt.Sprintf(`edit: replaced 1 occurrence(s) in %q`, tmpFile)},
+		}})
+		golden.RequireEqual(t, []byte(normEditPath(m.View())))
+	})
+
+	// Edit tool diff box: denied/error state (red border, dimmed text).
+	t.Run("edit_tool_diff_denied", func(t *testing.T) {
+		m := newSized()
+		tmpFile := t.TempDir() + "/test.go"
+		if err := os.WriteFile(tmpFile, []byte("line1\nline2\nfunc Old() {\nline4\nline5\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+			Kind:      agent.EventToolCallDone,
+			SessionID: "main",
+			ToolName:  "edit",
+			InputJSON: fmt.Sprintf(`{"path":%q,"old_string":"func Old() {","new_string":"func New() {"}`, tmpFile),
+		}})
+		m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+			Kind:      agent.EventToolResult,
+			SessionID: "main",
+			Result:    &agent.ToolResult{Content: "denied", IsError: true},
+		}})
+		golden.RequireEqual(t, []byte(normEditPath(m.View())))
 	})
 
 	t.Run("subagent_shadow_entries", func(t *testing.T) {
@@ -437,6 +569,13 @@ func TestEnsureCursorVisible_ScrollsUp(t *testing.T) {
 
 func TestSubagentCompleted_OnDone(t *testing.T) {
 	m := newSized()
+	// Parent has a pending subagent tool entry.
+	m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind:      agent.EventToolCallDone,
+		SessionID: "main",
+		ToolName:  "subagent",
+		InputJSON: `{"task":"do stuff"}`,
+	}})
 	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
 		Kind:      agent.EventSessionStarted,
 		SessionID: "sub-1",
@@ -447,8 +586,20 @@ func TestSubagentCompleted_OnDone(t *testing.T) {
 		EndReason: "done",
 	}})
 	sv := m.Sessions()["sub-1"]
+	if sv.Completed {
+		t.Fatal("expected Completed=false after EventSessionEnded before parent receives tool result")
+	}
+	// Parent receives the subagent tool result.
+	m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind:      agent.EventToolResult,
+		SessionID: "main",
+		Result: &agent.ToolResult{
+			Content: "result",
+		},
+	}})
+	sv = m.Sessions()["sub-1"]
 	if !sv.Completed {
-		t.Fatal("expected Completed=true after EventSessionEnded with EndReason='done'")
+		t.Fatal("expected Completed=true after parent receives subagent tool result")
 	}
 }
 
@@ -471,6 +622,13 @@ func TestSubagentNotCompleted_OnCancel(t *testing.T) {
 
 func TestCompletedSession_RejectsInput(t *testing.T) {
 	m := newSized()
+	// Parent has a pending subagent tool entry.
+	m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind:      agent.EventToolCallDone,
+		SessionID: "main",
+		ToolName:  "subagent",
+		InputJSON: `{"task":"do stuff"}`,
+	}})
 	// Create and complete a subagent session.
 	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
 		Kind:      agent.EventSessionStarted,
@@ -480,6 +638,14 @@ func TestCompletedSession_RejectsInput(t *testing.T) {
 		Kind:      agent.EventSessionEnded,
 		SessionID: "sub-1",
 		EndReason: "done",
+	}})
+	// Parent receives the subagent tool result, completing the child.
+	m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind:      agent.EventToolResult,
+		SessionID: "main",
+		Result: &agent.ToolResult{
+			Content: "result",
+		},
 	}})
 	// Focus the completed session.
 	m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlCloseBracket})
@@ -504,6 +670,13 @@ func TestCompletedSession_RejectsInput(t *testing.T) {
 
 func TestCompletedSession_AllowsNavigation(t *testing.T) {
 	m := newSized()
+	// Parent has a pending subagent tool entry.
+	m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind:      agent.EventToolCallDone,
+		SessionID: "main",
+		ToolName:  "subagent",
+		InputJSON: `{"task":"do stuff"}`,
+	}})
 	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
 		Kind:      agent.EventSessionStarted,
 		SessionID: "sub-1",
@@ -517,6 +690,14 @@ func TestCompletedSession_AllowsNavigation(t *testing.T) {
 		Kind:      agent.EventSessionEnded,
 		SessionID: "sub-1",
 		EndReason: "done",
+	}})
+	// Parent receives the subagent tool result, completing the child.
+	m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind:      agent.EventToolResult,
+		SessionID: "main",
+		Result: &agent.ToolResult{
+			Content: "Hello from subagent",
+		},
 	}})
 	// Focus the completed session.
 	m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlCloseBracket})
