@@ -115,7 +115,14 @@ func (c *ChatComponent) EnsureCursorVisible(maxWidth int) {
 	}
 
 	needsAdjust := false
-	if cursorTop < effectiveTop {
+	if cursorHeight > c.maxHeight {
+		// Entry taller than viewport: pin to the top of the entry to avoid
+		// oscillating between top and bottom on repeated key presses.
+		if cursorTop < effectiveTop || cursorTop >= effectiveTop+c.maxHeight {
+			c.scrollTop = cursorTop
+			needsAdjust = true
+		}
+	} else if cursorTop < effectiveTop {
 		c.scrollTop = cursorTop
 		needsAdjust = true
 	} else if cursorTop+cursorHeight > effectiveTop+c.maxHeight {

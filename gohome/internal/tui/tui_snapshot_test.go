@@ -526,6 +526,39 @@ func TestCompletedSession_AllowsNavigation(t *testing.T) {
 	// No crash = pass.
 }
 
+func TestEnsureCursorVisible_TallEntry_NoFlicker(t *testing.T) {
+	m := newSized()
+	// Add a few short entries, then a very tall one (taller than viewport).
+	for i := 0; i < 3; i++ {
+		m.AddTimelineEntry("main", tui.TimelineEntry{Kind: tui.KindUser, Text: fmt.Sprintf("msg %d", i)})
+	}
+	var longText strings.Builder
+	for i := 0; i < 40; i++ {
+		if i > 0 {
+			longText.WriteString("\n")
+		}
+		longText.WriteString(fmt.Sprintf("line %d of long response", i))
+	}
+	m.AddTimelineEntry("main", tui.TimelineEntry{Kind: tui.KindAssistant, Text: longText.String()})
+
+	// Navigate to the tall entry.
+	for i := 0; i < 3; i++ {
+		m = apply(m, tea.KeyMsg{Type: tea.KeyDown})
+	}
+
+	// Pressing down repeatedly should produce stable output (no oscillation).
+	view1 := m.View()
+	m = apply(m, tea.KeyMsg{Type: tea.KeyDown})
+	view2 := m.View()
+	m = apply(m, tea.KeyMsg{Type: tea.KeyDown})
+	view3 := m.View()
+
+	if view2 != view3 {
+		t.Fatalf("view oscillated between successive down presses on tall entry:\nview2:\n%s\nview3:\n%s", view2, view3)
+	}
+	_ = view1
+}
+
 func TestToggleExpansion_PreservesScrollPosition(t *testing.T) {
 	m := newSized()
 
