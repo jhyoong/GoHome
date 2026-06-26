@@ -15,7 +15,7 @@ The source tree lives under `gohome/` at the repo root. Because the module layou
 ```sh
 git clone https://github.com/jhyoong/GoHome
 cd GoHome
-go build -ldflags "-X main.version=v0.2.4" -o bin/gohome ./gohome/cmd/gohome
+go build -ldflags "-X main.version=v0.2.5" -o bin/gohome ./gohome/cmd/gohome
 ```
 
 ### Run

@@ -95,5 +95,5 @@ existing `_test.go` files with no structural changes.
 
 
 ## Additional findings
-- Tool calls to show last 3 rows of output 
-- Edit tool to show the changes made (git diff style)
+- ~~Tool calls to show last 3 rows of output~~ -- DELIVERED in v0.2.5
+- ~~Edit tool to show the changes made (git diff style)~~ -- DELIVERED in v0.2.5
