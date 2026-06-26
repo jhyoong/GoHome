@@ -535,10 +535,50 @@ func previewLines(s string, maxLines int) []string {
 	if len(lines) <= 1 {
 		return nil
 	}
-	if len(lines) <= maxLines {
-		return lines
+	if len(lines) > maxLines {
+		lines = lines[len(lines)-maxLines:]
 	}
-	return lines[len(lines)-maxLines:]
+	for i, l := range lines {
+		if strings.ContainsRune(l, '\t') {
+			lines[i] = expandTabs(l, 4)
+		}
+	}
+	return lines
+}
+
+// expandTabs replaces each tab with spaces to align to the next tabStop boundary,
+// skipping ANSI escape sequences when computing column position.
+func expandTabs(s string, tabStop int) string {
+	if tabStop <= 0 {
+		tabStop = 4
+	}
+	var b strings.Builder
+	b.Grow(len(s) + 16)
+	col := 0
+	i := 0
+	for i < len(s) {
+		if s[i] == '\x1b' {
+			loc := ansiEscape.FindStringIndex(s[i:])
+			if loc != nil && loc[0] == 0 {
+				b.WriteString(s[i : i+loc[1]])
+				i += loc[1]
+				continue
+			}
+		}
+		if s[i] == '\t' {
+			spaces := tabStop - (col % tabStop)
+			for j := 0; j < spaces; j++ {
+				b.WriteByte(' ')
+			}
+			col += spaces
+			i++
+			continue
+		}
+		b.WriteByte(s[i])
+		col++
+		i++
+	}
+	return b.String()
 }
 
 // renderToolLine builds the collapsed single-line representation of a tool entry.

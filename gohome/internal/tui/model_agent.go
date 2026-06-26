@@ -81,6 +81,7 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 			isErr = ev.Result.IsError
 		}
 		set := false
+		var matchedChildID string
 		for i := len(sv.Timeline) - 1; i >= 0; i-- {
 			if sv.Timeline[i].Kind == KindTool && sv.Timeline[i].ToolResult == "" {
 				sv.Timeline[i].ToolResult = content
@@ -89,8 +90,14 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 				} else {
 					sv.Timeline[i].Status = "success"
 				}
+				matchedChildID = sv.Timeline[i].ChildSessionID
 				set = true
 				break
+			}
+		}
+		if matchedChildID != "" {
+			if childSV, ok := m.sessions[matchedChildID]; ok {
+				childSV.Completed = true
 			}
 		}
 		if !set {
@@ -130,7 +137,8 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 
 	case agent.EventSessionStarted:
 		// Subagent session -- depth 1, add to order if not already present.
-		m.getOrCreateSession(ev.SessionID, 1)
+		childSV := m.getOrCreateSession(ev.SessionID, 1)
+		childSV.InFlight = true
 		// Link child to parent: find the parent session that has a pending
 		// subagent tool entry without a ChildSessionID.
 		for _, parentID := range m.order {
@@ -153,7 +161,7 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 
 	case agent.EventSessionEnded:
 		sv.InFlight = false
-		if ev.EndReason == "done" {
+		if ev.EndReason == "done" && sv.Depth == 0 {
 			sv.Completed = true
 		}
 

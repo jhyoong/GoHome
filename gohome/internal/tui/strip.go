@@ -22,9 +22,14 @@ func (m *Model) sessionStrip() string {
 			sb.WriteString(" ")
 		}
 		sv := m.sessions[id]
-		state := "done"
-		if sv.InFlight {
+		var state string
+		switch {
+		case sv.InFlight:
 			state = "running"
+		case sv.Depth > 0 && !sv.Completed:
+			state = "returning"
+		default:
+			state = "done"
 		}
 		label := sv.Title + " " + state
 		if id == m.focused {

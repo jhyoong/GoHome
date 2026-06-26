@@ -165,6 +165,13 @@ func TestSnapshots(t *testing.T) {
 
 	t.Run("completed_subagent_view", func(t *testing.T) {
 		m := newSized()
+		// Parent has a pending subagent tool entry.
+		m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+			Kind:      agent.EventToolCallDone,
+			SessionID: "main",
+			ToolName:  "subagent",
+			InputJSON: `{"task":"investigate"}`,
+		}})
 		m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
 			Kind:      agent.EventSessionStarted,
 			SessionID: "sub-1",
@@ -182,6 +189,14 @@ func TestSnapshots(t *testing.T) {
 			Kind:      agent.EventSessionEnded,
 			SessionID: "sub-1",
 			EndReason: "done",
+		}})
+		// Parent receives the subagent result, completing the child.
+		m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+			Kind:      agent.EventToolResult,
+			SessionID: "main",
+			Result: &agent.ToolResult{
+				Content: "Subagent result text.",
+			},
 		}})
 		// Focus the completed session.
 		m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlCloseBracket})
@@ -545,6 +560,13 @@ func TestEnsureCursorVisible_ScrollsUp(t *testing.T) {
 
 func TestSubagentCompleted_OnDone(t *testing.T) {
 	m := newSized()
+	// Parent has a pending subagent tool entry.
+	m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind:      agent.EventToolCallDone,
+		SessionID: "main",
+		ToolName:  "subagent",
+		InputJSON: `{"task":"do stuff"}`,
+	}})
 	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
 		Kind:      agent.EventSessionStarted,
 		SessionID: "sub-1",
@@ -555,8 +577,20 @@ func TestSubagentCompleted_OnDone(t *testing.T) {
 		EndReason: "done",
 	}})
 	sv := m.Sessions()["sub-1"]
+	if sv.Completed {
+		t.Fatal("expected Completed=false after EventSessionEnded before parent receives tool result")
+	}
+	// Parent receives the subagent tool result.
+	m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind:      agent.EventToolResult,
+		SessionID: "main",
+		Result: &agent.ToolResult{
+			Content: "result",
+		},
+	}})
+	sv = m.Sessions()["sub-1"]
 	if !sv.Completed {
-		t.Fatal("expected Completed=true after EventSessionEnded with EndReason='done'")
+		t.Fatal("expected Completed=true after parent receives subagent tool result")
 	}
 }
 
@@ -579,6 +613,13 @@ func TestSubagentNotCompleted_OnCancel(t *testing.T) {
 
 func TestCompletedSession_RejectsInput(t *testing.T) {
 	m := newSized()
+	// Parent has a pending subagent tool entry.
+	m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind:      agent.EventToolCallDone,
+		SessionID: "main",
+		ToolName:  "subagent",
+		InputJSON: `{"task":"do stuff"}`,
+	}})
 	// Create and complete a subagent session.
 	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
 		Kind:      agent.EventSessionStarted,
@@ -588,6 +629,14 @@ func TestCompletedSession_RejectsInput(t *testing.T) {
 		Kind:      agent.EventSessionEnded,
 		SessionID: "sub-1",
 		EndReason: "done",
+	}})
+	// Parent receives the subagent tool result, completing the child.
+	m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind:      agent.EventToolResult,
+		SessionID: "main",
+		Result: &agent.ToolResult{
+			Content: "result",
+		},
 	}})
 	// Focus the completed session.
 	m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlCloseBracket})
@@ -612,6 +661,13 @@ func TestCompletedSession_RejectsInput(t *testing.T) {
 
 func TestCompletedSession_AllowsNavigation(t *testing.T) {
 	m := newSized()
+	// Parent has a pending subagent tool entry.
+	m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind:      agent.EventToolCallDone,
+		SessionID: "main",
+		ToolName:  "subagent",
+		InputJSON: `{"task":"do stuff"}`,
+	}})
 	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
 		Kind:      agent.EventSessionStarted,
 		SessionID: "sub-1",
@@ -625,6 +681,14 @@ func TestCompletedSession_AllowsNavigation(t *testing.T) {
 		Kind:      agent.EventSessionEnded,
 		SessionID: "sub-1",
 		EndReason: "done",
+	}})
+	// Parent receives the subagent tool result, completing the child.
+	m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind:      agent.EventToolResult,
+		SessionID: "main",
+		Result: &agent.ToolResult{
+			Content: "Hello from subagent",
+		},
 	}})
 	// Focus the completed session.
 	m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlCloseBracket})
