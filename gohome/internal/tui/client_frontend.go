@@ -7,6 +7,8 @@ import (
 
 	"github.com/jhyoong/GoHome/gohome/internal/daemon/rpc"
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
+	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
+	"github.com/jhyoong/GoHome/gohome/internal/session"
 )
 
 // ClientApprovalReqMsg wraps an incoming approval.request from the daemon.
@@ -174,6 +176,83 @@ func (cf *ClientFrontend) RespondApproval(id *rpc.ID, dec guard.ApprovalDecision
 		ID:     id,
 		Result: resultData,
 	})
+}
+
+// SendSessionList sends a session.list request and returns the listings.
+func (cf *ClientFrontend) SendSessionList() ([]session.Listing, error) {
+	raw, err := cf.sendRequestWithResult(rpc.MethodSessionList, json.RawMessage(`{}`))
+	if err != nil {
+		return nil, err
+	}
+	var result rpc.SessionListResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, err
+	}
+	return result.Sessions, nil
+}
+
+// SendSessionNew sends a session.new request and returns the new session ID.
+func (cf *ClientFrontend) SendSessionNew() (string, error) {
+	raw, err := cf.sendRequestWithResult(rpc.MethodSessionNew, json.RawMessage(`{}`))
+	if err != nil {
+		return "", err
+	}
+	var result rpc.SessionNewResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return "", err
+	}
+	return result.SessionID, nil
+}
+
+// SendSessionResume sends a session.resume request and returns the session ID and history.
+func (cf *ClientFrontend) SendSessionResume(id string) (string, []common.Message, error) {
+	raw, err := cf.sendRequestWithResult(rpc.MethodSessionResume, rpc.SessionResumeParams{ID: id})
+	if err != nil {
+		return "", nil, err
+	}
+	var result rpc.SessionResumeResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return "", nil, err
+	}
+	var history []common.Message
+	if err := json.Unmarshal(result.History, &history); err != nil {
+		return result.SessionID, nil, err
+	}
+	return result.SessionID, history, nil
+}
+
+// SendModelSet sends a model.set request and returns the model name and context window.
+func (cf *ClientFrontend) SendModelSet(name string) (string, int, error) {
+	raw, err := cf.sendRequestWithResult(rpc.MethodModelSet, rpc.ModelSetParams{Name: name})
+	if err != nil {
+		return "", 0, err
+	}
+	var result rpc.ModelSetResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return "", 0, err
+	}
+	return result.ModelName, result.ContextWindow, nil
+}
+
+// sendRequestWithResult is like sendRequest but returns the raw result data.
+func (cf *ClientFrontend) sendRequestWithResult(method string, params any) (json.RawMessage, error) {
+	id := cf.idSeq.Add(1)
+
+	paramsData, err := json.Marshal(params)
+	if err != nil {
+		return nil, err
+	}
+
+	err = cf.conn.WriteRequest(rpc.Request{
+		ID:     rpc.NewID(id),
+		Method: method,
+		Params: paramsData,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return cf.pending.Call(context.Background(), id)
 }
 
 // Close closes the underlying connection.

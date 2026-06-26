@@ -303,6 +303,140 @@ func TestServer_WithAgent_ProcessesInput(t *testing.T) {
 	wg.Wait()
 }
 
+func TestServer_SessionCancel(t *testing.T) {
+	dir := t.TempDir()
+	sockDir, err := os.MkdirTemp("/tmp", "gh-daemon-test-*")
+	if err != nil {
+		t.Fatalf("MkdirTemp: %v", err)
+	}
+	defer os.RemoveAll(sockDir)
+	sock := filepath.Join(sockDir, "t.sock")
+
+	wl := &guard.Whitelist{}
+	g := guard.NewGuard(wl, &noopApprover{})
+	g.SetYolo(true)
+
+	registry := tools.NewRegistry()
+
+	srv, err := NewServer(sock, ServerConfig{
+		Version:      "test-cancel",
+		LLMClient:    &echoClient{},
+		Guard:        g,
+		Registry:     registry,
+		SystemPrompt: "test",
+		MaxTokens:    1024,
+		Home:         dir,
+		CWD:          dir,
+		SessionID:    "cancel-test-1",
+	})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+
+	// Track whether cancel was called by setting a turn cancel function.
+	cancelCalled := false
+	srv.turnMu.Lock()
+	srv.turnCancel = func() { cancelCalled = true }
+	srv.turnMu.Unlock()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		srv.Serve()
+	}()
+	time.Sleep(50 * time.Millisecond)
+
+	conn, err := net.Dial("unix", sock)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	cancelParams, _ := json.Marshal(rpc.SessionCancelParams{SessionID: "cancel-test-1"})
+	msg := sendRequest(t, conn, 1, rpc.MethodSessionCancel, cancelParams)
+	if msg.Error != nil {
+		t.Fatalf("unexpected error: %v", msg.Error)
+	}
+
+	if !cancelCalled {
+		t.Error("expected turnCancel to be called")
+	}
+
+	srv.Stop()
+	wg.Wait()
+}
+
+func TestServer_SessionList(t *testing.T) {
+	dir := t.TempDir()
+	sockDir, err := os.MkdirTemp("/tmp", "gh-daemon-test-*")
+	if err != nil {
+		t.Fatalf("MkdirTemp: %v", err)
+	}
+	defer os.RemoveAll(sockDir)
+	sock := filepath.Join(sockDir, "t.sock")
+
+	// Create a server with an agent so there's at least one session JSONL file.
+	wl := &guard.Whitelist{}
+	g := guard.NewGuard(wl, &noopApprover{})
+	g.SetYolo(true)
+
+	registry := tools.NewRegistry()
+
+	srv, err := NewServer(sock, ServerConfig{
+		Version:      "test-list",
+		LLMClient:    &echoClient{},
+		Guard:        g,
+		Registry:     registry,
+		SystemPrompt: "test",
+		MaxTokens:    1024,
+		Home:         dir,
+		CWD:          dir,
+		SessionID:    "list-test-1",
+	})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		srv.Serve()
+	}()
+	time.Sleep(50 * time.Millisecond)
+
+	conn, err := net.Dial("unix", sock)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	msg := sendRequest(t, conn, 1, rpc.MethodSessionList, json.RawMessage(`{}`))
+	if msg.Error != nil {
+		t.Fatalf("unexpected error: %v", msg.Error)
+	}
+	if msg.Result == nil {
+		t.Fatal("expected result, got nil")
+	}
+
+	var result rpc.SessionListResult
+	if err := json.Unmarshal(msg.Result, &result); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+
+	// The initAgent call creates a JSONL file, so we should see one session.
+	if len(result.Sessions) != 1 {
+		t.Errorf("sessions count = %d, want 1", len(result.Sessions))
+	}
+	if len(result.Sessions) > 0 && result.Sessions[0].ID != "list-test-1" {
+		t.Errorf("session ID = %q, want %q", result.Sessions[0].ID, "list-test-1")
+	}
+
+	srv.Stop()
+	wg.Wait()
+}
+
 // noopApprover satisfies guard.Frontend for test purposes.
 type noopApprover struct{}
 

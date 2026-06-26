@@ -306,6 +306,8 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		Home:           home,
 		CWD:            cwd,
 		SessionID:      sessionID,
+		Settings:       settings,
+		ModelConfig:    cfgName,
 	})
 	if err != nil {
 		return fmt.Errorf("cannot start daemon: %w", err)
@@ -357,8 +359,25 @@ func runClient(sockPath string, settings config.Settings, mc config.ModelConfig)
 	m.SetRenderThrottleMs(settings.RenderThrottleMs)
 	m.SetSettings(settings)
 
-	// Note: SlashCallbacks will be wired in Task 13 to send RPC requests.
-	// For now, the slash commands won't work in daemon mode.
+	// Wire slash command callbacks to send RPC requests to the daemon.
+	m.SetSlashCallbacks(tui.SlashCallbacks{
+		ListSessions: func() ([]session.Listing, error) {
+			return cfe.SendSessionList()
+		},
+		NewSession: func() (string, error) {
+			return cfe.SendSessionNew()
+		},
+		ResumeSession: func(id string) ([]common.Message, error) {
+			_, history, err := cfe.SendSessionResume(id)
+			return history, err
+		},
+		CancelSession: func(id string) {
+			_ = cfe.SendCancel(id)
+		},
+		SetModel: func(name string) (string, int, error) {
+			return cfe.SendModelSet(name)
+		},
+	})
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
 

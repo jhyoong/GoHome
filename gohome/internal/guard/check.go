@@ -81,6 +81,13 @@ func (g *Guard) Check(ctx context.Context, sessionID, tool string, input json.Ra
 	}
 }
 
+// SetFrontend replaces the guard's frontend. This is used by the daemon server
+// to wire the RPCFrontend when a client connects, so that tool approval
+// requests are routed to the connected TUI.
+func (g *Guard) SetFrontend(fe Frontend) {
+	g.frontend = fe
+}
+
 // summaryFor builds a short human-readable summary of a tool call.
 // For bash it returns the command string; for other tools it returns the tool name.
 func summaryFor(tool string, input json.RawMessage) string {
