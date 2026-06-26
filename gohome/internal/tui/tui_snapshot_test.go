@@ -12,6 +12,7 @@ package tui_test
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -233,6 +234,58 @@ func TestSnapshots(t *testing.T) {
 			Shadow:         true,
 			ChildSessionID: "sub-1",
 		})
+		golden.RequireEqual(t, []byte(m.View()))
+	})
+
+	// Edit tool diff box: pending state (no result yet).
+	t.Run("edit_tool_diff_pending", func(t *testing.T) {
+		m := newSized()
+		tmpFile := t.TempDir() + "/test.go"
+		os.WriteFile(tmpFile, []byte("line1\nline2\nfunc Old() {\nline4\nline5\n"), 0644)
+		m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+			Kind:      agent.EventToolCallDone,
+			SessionID: "main",
+			ToolName:  "edit",
+			InputJSON: fmt.Sprintf(`{"path":%q,"old_string":"func Old() {","new_string":"func New() {"}`, tmpFile),
+		}})
+		golden.RequireEqual(t, []byte(m.View()))
+	})
+
+	// Edit tool diff box: success state (completed successfully).
+	t.Run("edit_tool_diff_success", func(t *testing.T) {
+		m := newSized()
+		tmpFile := t.TempDir() + "/test.go"
+		os.WriteFile(tmpFile, []byte("line1\nline2\nfunc Old() {\nline4\nline5\n"), 0644)
+		m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+			Kind:      agent.EventToolCallDone,
+			SessionID: "main",
+			ToolName:  "edit",
+			InputJSON: fmt.Sprintf(`{"path":%q,"old_string":"func Old() {","new_string":"func New() {"}`, tmpFile),
+		}})
+		m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+			Kind:      agent.EventToolResult,
+			SessionID: "main",
+			Result:    &agent.ToolResult{Content: fmt.Sprintf(`edit: replaced 1 occurrence(s) in %q`, tmpFile)},
+		}})
+		golden.RequireEqual(t, []byte(m.View()))
+	})
+
+	// Edit tool diff box: denied/error state (red border, dimmed text).
+	t.Run("edit_tool_diff_denied", func(t *testing.T) {
+		m := newSized()
+		tmpFile := t.TempDir() + "/test.go"
+		os.WriteFile(tmpFile, []byte("line1\nline2\nfunc Old() {\nline4\nline5\n"), 0644)
+		m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+			Kind:      agent.EventToolCallDone,
+			SessionID: "main",
+			ToolName:  "edit",
+			InputJSON: fmt.Sprintf(`{"path":%q,"old_string":"func Old() {","new_string":"func New() {"}`, tmpFile),
+		}})
+		m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+			Kind:      agent.EventToolResult,
+			SessionID: "main",
+			Result:    &agent.ToolResult{Content: "denied", IsError: true},
+		}})
 		golden.RequireEqual(t, []byte(m.View()))
 	})
 
