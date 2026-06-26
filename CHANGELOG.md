@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.2.5
+
+### Added
+
+- **Subagent shadow entries** -- Child subagent tool calls are mirrored as indented, dimmed entries in the parent timeline, providing visibility into subagent activity without switching focus. A sliding window of max 3 shadows per child is maintained.
+- **Tool output preview** -- Collapsed tool entries now show the last 3 lines of output as dimmed preview text, giving a quick glance at results without expanding.
+- **Edit tool diff box** -- Edit tool calls render a bordered unified diff preview below the entry, with red/green line coloring for removals/additions. Error status shows a red border with dimmed content.
+- **Subagent read-only mode** -- Completed subagent sessions now display a "[Session complete]" label and reject text input, preventing accidental interaction with finished sessions.
+- **Cursor-viewport sync** -- Arrow key navigation through timeline entries now scrolls the viewport to keep the cursor on-screen, with pinning for entries taller than the viewport.
+
+### Fixed
+
+- **Subagent sessions stuck in "running" state** -- `EventSessionEnded` is now emitted when a subagent finishes or is cancelled, so the TUI correctly clears the InFlight flag (#16).
+- **Subagent lifecycle state tracking** -- Subagent sessions now show accurate states: "running" while InFlight, "returning" when returning results to the parent, and "complete" when the parent receives the tool result (#18).
+- **Scroll flicker on tall entries** -- `EnsureCursorVisible` no longer oscillates between top and bottom when an entry is taller than the viewport.
+- **PgUp/PgDn scroll amount** -- Page scrolling now uses full-page increments instead of a fixed 5-line jump.
+- **WrapText newline handling** -- Fixed line counting for content containing embedded newlines, correcting scroll math for multi-line tool output.
+
+### Changed
+
+- **LLM client scaffold deduplication** -- Extracted shared HTTP retry, error handling, and SSE pump logic into `common.StreamRequest`, eliminating ~165 lines of duplicated code between the Anthropic and OpenAI adapters. Deleted per-adapter `retry.go` files (M1).
+
 ## v0.2.4
 
 ### Fixed

@@ -120,7 +120,7 @@ contract and is barely used.
 
 ## Medium priority
 
-### M1. The Anthropic and OpenAI clients duplicate the HTTP/stream scaffold — VERIFIED
+### M1. The Anthropic and OpenAI clients duplicate the HTTP/stream scaffold — VERIFIED — RESOLVED in v0.2.5
 
 `gohome/internal/llm/anthropic/client.go` and
 `gohome/internal/llm/openai/client.go` are structurally identical (verified by
@@ -369,6 +369,6 @@ re-checked against the current source.
 1. ~~H1 + H2 together~~ -- Done in v0.2.3 (PR #9). Per-turn cancellation and mutex-guarded `agent.State`.
 2. ~~H3~~ -- Done in v0.2.3 (PR #10). OpenAI adapter flattens tool results correctly.
 3. ~~M2~~, M3, M8: M2 resolved in v0.2.4 (PR #13, consolidated `/model` command with runtime client rebuild). M3 and M8 remain as small correctness/consistency fixes.
-4. ~~H4~~ and M1: H4 fully resolved in v0.2.4 (PR #13, `activeModal` slot with `Interactive` interface). M1 (LLM client scaffold dedup) remains.
+4. ~~H4~~ and ~~M1~~: H4 fully resolved in v0.2.4 (PR #13, `activeModal` slot with `Interactive` interface). M1 resolved in v0.2.5 (PR #15, shared `common.StreamRequest` helper).
 5. M4-M7, L1-L4: opportunistic cleanups; safe to batch or do when touching
    the surrounding code.
