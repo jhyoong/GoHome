@@ -103,9 +103,10 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, error)
 
 			case common.EventError:
 				a.Frontend.Emit(sess.ID, Event{
-					Kind:      EventError,
-					SessionID: sess.ID,
-					Err:       ev.Err,
+					Kind:       EventError,
+					SessionID:  sess.ID,
+					Err:        ev.Err,
+					ErrMessage: ev.Err.Error(),
 				})
 				return "", ev.Err
 

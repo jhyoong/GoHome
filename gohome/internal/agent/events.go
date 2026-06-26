@@ -27,25 +27,26 @@ const (
 
 // ToolResult carries the result of a single tool execution.
 type ToolResult struct {
-	ToolUseID string
-	Content   string
-	IsError   bool
+	ToolUseID string `json:"toolUseID"`
+	Content   string `json:"content"`
+	IsError   bool   `json:"isError"`
 }
 
 // Event is the unit the agent sends to its Frontend.
 type Event struct {
-	Kind          EventKind
-	SessionID     string
-	TextDelta     string
-	ToolCallID    string
-	ToolName      string
-	InputJSON     string
-	Result        *ToolResult
-	Usage         *common.Usage
-	StopReason    string
-	EndReason     string // "done" or "cancelled" (EventSessionEnded only)
-	Err           error
-	ThinkingDelta string
+	Kind          EventKind     `json:"kind"`
+	SessionID     string        `json:"sessionID"`
+	TextDelta     string        `json:"textDelta,omitempty"`
+	ToolCallID    string        `json:"toolCallID,omitempty"`
+	ToolName      string        `json:"toolName,omitempty"`
+	InputJSON     string        `json:"inputJSON,omitempty"`
+	Result        *ToolResult   `json:"result,omitempty"`
+	Usage         *common.Usage `json:"usage,omitempty"`
+	StopReason    string        `json:"stopReason,omitempty"`
+	EndReason     string        `json:"endReason,omitempty"` // "done" or "cancelled" (EventSessionEnded only)
+	Err           error         `json:"-"`
+	ErrMessage    string        `json:"errMessage,omitempty"`
+	ThinkingDelta string        `json:"thinkingDelta,omitempty"`
 }
 
 // Frontend is implemented by the TUI (or any other consumer) and receives
