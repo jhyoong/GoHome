@@ -160,23 +160,33 @@ func (c *ChatComponent) entryLineCount(e *TimelineEntry, maxWidth int) int {
 		return 1
 	case KindTool:
 		count := 1
-		if e.Expanded {
-			if e.Shadow {
-				if e.Text != "" {
-					count += len(WrapText("args: "+e.Text, maxWidth-11))
+		if !e.Expanded {
+			if pv := previewLines(e.ToolResult, 3); len(pv) > 0 {
+				indent := maxWidth - 9
+				if e.Shadow {
+					indent = maxWidth - 15
 				}
-				if e.ToolResult != "" {
-					count++
-					count += len(WrapText(e.ToolResult, maxWidth-13))
+				for _, pl := range pv {
+					count += len(WrapText(pl, indent))
 				}
-			} else {
-				if e.Text != "" {
-					count += len(WrapText("args: "+e.Text, maxWidth-7))
-				}
-				if e.ToolResult != "" {
-					count++
-					count += len(WrapText(e.ToolResult, maxWidth-9))
-				}
+			}
+			return count
+		}
+		if e.Shadow {
+			if e.Text != "" {
+				count += len(WrapText("args: "+e.Text, maxWidth-11))
+			}
+			if e.ToolResult != "" {
+				count++
+				count += len(WrapText(e.ToolResult, maxWidth-13))
+			}
+		} else {
+			if e.Text != "" {
+				count += len(WrapText("args: "+e.Text, maxWidth-7))
+			}
+			if e.ToolResult != "" {
+				count++
+				count += len(WrapText(e.ToolResult, maxWidth-9))
 			}
 		}
 		return count
@@ -220,7 +230,17 @@ func (c *ChatComponent) countLines(maxWidth int) int {
 			}
 		case KindTool:
 			count++
-			if e.Expanded {
+			if !e.Expanded {
+				if pv := previewLines(e.ToolResult, 3); len(pv) > 0 {
+					indent := maxWidth - 9
+					if e.Shadow {
+						indent = maxWidth - 15
+					}
+					for _, pl := range pv {
+						count += len(WrapText(pl, indent))
+					}
+				}
+			} else {
 				if e.Shadow {
 					if e.Text != "" {
 						count += len(WrapText("args: "+e.Text, maxWidth-11))
@@ -361,7 +381,15 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 		if e.Shadow {
 			line := renderToolLine(*e, maxWidth-6)
 			lines = append(lines, marker+"    "+ansiDim+line+ansiReset)
-			if e.Expanded {
+			if !e.Expanded {
+				if pv := previewLines(e.ToolResult, 3); len(pv) > 0 {
+					for _, pl := range pv {
+						for _, wl := range WrapText(pl, maxWidth-15) {
+							lines = append(lines, "             "+ansiDim+wl+ansiReset)
+						}
+					}
+				}
+			} else {
 				if e.Text != "" {
 					for _, l := range WrapText("args: "+e.Text, maxWidth-11) {
 						lines = append(lines, expandedBg.Render("           "+ansiDim+l+ansiReset))
@@ -377,7 +405,15 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 		} else {
 			line := renderToolLine(*e, maxWidth-2)
 			lines = append(lines, marker+line)
-			if e.Expanded {
+			if !e.Expanded {
+				if pv := previewLines(e.ToolResult, 3); len(pv) > 0 {
+					for _, pl := range pv {
+						for _, wl := range WrapText(pl, maxWidth-9) {
+							lines = append(lines, "       "+ansiDim+wl+ansiReset)
+						}
+					}
+				}
+			} else {
 				if e.Text != "" {
 					for _, l := range WrapText("args: "+e.Text, maxWidth-7) {
 						lines = append(lines, expandedBg.Render("       "+l))
@@ -398,6 +434,26 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 	}
 
 	return lines
+}
+
+// previewLines returns the last maxLines lines from s for use as a dimmed
+// preview below collapsed tool entries. If s has 0 or 1 lines, it returns nil
+// (single-line results are already shown in the arrow summary). If s has 2-3
+// lines, all lines are returned. If more than maxLines, only the last maxLines
+// are returned.
+func previewLines(s string, maxLines int) []string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	lines := strings.Split(s, "\n")
+	if len(lines) <= 1 {
+		return nil
+	}
+	if len(lines) <= maxLines {
+		return lines
+	}
+	return lines[len(lines)-maxLines:]
 }
 
 // renderToolLine builds the collapsed single-line representation of a tool entry.

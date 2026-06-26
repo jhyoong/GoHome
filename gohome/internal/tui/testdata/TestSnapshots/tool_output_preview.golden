@@ -1,0 +1,11 @@
+Session:  main done 
+> [tool] bash {"command":"find . -name '*.go'"}  ->  6 lines
+       [2minternal/tui/chat.go[0m
+       [2minternal/tools/bash.go[0m
+       [2minternal/guard/guard.go[0m
+────────────────────────────────────────────────────────────────────────────────
+[7m [0m
+
+
+────────────────────────────────────────────────────────────────────────────────
+main · ? · ░░░░░░░░░░ 0/128.0k (0%)

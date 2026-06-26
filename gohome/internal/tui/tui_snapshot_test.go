@@ -187,6 +187,55 @@ func TestSnapshots(t *testing.T) {
 		golden.RequireEqual(t, []byte(m.View()))
 	})
 
+	// Tool output preview: multi-line result (6 lines) shows last 3 as dimmed preview.
+	t.Run("tool_output_preview", func(t *testing.T) {
+		m := newSized()
+		m.AddTimelineEntry("main", tui.TimelineEntry{
+			Kind:     tui.KindTool,
+			ToolName: "bash",
+			Text:     `{"command":"find . -name '*.go'"}`,
+			ToolResult: "cmd/main.go\ninternal/agent/agent.go\ninternal/tui/model.go\n" +
+				"internal/tui/chat.go\ninternal/tools/bash.go\ninternal/guard/guard.go",
+			Status: "success",
+		})
+		golden.RequireEqual(t, []byte(m.View()))
+	})
+
+	// Tool output preview: single-line result produces NO preview lines.
+	t.Run("tool_output_preview_single_line", func(t *testing.T) {
+		m := newSized()
+		m.AddTimelineEntry("main", tui.TimelineEntry{
+			Kind:       tui.KindTool,
+			ToolName:   "bash",
+			Text:       `{"command":"echo hello"}`,
+			ToolResult: "hello",
+			Status:     "success",
+		})
+		golden.RequireEqual(t, []byte(m.View()))
+	})
+
+	// Tool output preview: shadow entry with multi-line result.
+	t.Run("tool_output_preview_shadow", func(t *testing.T) {
+		m := newSized()
+		m.AddTimelineEntry("main", tui.TimelineEntry{
+			Kind:           tui.KindTool,
+			ToolName:       "subagent",
+			Text:           `{"task":"investigate"}`,
+			Status:         "pending",
+			ChildSessionID: "sub-1",
+		})
+		m.AddTimelineEntry("main", tui.TimelineEntry{
+			Kind:           tui.KindTool,
+			ToolName:       "bash",
+			Text:           `{"command":"find . -name '*.go'"}`,
+			ToolResult:     "file1.go\nfile2.go\nfile3.go\nfile4.go\nfile5.go",
+			Status:         "success",
+			Shadow:         true,
+			ChildSessionID: "sub-1",
+		})
+		golden.RequireEqual(t, []byte(m.View()))
+	})
+
 	t.Run("subagent_shadow_entries", func(t *testing.T) {
 		m := newSized()
 		m.AddTimelineEntry("main", tui.TimelineEntry{
