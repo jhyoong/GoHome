@@ -147,6 +147,9 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 
 	case agent.EventSessionEnded:
 		sv.InFlight = false
+		if ev.EndReason == "done" {
+			sv.Completed = true
+		}
 
 	case agent.EventSessionSwapped:
 		m.focused = ev.SessionID

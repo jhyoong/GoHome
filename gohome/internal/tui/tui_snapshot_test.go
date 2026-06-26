@@ -410,6 +410,40 @@ func TestEnsureCursorVisible_ScrollsUp(t *testing.T) {
 	}
 }
 
+func TestSubagentCompleted_OnDone(t *testing.T) {
+	m := newSized()
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventSessionStarted,
+		SessionID: "sub-1",
+	}})
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventSessionEnded,
+		SessionID: "sub-1",
+		EndReason: "done",
+	}})
+	sv := m.Sessions()["sub-1"]
+	if !sv.Completed {
+		t.Fatal("expected Completed=true after EventSessionEnded with EndReason='done'")
+	}
+}
+
+func TestSubagentNotCompleted_OnCancel(t *testing.T) {
+	m := newSized()
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventSessionStarted,
+		SessionID: "sub-1",
+	}})
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventSessionEnded,
+		SessionID: "sub-1",
+		EndReason: "cancelled",
+	}})
+	sv := m.Sessions()["sub-1"]
+	if sv.Completed {
+		t.Fatal("expected Completed=false after EventSessionEnded with EndReason='cancelled'")
+	}
+}
+
 func TestToggleExpansion_PreservesScrollPosition(t *testing.T) {
 	m := newSized()
 

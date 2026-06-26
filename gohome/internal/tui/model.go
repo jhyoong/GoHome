@@ -54,8 +54,9 @@ type SessionView struct {
 	Depth    int
 	Title    string
 	Timeline []TimelineEntry
-	InFlight bool
-	Usage    common.Usage
+	InFlight  bool
+	Completed bool
+	Usage     common.Usage
 
 	// Context-fullness warning sentinels (Task 11.16).
 	warned80 bool
