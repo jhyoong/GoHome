@@ -13,6 +13,14 @@ var (
 	userPrefix  = lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
 	noticeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 	expandedBg  = lipgloss.NewStyle().Background(lipgloss.Color("236"))
+	diffBoxDefault = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("8")).
+			Padding(0, 1)
+	diffBoxDenied = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("1")).
+			Padding(0, 1)
 )
 
 // ChatComponent renders a timeline of entries with markdown support and scrolling.
@@ -172,24 +180,32 @@ func (c *ChatComponent) entryLineCount(e *TimelineEntry, maxWidth int) int {
 					count += len(WrapText(pl, indent))
 				}
 			}
-			return count
-		}
-		if e.Shadow {
-			if e.Text != "" {
-				count += len(WrapText("args: "+e.Text, maxWidth-11))
-			}
-			if e.ToolResult != "" {
-				count++
-				count += len(WrapText(e.ToolResult, maxWidth-13))
-			}
 		} else {
-			if e.Text != "" {
-				count += len(WrapText("args: "+e.Text, maxWidth-7))
+			if e.Shadow {
+				if e.Text != "" {
+					count += len(WrapText("args: "+e.Text, maxWidth-11))
+				}
+				if e.ToolResult != "" {
+					count++
+					count += len(WrapText(e.ToolResult, maxWidth-13))
+				}
+			} else {
+				if e.Text != "" {
+					count += len(WrapText("args: "+e.Text, maxWidth-7))
+				}
+				if e.ToolResult != "" {
+					count++
+					count += len(WrapText(e.ToolResult, maxWidth-9))
+				}
 			}
-			if e.ToolResult != "" {
-				count++
-				count += len(WrapText(e.ToolResult, maxWidth-9))
+		}
+		if e.DiffPreview != "" {
+			indent := 2
+			if e.Shadow {
+				indent = 6
 			}
+			diffLines := renderDiffBox(e.DiffPreview, e.Status, maxWidth, indent)
+			count += len(diffLines)
 		}
 		return count
 	case KindNotice:
@@ -260,6 +276,14 @@ func (c *ChatComponent) countLines(maxWidth int) int {
 						count += len(WrapText(e.ToolResult, maxWidth-9))
 					}
 				}
+			}
+			if e.DiffPreview != "" {
+				indent := 2
+				if e.Shadow {
+					indent = 6
+				}
+				diffLines := renderDiffBox(e.DiffPreview, e.Status, maxWidth, indent)
+				count += len(diffLines)
 			}
 		case KindNotice:
 			count++
@@ -405,6 +429,13 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 					}
 				}
 			}
+			if e.DiffPreview != "" {
+				diffLines := renderDiffBox(e.DiffPreview, e.Status, maxWidth, 6)
+				for i, l := range diffLines {
+					diffLines[i] = ansiDim + l + ansiReset
+				}
+				lines = append(lines, diffLines...)
+			}
 		} else {
 			line := renderToolLine(*e, maxWidth-2)
 			lines = append(lines, marker+line)
@@ -429,6 +460,11 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 					}
 				}
 			}
+			// Diff box for edit tools (always visible).
+			if e.DiffPreview != "" {
+				diffLines := renderDiffBox(e.DiffPreview, e.Status, maxWidth, 2)
+				lines = append(lines, diffLines...)
+			}
 		}
 
 	case KindNotice:
@@ -437,6 +473,52 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 	}
 
 	return lines
+}
+
+// renderDiffBox renders the diff preview as a bordered box with colored lines.
+func renderDiffBox(diff string, status string, maxWidth int, indent int) []string {
+	if diff == "" {
+		return nil
+	}
+
+	boxStyle := diffBoxDefault
+	if status == "error" {
+		boxStyle = diffBoxDenied
+	}
+
+	// Color the diff lines.
+	var colored []string
+	for _, line := range strings.Split(diff, "\n") {
+		if containsDiffMarker(line, "  - ") {
+			colored = append(colored, "\x1b[31m"+line+"\x1b[0m")
+		} else if containsDiffMarker(line, "  + ") {
+			colored = append(colored, "\x1b[32m"+line+"\x1b[0m")
+		} else {
+			colored = append(colored, ansiDim+line+ansiReset)
+		}
+	}
+
+	inner := strings.Join(colored, "\n")
+	if status == "error" {
+		inner = ansiDim + inner + ansiReset
+	}
+
+	boxWidth := maxWidth - indent - 4
+	if boxWidth < 20 {
+		boxWidth = 20
+	}
+	rendered := boxStyle.Width(boxWidth).Render(inner)
+
+	prefix := strings.Repeat(" ", indent)
+	var result []string
+	for _, l := range strings.Split(rendered, "\n") {
+		result = append(result, prefix+l)
+	}
+	return result
+}
+
+func containsDiffMarker(line, marker string) bool {
+	return strings.Contains(line, marker)
 }
 
 // previewLines returns the last maxLines lines from s for use as a dimmed
