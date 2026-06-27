@@ -368,6 +368,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.modelName = msg.Model
 		m.yolo = msg.Yolo
 		if msg.SessionID != "" && msg.SessionID != m.focused {
+			// Remove the placeholder session if it has no content.
+			if old, ok := m.sessions[m.focused]; ok && len(old.Timeline) == 0 {
+				delete(m.sessions, m.focused)
+				for i, id := range m.order {
+					if id == m.focused {
+						m.order = append(m.order[:i], m.order[i+1:]...)
+						break
+					}
+				}
+			}
 			m.getOrCreateSession(msg.SessionID, 0)
 			m.focused = msg.SessionID
 		}

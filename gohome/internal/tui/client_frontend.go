@@ -39,18 +39,23 @@ type ClientFrontend struct {
 	stateSync chan StateSyncMsg
 	pending   *rpc.Pending
 	idSeq     atomic.Int64
+	ctx       context.Context
+	cancel    context.CancelFunc
 }
 
 // NewClientFrontend creates a ClientFrontend wired to the given connection.
 // Agent events are pushed to the events channel. Approval requests from the
 // daemon are pushed to a separate approvals channel accessible via Approvals().
 func NewClientFrontend(conn *rpc.Conn, events chan<- AgentEventMsg) *ClientFrontend {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &ClientFrontend{
 		conn:      conn,
 		events:    events,
 		approvals: make(chan ClientApprovalReqMsg, 4),
 		stateSync: make(chan StateSyncMsg, 4),
 		pending:   rpc.NewPending(),
+		ctx:       ctx,
+		cancel:    cancel,
 	}
 }
 
@@ -167,7 +172,7 @@ func (cf *ClientFrontend) sendRequest(method string, params any) error {
 		return err
 	}
 
-	_, err = cf.pending.Wait(context.Background(), id)
+	_, err = cf.pending.Wait(cf.ctx, id)
 	return err
 }
 
@@ -286,10 +291,11 @@ func (cf *ClientFrontend) sendRequestWithResult(method string, params any) (json
 		return nil, err
 	}
 
-	return cf.pending.Wait(context.Background(), id)
+	return cf.pending.Wait(cf.ctx, id)
 }
 
-// Close closes the underlying connection.
+// Close cancels in-flight requests and closes the underlying connection.
 func (cf *ClientFrontend) Close() error {
+	cf.cancel()
 	return cf.conn.Close()
 }

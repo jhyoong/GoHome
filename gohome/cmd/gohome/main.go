@@ -193,6 +193,8 @@ func isDaemonRunning(sockPath string) bool {
 	}
 	defer conn.Close()
 
+	conn.SetDeadline(time.Now().Add(time.Second))
+
 	c := rpc.NewConn(conn)
 	if err := c.WriteRequest(rpc.Request{
 		ID:     rpc.NewID(1),
@@ -202,11 +204,17 @@ func isDaemonRunning(sockPath string) bool {
 		return false
 	}
 
-	msg, err := c.Read()
-	if err != nil {
-		return false
+	// Skip notifications (e.g. session.state sent on connect) until
+	// we receive the health response.
+	for {
+		msg, err := c.Read()
+		if err != nil {
+			return false
+		}
+		if msg.IsResponse() {
+			return msg.Error == nil
+		}
 	}
-	return msg.IsResponse() && msg.Error == nil
 }
 
 // waitForDaemon polls the socket until the daemon responds to a health check
@@ -308,6 +316,7 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		SessionID:      sessionID,
 		Settings:       settings,
 		ModelConfig:    cfgName,
+		ModelName:      mc.ModelName,
 	})
 	if err != nil {
 		return fmt.Errorf("cannot start daemon: %w", err)
@@ -372,7 +381,7 @@ func runClient(sockPath string, settings config.Settings, mc config.ModelConfig)
 			return history, err
 		},
 		CancelSession: func(id string) {
-			_ = cfe.SendCancel(id)
+			go cfe.SendCancel(id)
 		},
 		SetModel: func(name string) (string, int, error) {
 			return cfe.SendModelSet(name)
@@ -407,6 +416,7 @@ func runClient(sockPath string, settings config.Settings, mc config.ModelConfig)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigCh
+		cfe.Close()
 		p.Quit()
 	}()
 

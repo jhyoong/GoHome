@@ -5,6 +5,7 @@ package frontend
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sync/atomic"
 
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
@@ -23,6 +24,7 @@ type RPCFrontend struct {
 	pending *rpc.Pending
 	idSeq   atomic.Int64
 	inputCh chan string
+	done    chan struct{}
 }
 
 // New creates an RPCFrontend that communicates over conn.
@@ -31,6 +33,17 @@ func New(conn *rpc.Conn) *RPCFrontend {
 		conn:    conn,
 		pending: rpc.NewPending(),
 		inputCh: make(chan string, 1),
+		done:    make(chan struct{}),
+	}
+}
+
+// Close signals that this frontend is no longer active. Any blocked
+// AwaitUserInput call will return with an error.
+func (f *RPCFrontend) Close() {
+	select {
+	case <-f.done:
+	default:
+		close(f.done)
 	}
 }
 
@@ -93,11 +106,14 @@ func (f *RPCFrontend) RequestApproval(ctx context.Context, req guard.ApprovalReq
 	return result.Decision, nil
 }
 
-// AwaitUserInput blocks until DeliverInput is called or ctx is cancelled.
+// AwaitUserInput blocks until DeliverInput is called, ctx is cancelled, or the
+// frontend is closed.
 func (f *RPCFrontend) AwaitUserInput(ctx context.Context, _ string) (string, error) {
 	select {
 	case <-ctx.Done():
 		return "", ctx.Err()
+	case <-f.done:
+		return "", fmt.Errorf("frontend closed")
 	case text := <-f.inputCh:
 		return text, nil
 	}

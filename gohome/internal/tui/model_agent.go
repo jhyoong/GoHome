@@ -11,7 +11,11 @@ import (
 // It returns a tea.Cmd (SpinnerTickCmd when the spinner starts, nil otherwise).
 func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 	ev := msg.Ev
-	sv := m.getOrCreateSession(msg.SessionID, 1)
+	depth := 0
+	if msg.SessionID != m.focused {
+		depth = 1
+	}
+	sv := m.getOrCreateSession(msg.SessionID, depth)
 	var dequeuedCmd tea.Cmd
 
 	switch ev.Kind {

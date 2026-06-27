@@ -46,10 +46,11 @@ type ServerConfig struct {
 	CWD            string
 	SessionID      string
 
-	// Settings and ModelConfig are needed for model.set to look up model
-	// configs, resolve API keys, and create new LLM clients.
+	// Settings, ModelConfig, and ModelName are needed for model.set to look up
+	// model configs, resolve API keys, and create new LLM clients.
 	Settings    config.Settings
 	ModelConfig string // current model config name
+	ModelName   string // LLM model name (e.g. "claude-sonnet-4-5-20250514")
 }
 
 // Server listens on a Unix socket, accepts a single client connection, and
@@ -189,6 +190,7 @@ func (s *Server) handleClient(conn net.Conn) {
 		s.client = nil
 		s.fe = nil
 		s.mu.Unlock()
+		fe.Close()
 		c.Close()
 	}()
 
@@ -253,16 +255,18 @@ func (s *Server) dispatch(c *rpc.Conn, msg *rpc.Message) {
 			})
 			return
 		}
+		// Send the RPC response before delivering input so the TUI's
+		// sendInputCmd unblocks immediately, even if the agent is busy.
+		_ = c.WriteResponse(rpc.Response{
+			ID:     msg.ID,
+			Result: json.RawMessage(`{}`),
+		})
 		s.mu.Lock()
 		fe := s.fe
 		s.mu.Unlock()
 		if fe != nil {
 			fe.DeliverInput(params.Text)
 		}
-		_ = c.WriteResponse(rpc.Response{
-			ID:     msg.ID,
-			Result: json.RawMessage(`{}`),
-		})
 
 	case rpc.MethodSessionList:
 		s.handleSessionList(c, msg)
@@ -301,7 +305,7 @@ func (s *Server) dispatch(c *rpc.Conn, msg *rpc.Message) {
 
 // initAgent builds the agent and its session state from the provided config.
 func (s *Server) initAgent(cfg ServerConfig) error {
-	sess := session.NewSession(cfg.SessionID, cfg.CWD, "", "")
+	sess := session.NewSession(cfg.SessionID, cfg.CWD, cfg.ModelName, cfg.ModelConfig)
 	writerPath := session.SessionPath(cfg.Home, cfg.CWD, sess.ID, time.Now().UTC())
 	writer, err := session.OpenWriter(writerPath)
 	if err != nil {
