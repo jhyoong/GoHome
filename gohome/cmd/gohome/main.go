@@ -1,8 +1,6 @@
 package main
 
 import (
-	"crypto/rand"
-	"encoding/base32"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -11,7 +9,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
@@ -36,16 +33,6 @@ var (
 	showVersion = flag.Bool("version", false, "print version and exit")
 	stopFlag    = flag.Bool("stop", false, "stop the running daemon and exit")
 )
-
-// newSessionID generates an 8-char lowercase base32 session ID using crypto/rand.
-func newSessionID() string {
-	buf := make([]byte, 5) // 5 bytes -> 8 base32 chars (no padding)
-	if _, err := rand.Read(buf); err != nil {
-		panic("newSessionID: crypto/rand failed: " + err.Error())
-	}
-	enc := base32.StdEncoding.WithPadding(base32.NoPadding)
-	return strings.ToLower(enc.EncodeToString(buf))
-}
 
 // setupLogging configures the global slog logger to write JSON to
 // <home>/.gohome/logs/<YYYY-MM-DD>.log. Returns the open log file so the
@@ -301,7 +288,7 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		thinkingBudget = config.DefaultThinkingBudget
 	}
 
-	sessionID := newSessionID()
+	sessionID := session.NewID()
 
 	srv, err := daemon.NewServer(sockPath, daemon.ServerConfig{
 		Version:        version,

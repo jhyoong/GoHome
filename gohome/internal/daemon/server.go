@@ -4,15 +4,12 @@ package daemon
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base32"
 	"encoding/json"
 	"errors"
 	"log"
 	"log/slog"
 	"net"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -468,7 +465,7 @@ func (s *Server) handleSessionNew(c *rpc.Conn, msg *rpc.Message) {
 		return
 	}
 
-	id := newSessionID()
+	id := session.NewID()
 	currentModel := s.agent.State.Model()
 	currentCfg := s.agent.State.ModelConfig()
 	newSess := session.NewSession(id, s.config.CWD, currentModel, currentCfg)
@@ -680,16 +677,6 @@ func (s *Server) cancelGraceTimer() {
 }
 
 // ---------- Helpers ----------
-
-// newSessionID generates an 8-char lowercase base32 session ID using crypto/rand.
-func newSessionID() string {
-	buf := make([]byte, 5) // 5 bytes -> 8 base32 chars (no padding)
-	if _, err := rand.Read(buf); err != nil {
-		panic("newSessionID: crypto/rand failed: " + err.Error())
-	}
-	enc := base32.StdEncoding.WithPadding(base32.NoPadding)
-	return strings.ToLower(enc.EncodeToString(buf))
-}
 
 // cleanup removes the socket file.
 func (s *Server) cleanup() {
