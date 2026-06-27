@@ -3,6 +3,7 @@ package guard
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"sync/atomic"
 )
 
@@ -66,7 +67,7 @@ func (g *Guard) Check(ctx context.Context, sessionID, tool string, input json.Ra
 		if err := g.whitelist.AddProject(tool, dec.SavedPattern); err != nil {
 			// Log but don't fail the allow — the user said yes.
 			// Future calls will re-prompt, which is acceptable.
-			_ = err
+			slog.Warn("whitelist persist failed", "err", err)
 		}
 		return Decision{Allow: true, Reason: "user_always", SavedPattern: dec.SavedPattern}, nil
 

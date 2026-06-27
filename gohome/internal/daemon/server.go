@@ -153,8 +153,6 @@ func (s *Server) Stop() {
 // handleClient creates an rpc.Conn and frontend.RPCFrontend for the given
 // connection, reads messages in a loop, and dispatches each one.
 func (s *Server) handleClient(conn net.Conn) {
-	s.cancelGraceTimer()
-
 	c := rpc.NewConn(conn)
 	fe := frontend.New(c)
 
@@ -191,13 +189,6 @@ func (s *Server) handleClient(conn net.Conn) {
 	for {
 		msg, err := c.Read()
 		if err != nil {
-			// Client disconnected or read error.
-			if s.ctx.Err() != nil {
-				return
-			}
-			if errors.Is(err, net.ErrClosed) {
-				return
-			}
 			return
 		}
 		s.dispatch(c, msg)
