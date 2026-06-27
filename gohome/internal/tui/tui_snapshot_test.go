@@ -208,7 +208,7 @@ func TestSnapshots(t *testing.T) {
 			},
 		}})
 		// Focus the completed session.
-		m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlCloseBracket})
+		m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlRight})
 		golden.RequireEqual(t, []byte(m.View()))
 	})
 
@@ -648,7 +648,7 @@ func TestCompletedSession_RejectsInput(t *testing.T) {
 		},
 	}})
 	// Focus the completed session.
-	m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlCloseBracket})
+	m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlRight})
 
 	// Type something into the editor.
 	for _, r := range "hello" {
@@ -700,7 +700,7 @@ func TestCompletedSession_AllowsNavigation(t *testing.T) {
 		},
 	}})
 	// Focus the completed session.
-	m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlCloseBracket})
+	m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlRight})
 
 	// Arrow down should work (not panic or be blocked).
 	_ = apply(m, tea.KeyMsg{Type: tea.KeyDown})

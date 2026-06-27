@@ -168,7 +168,7 @@ func (m *Model) notificationLine() string {
 	// Pending approvals take priority.
 	for sid := range m.pendingApprovals {
 		if sid != m.focused {
-			return fmt.Sprintf("! [%s] needs approval -- Ctrl+] to focus", sid)
+			return fmt.Sprintf("! [%s] needs approval -- Ctrl+Right to focus", sid)
 		}
 	}
 	// Secondary: another session is in-flight while we are focused elsewhere.

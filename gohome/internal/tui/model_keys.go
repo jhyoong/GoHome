@@ -68,9 +68,9 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg.Type {
-	case tea.KeyCtrlCloseBracket:
+	case tea.KeyCtrlRight:
 		m.focusNext()
-	case tea.KeyCtrlOpenBracket:
+	case tea.KeyCtrlLeft:
 		m.focusPrev()
 	case tea.KeyCtrlH:
 		helpH := m.winH - stripHeight - statusHeight - 2

@@ -27,9 +27,9 @@ func TestSessionStripShowsFocused(t *testing.T) {
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
 
-// TestFocusCyclingCtrlCloseBracket verifies that Ctrl+] moves focus to a
+// TestFocusCyclingCtrlRight verifies that Ctrl+Right moves focus to a
 // sub-session registered via an EventSessionStarted message.
-func TestFocusCyclingCtrlCloseBracket(t *testing.T) {
+func TestFocusCyclingCtrlRight(t *testing.T) {
 	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(120, 24))
 	t.Cleanup(func() {
@@ -50,8 +50,8 @@ func TestFocusCyclingCtrlCloseBracket(t *testing.T) {
 		return bytes.Contains(out, []byte("sub-1"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
-	// Send Ctrl+] to cycle focus forward (main -> sub-1).
-	tm.Send(tea.KeyMsg{Type: tea.KeyCtrlCloseBracket})
+	// Send Ctrl+Right to cycle focus forward (main -> sub-1).
+	tm.Send(tea.KeyMsg{Type: tea.KeyCtrlRight})
 
 	// After focus changes, the focused session should be "sub-1".
 	// The strip marks the focused chip with reverse style; we also expose
@@ -75,8 +75,8 @@ func TestFocusCyclingCtrlCloseBracket(t *testing.T) {
 	}
 }
 
-// TestFocusCyclingCtrlOpenBracket verifies that Ctrl+[ moves focus backward.
-func TestFocusCyclingCtrlOpenBracket(t *testing.T) {
+// TestFocusCyclingCtrlLeft verifies that Ctrl+Left moves focus backward.
+func TestFocusCyclingCtrlLeft(t *testing.T) {
 	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(120, 24))
 	t.Cleanup(func() {
@@ -98,8 +98,8 @@ func TestFocusCyclingCtrlOpenBracket(t *testing.T) {
 		return bytes.Contains(out, []byte("sub-2"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
-	// Ctrl+[ from "main" wraps around to "sub-2" (last in order).
-	tm.Send(tea.KeyMsg{Type: tea.KeyCtrlOpenBracket})
+	// Ctrl+Left from "main" wraps around to "sub-2" (last in order).
+	tm.Send(tea.KeyMsg{Type: tea.KeyCtrlLeft})
 
 	// Quit and assert focus is "sub-2".
 	if err := tm.Quit(); err != nil {
@@ -111,6 +111,6 @@ func TestFocusCyclingCtrlOpenBracket(t *testing.T) {
 		t.Fatalf("expected *tui.Model, got %T", fm)
 	}
 	if tuiModel.Focused() != "sub-2" {
-		t.Errorf("expected focused session to be %q after Ctrl+[, got %q", "sub-2", tuiModel.Focused())
+		t.Errorf("expected focused session to be %q after Ctrl+Left, got %q", "sub-2", tuiModel.Focused())
 	}
 }

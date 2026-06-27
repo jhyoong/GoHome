@@ -121,8 +121,8 @@ If `contextWarnPct` >= `contextCritPct`, or either value is outside the (0, 1] r
 | `Ctrl+C` (twice) | Quit |
 | `Ctrl+E` | Open current input in external editor (`$VISUAL` / `$EDITOR` / `vi`) |
 | `Ctrl+H` | Open help overlay |
-| `Ctrl+]` | Focus next session |
-| `Ctrl+[` | Focus previous session |
+| `Ctrl+Right` | Focus next session |
+| `Ctrl+Left` | Focus previous session |
 | `PgUp` / `PgDn` | Scroll viewport |
 | `@` | Trigger file search popup (type a query after `@`) |
 | `/` | Open slash command with inline autocomplete |
@@ -182,7 +182,7 @@ Before every tool call, `gohome` checks the whitelist. If no rule covers the cal
 
 ## Subagents
 
-The `subagent` tool spawns a fresh, isolated agent session from within the agent loop. The subagent shares the parent's guard and tool registry (but cannot itself spawn subagents), runs synchronously, and returns its final text as a tool result to the parent. The TUI shows each session in a strip at the top; `Ctrl+]` / `Ctrl+[` switches focus.
+The `subagent` tool spawns a fresh, isolated agent session from within the agent loop. The subagent shares the parent's guard and tool registry (but cannot itself spawn subagents), runs synchronously, and returns its final text as a tool result to the parent. The TUI shows each session in a strip at the top; `Ctrl+Right` / `Ctrl+Left` switches focus.
 
 ---
 
