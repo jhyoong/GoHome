@@ -151,7 +151,7 @@ func TestEncodeResponse(t *testing.T) {
 }
 
 func TestEncodeErrorResponse(t *testing.T) {
-	id := NewStringID("req-1")
+	id := &ID{str: "req-1", isStr: true}
 	resp := Response{
 		ID: id,
 		Error: &Error{
@@ -304,7 +304,7 @@ func TestIDMarshalUnmarshal(t *testing.T) {
 		wantJSON string
 	}{
 		{"integer", NewID(42), "42"},
-		{"string", NewStringID("abc"), `"abc"`},
+		{"string", &ID{str: "abc", isStr: true}, `"abc"`},
 	}
 
 	for _, tt := range tests {

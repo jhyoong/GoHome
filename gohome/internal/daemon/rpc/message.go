@@ -22,11 +22,6 @@ func NewID(n int64) *ID {
 	return &ID{num: n}
 }
 
-// NewStringID creates a string ID.
-func NewStringID(s string) *ID {
-	return &ID{str: s, isStr: true}
-}
-
 // Int64 returns the numeric value of the ID. For string IDs it returns 0.
 func (id *ID) Int64() int64 {
 	if id == nil {
