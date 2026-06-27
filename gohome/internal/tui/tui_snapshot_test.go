@@ -44,7 +44,7 @@ func apply(m *tui.Model, msg tea.Msg) *tui.Model {
 
 // newSized builds a Model already sized to 80x24.
 func newSized() *tui.Model {
-	m := tui.New(nil, "")
+	m := tui.New("")
 	m = apply(m, tea.WindowSizeMsg{Width: snapshotW, Height: snapshotH})
 	return m
 }
@@ -82,7 +82,6 @@ func TestSnapshots(t *testing.T) {
 	// (d) With an approval prompt active.
 	t.Run("with_approval_prompt", func(t *testing.T) {
 		m := newSized()
-		reply := make(chan guard.ApprovalDecision, 1)
 		m = apply(m, tui.ApprovalReqMsg{
 			Req: guard.ApprovalRequest{
 				SessionID:        "main",
@@ -90,7 +89,7 @@ func TestSnapshots(t *testing.T) {
 				Input:            []byte(`{"command":"ls -la"}`),
 				SuggestedPattern: "ls*",
 			},
-			Reply: reply,
+			Resolve: func(guard.ApprovalDecision) {},
 		})
 		golden.RequireEqual(t, []byte(m.View()))
 	})

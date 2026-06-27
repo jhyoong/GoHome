@@ -259,7 +259,7 @@ func TestCountLinesCacheBehavior(t *testing.T) {
 }
 
 func TestRenderThrottle_SkipsIntermediateRebuilds(t *testing.T) {
-	m := New(nil, "main")
+	m := New("main")
 	m.SetRenderThrottleMs(100)
 	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 

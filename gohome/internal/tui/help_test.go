@@ -12,7 +12,7 @@ import (
 )
 
 func TestHelpOverlay_CtrlH_Opens(t *testing.T) {
-	m := tui.New(nil, "")
+	m := tui.New("")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() {
 		_ = tm.Quit()
@@ -54,7 +54,7 @@ func TestHelpOverlay_BlocksOtherKeys(t *testing.T) {
 
 func TestHelpOverlay_ScrollDown(t *testing.T) {
 	// Use a small terminal so scrolling is needed.
-	m := tui.New(nil, "")
+	m := tui.New("")
 	m = apply(m, tea.WindowSizeMsg{Width: 80, Height: 10})
 	m.OpenHelpOverlay()
 
@@ -75,7 +75,7 @@ func TestHelpOverlay_ScrollDown(t *testing.T) {
 }
 
 func TestHelpOverlay_ScrollUp(t *testing.T) {
-	m := tui.New(nil, "")
+	m := tui.New("")
 	m = apply(m, tea.WindowSizeMsg{Width: 80, Height: 10})
 	m.OpenHelpOverlay()
 
@@ -94,7 +94,7 @@ func TestHelpOverlay_ScrollUp(t *testing.T) {
 }
 
 func TestHelpOverlay_PgDownPgUp(t *testing.T) {
-	m := tui.New(nil, "")
+	m := tui.New("")
 	m = apply(m, tea.WindowSizeMsg{Width: 80, Height: 10})
 	m.OpenHelpOverlay()
 
@@ -115,7 +115,7 @@ func TestHelpOverlay_PgDownPgUp(t *testing.T) {
 
 func TestHelpOverlay_EndIndicator_WhenFits(t *testing.T) {
 	// Large terminal where all content fits.
-	m := tui.New(nil, "")
+	m := tui.New("")
 	m = apply(m, tea.WindowSizeMsg{Width: 80, Height: 60})
 	m.OpenHelpOverlay()
 
@@ -136,7 +136,7 @@ func TestHelpOverlay_ShowsCopyKeybinding(t *testing.T) {
 }
 
 func TestHelpOverlay_EndIndicator_WhenScrolledToBottom(t *testing.T) {
-	m := tui.New(nil, "")
+	m := tui.New("")
 	m = apply(m, tea.WindowSizeMsg{Width: 80, Height: 10})
 	m.OpenHelpOverlay()
 

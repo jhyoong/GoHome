@@ -356,11 +356,29 @@ func TestClientFrontend_ReceivesApprovalRequest(t *testing.T) {
 		if req.Req.Tool != "bash" {
 			t.Errorf("tool = %q, want %q", req.Req.Tool, "bash")
 		}
-		if req.RPCID == nil {
-			t.Fatal("expected RPC ID to be stored, got nil")
+		if req.Resolve == nil {
+			t.Fatal("expected Resolve callback to be set, got nil")
 		}
-		if req.RPCID.Int64() != 99 {
-			t.Errorf("rpc id = %d, want 99", req.RPCID.Int64())
+		// Invoke the resolve callback and verify the daemon receives the response.
+		respCh := make(chan *rpc.Message, 1)
+		go func() {
+			msg, err := daemonConn.Read()
+			if err != nil {
+				return
+			}
+			respCh <- msg
+		}()
+		req.Resolve(guard.ApprovalDecision{Outcome: guard.AllowOnce})
+		select {
+		case resp := <-respCh:
+			if !resp.IsResponse() {
+				t.Fatal("expected response from Resolve callback")
+			}
+			if resp.ID.Int64() != 99 {
+				t.Errorf("response id = %d, want 99", resp.ID.Int64())
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for Resolve response")
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for approval request")

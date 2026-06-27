@@ -306,8 +306,8 @@ func runClient(sockPath string, settings config.Settings, mc config.ModelConfig)
 
 	go cfe.ReadLoop()
 
-	// Build TUI model. Pass nil for the old Frontend since we use ClientFrontend.
-	m := tui.New(nil, "main")
+	// Build TUI model.
+	m := tui.New("main")
 	m.SetClientFrontend(cfe)
 	m.SetModelName(mc.ModelName)
 

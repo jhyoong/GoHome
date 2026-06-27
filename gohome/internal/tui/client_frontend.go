@@ -11,15 +11,6 @@ import (
 	"github.com/jhyoong/GoHome/gohome/internal/session"
 )
 
-// ClientApprovalReqMsg wraps an incoming approval.request from the daemon.
-// It extends ApprovalReqMsg with the JSON-RPC ID needed to send the response
-// back. The Reply channel is nil because the daemon drives the reply flow via
-// RespondApproval.
-type ClientApprovalReqMsg struct {
-	Req   guard.ApprovalRequest
-	RPCID *rpc.ID
-}
-
 // StateSyncMsg carries session state from the daemon to the TUI when a client
 // connects (or reconnects). The TUI model uses it to set the model name, yolo
 // flag, and focused session ID.
@@ -35,7 +26,7 @@ type StateSyncMsg struct {
 type ClientFrontend struct {
 	conn      *rpc.Conn
 	events    chan<- AgentEventMsg
-	approvals chan ClientApprovalReqMsg
+	approvals chan ApprovalReqMsg
 	stateSync chan StateSyncMsg
 	pending   *rpc.Pending
 	idSeq     atomic.Int64
@@ -51,7 +42,7 @@ func NewClientFrontend(conn *rpc.Conn, events chan<- AgentEventMsg) *ClientFront
 	return &ClientFrontend{
 		conn:      conn,
 		events:    events,
-		approvals: make(chan ClientApprovalReqMsg, 4),
+		approvals: make(chan ApprovalReqMsg, 4),
 		stateSync: make(chan StateSyncMsg, 4),
 		pending:   rpc.NewPending(),
 		ctx:       ctx,
@@ -62,7 +53,7 @@ func NewClientFrontend(conn *rpc.Conn, events chan<- AgentEventMsg) *ClientFront
 // Approvals returns a read-only channel that delivers approval requests from
 // the daemon. The TUI reads from this channel and eventually calls
 // RespondApproval with the decision.
-func (cf *ClientFrontend) Approvals() <-chan ClientApprovalReqMsg {
+func (cf *ClientFrontend) Approvals() <-chan ApprovalReqMsg {
 	return cf.approvals
 }
 
@@ -137,7 +128,8 @@ func (cf *ClientFrontend) handleRequest(msg *rpc.Message) {
 		if err := json.Unmarshal(msg.Params, &params); err != nil {
 			return
 		}
-		cf.approvals <- ClientApprovalReqMsg{
+		rpcID := msg.ID
+		cf.approvals <- ApprovalReqMsg{
 			Req: guard.ApprovalRequest{
 				SessionID:        params.SessionID,
 				Tool:             params.Tool,
@@ -145,7 +137,9 @@ func (cf *ClientFrontend) handleRequest(msg *rpc.Message) {
 				Summary:          params.Summary,
 				SuggestedPattern: params.SuggestedPattern,
 			},
-			RPCID: msg.ID,
+			Resolve: func(dec guard.ApprovalDecision) {
+				_ = cf.RespondApproval(rpcID, dec)
+			},
 		}
 	}
 }

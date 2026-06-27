@@ -6,7 +6,7 @@ import (
 )
 
 func TestExternalEditorMsgSetsContent(t *testing.T) {
-	m := New(nil, "")
+	m := New("")
 	// Simulate receiving an externalEditorMsg with content.
 	msg := ExternalEditorMsg{Content: "edited content", Err: nil}
 	m.Update(msg)
@@ -16,7 +16,7 @@ func TestExternalEditorMsgSetsContent(t *testing.T) {
 }
 
 func TestExternalEditorMsgWithError(t *testing.T) {
-	m := New(nil, "")
+	m := New("")
 	m.editor.InsertRune('x')
 	// Simulate an error from the external editor.
 	msg := ExternalEditorMsg{Err: fmt.Errorf("editor crashed")}
@@ -31,7 +31,7 @@ func TestExternalEditorMsgWithError(t *testing.T) {
 }
 
 func TestOpenExternalEditorReturnsCmd(t *testing.T) {
-	m := New(nil, "")
+	m := New("")
 	m.editor.InsertText("test content")
 	// Set EDITOR to a fast non-interactive command for testing.
 	t.Setenv("VISUAL", "")

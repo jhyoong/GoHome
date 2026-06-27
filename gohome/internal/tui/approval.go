@@ -7,16 +7,15 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/jhyoong/GoHome/gohome/internal/daemon/rpc"
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
 )
 
-// ApprovalReqMsg is sent by Frontend.RequestApproval into the Bubble Tea loop.
+// ApprovalReqMsg is sent into the Bubble Tea loop when a tool call needs
+// approval. It carries a resolve callback that delivers the user's decision.
 // It is exported so that tests can send it directly via tm.Send.
-// The reply channel must be buffered (cap >= 1) so resolving never blocks Update.
 type ApprovalReqMsg struct {
-	Req   guard.ApprovalRequest
-	Reply chan guard.ApprovalDecision
+	Req     guard.ApprovalRequest
+	Resolve func(guard.ApprovalDecision)
 }
 
 // approvalReqMsg is an internal alias so the switch in Update compiles cleanly.
@@ -25,9 +24,8 @@ type approvalReqMsg = ApprovalReqMsg
 // approvalPrompt holds all UI state for one pending approval request.
 type approvalPrompt struct {
 	req     guard.ApprovalRequest
-	reply   chan guard.ApprovalDecision // standalone mode
-	rpcID   *rpc.ID                     // daemon mode (mutually exclusive with reply)
-	pattern string                      // current (possibly edited) pattern
+	resolve func(guard.ApprovalDecision)
+	pattern string // current (possibly edited) pattern
 
 	// selected is the currently highlighted menu item (0=Allow once, 1=Allow always,
 	// 2=Deny, 3=Deny+steer). Zero-init gives us "Allow once" as the default.
@@ -42,8 +40,8 @@ type approvalPrompt struct {
 	steerInput textinput.Model
 }
 
-// newApprovalPrompt builds an approvalPrompt from a request.
-func newApprovalPrompt(req guard.ApprovalRequest, reply chan guard.ApprovalDecision) *approvalPrompt {
+// newApprovalPrompt builds an approvalPrompt from a request and resolve callback.
+func newApprovalPrompt(req guard.ApprovalRequest, resolve func(guard.ApprovalDecision)) *approvalPrompt {
 	pi := textinput.New()
 	pi.Placeholder = "pattern"
 	pi.SetValue(req.SuggestedPattern)
@@ -53,27 +51,7 @@ func newApprovalPrompt(req guard.ApprovalRequest, reply chan guard.ApprovalDecis
 
 	return &approvalPrompt{
 		req:          req,
-		reply:        reply,
-		pattern:      req.SuggestedPattern,
-		patternInput: pi,
-		steerInput:   si,
-	}
-}
-
-// newDaemonApprovalPrompt builds an approvalPrompt for daemon mode. Instead of
-// a reply channel, it stores the JSON-RPC request ID so the TUI can send the
-// decision back to the daemon via RespondApproval.
-func newDaemonApprovalPrompt(req guard.ApprovalRequest, rpcID *rpc.ID) *approvalPrompt {
-	pi := textinput.New()
-	pi.Placeholder = "pattern"
-	pi.SetValue(req.SuggestedPattern)
-
-	si := textinput.New()
-	si.Placeholder = "steer message"
-
-	return &approvalPrompt{
-		req:          req,
-		rpcID:        rpcID,
+		resolve:      resolve,
 		pattern:      req.SuggestedPattern,
 		patternInput: pi,
 		steerInput:   si,

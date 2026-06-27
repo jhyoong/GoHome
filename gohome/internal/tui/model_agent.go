@@ -323,21 +323,16 @@ func (m *Model) updateShadowResult(childID string, content string, isError bool)
 	}
 }
 
-// sendInputCmd returns a Cmd that delivers text to the agent. In daemon mode
-// (cfe != nil), it sends input via the ClientFrontend RPC. Otherwise it writes
-// to the local inputCh channel.
+// sendInputCmd returns a Cmd that delivers text to the agent via the
+// ClientFrontend RPC. Returns nil if no ClientFrontend is set (tests).
 func (m *Model) sendInputCmd(text string) tea.Cmd {
-	if m.cfe != nil {
-		cfe := m.cfe
-		sid := m.focused
-		return func() tea.Msg {
-			cfe.SendInput(sid, text)
-			return nil
-		}
+	if m.cfe == nil {
+		return nil
 	}
-	ch := m.inputCh
+	cfe := m.cfe
+	sid := m.focused
 	return func() tea.Msg {
-		ch <- text
+		cfe.SendInput(sid, text)
 		return nil
 	}
 }

@@ -7,7 +7,7 @@ import (
 )
 
 func TestHandleAgentEvent_ThinkingDoneCollapsesEntry(t *testing.T) {
-	m := New(nil, "sess-1")
+	m := New("sess-1")
 	m.winW = 80
 	m.winH = 40
 

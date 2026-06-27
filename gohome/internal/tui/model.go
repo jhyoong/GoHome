@@ -84,7 +84,6 @@ type Model struct {
 	editor  *EditorComponent
 	chat    *ChatComponent
 	spinner *SpinnerComponent
-	inputCh chan string
 	winW    int
 	winH    int
 
@@ -141,9 +140,8 @@ type Model struct {
 	lastRenderTime   time.Time
 	renderPending    bool
 
-	// cfe is the optional ClientFrontend for daemon mode. When set,
-	// input submission goes through the daemon RPC instead of the local
-	// inputCh channel. Set via SetClientFrontend.
+	// cfe is the ClientFrontend for daemon mode. Input submission and
+	// approval responses go through the daemon RPC. Set via SetClientFrontend.
 	cfe *ClientFrontend
 }
 
@@ -151,10 +149,9 @@ type Model struct {
 type renderThrottleMsg struct{}
 
 // New creates and returns a new Model with an initial session whose ID matches
-// the agent session. fe may be nil (tests that do not need agent routing or
-// input submission). When fe is non-nil, the Model shares fe.input so submitted
-// text reaches AwaitUserInput.
-func New(fe *Frontend, sessionID string) *Model {
+// the agent session. Input submission goes through the ClientFrontend (daemon
+// RPC) which is wired via SetClientFrontend.
+func New(sessionID string) *Model {
 	if sessionID == "" {
 		sessionID = "main"
 	}
@@ -164,20 +161,12 @@ func New(fe *Frontend, sessionID string) *Model {
 		Title: "main",
 	}
 
-	var inputCh chan string
-	if fe != nil {
-		inputCh = fe.input
-	} else {
-		inputCh = make(chan string, 1)
-	}
-
 	m := &Model{
 		theme:            style.Default(),
 		sessions:         map[string]*SessionView{sessionID: main},
 		order:            []string{sessionID},
 		focused:          sessionID,
 		childToParent:    make(map[string]string),
-		inputCh:          inputCh,
 		contextWindow:    config.DefaultContextWindow,
 		contextWarnPct:   config.DefaultContextWarnPct,
 		contextCritPct:   config.DefaultContextCritPct,
@@ -345,9 +334,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case approvalReqMsg:
 		m.handleApprovalReq(msg)
-
-	case ClientApprovalReqMsg:
-		m.handleClientApprovalReq(msg)
 
 	case tea.KeyMsg:
 		return m.handleKeyMsg(msg)
