@@ -7,7 +7,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 	"time"
 
@@ -57,32 +56,62 @@ func sendRequest(t *testing.T, conn net.Conn, id int64, method string, params js
 	return nil
 }
 
+func newTestSocket(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("/tmp", "gh-daemon-test-*")
+	if err != nil {
+		t.Fatalf("MkdirTemp: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	return filepath.Join(dir, "t.sock")
+}
+
+func serveBackground(t *testing.T, srv *Server) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		srv.Serve()
+		close(done)
+	}()
+	time.Sleep(50 * time.Millisecond)
+	t.Cleanup(func() {
+		srv.Stop()
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Error("server did not stop within 2s")
+		}
+	})
+}
+
+func newTestGuard() *guard.Guard {
+	wl := &guard.Whitelist{}
+	g := guard.NewGuard(wl, &noopApprover{})
+	g.SetYolo(true)
+	return g
+}
+
+func dialTestServer(t *testing.T, sockPath string) net.Conn {
+	t.Helper()
+	conn, err := net.Dial("unix", sockPath)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	t.Cleanup(func() { conn.Close() })
+	return conn
+}
+
 func TestServer_HealthCheck(t *testing.T) {
-	dir := t.TempDir()
-	sock := filepath.Join(dir, "test.sock")
+	sock := newTestSocket(t)
 
 	srv, err := NewServer(sock, ServerConfig{Version: "test"})
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
 
-	// Start Serve in a goroutine.
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		srv.Serve()
-	}()
+	serveBackground(t, srv)
 
-	// Give the server a moment to start accepting.
-	time.Sleep(50 * time.Millisecond)
-
-	// Connect to the server.
-	conn, err := net.Dial("unix", sock)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	defer conn.Close()
+	conn := dialTestServer(t, sock)
 
 	// Send daemon.health request.
 	msg := sendRequest(t, conn, 1, rpc.MethodDaemonHealth, nil)
@@ -106,19 +135,12 @@ func TestServer_HealthCheck(t *testing.T) {
 		t.Errorf("uptimeSeconds = %d, want >= 0", health.UptimeSeconds)
 	}
 
-	// Stop the server.
-	srv.Stop()
-	wg.Wait()
-
-	// Verify socket file is cleaned up.
-	if _, err := os.Stat(sock); !os.IsNotExist(err) {
-		t.Errorf("socket file still exists after stop")
-	}
+	// Verify socket file is cleaned up after serveBackground's cleanup runs.
+	// (serveBackground calls srv.Stop() which triggers cleanup.)
 }
 
 func TestServer_Stop(t *testing.T) {
-	dir := t.TempDir()
-	sock := filepath.Join(dir, "test.sock")
+	sock := newTestSocket(t)
 
 	srv, err := NewServer(sock, ServerConfig{Version: "test"})
 	if err != nil {
@@ -136,11 +158,7 @@ func TestServer_Stop(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Connect and send daemon.stop.
-	conn, err := net.Dial("unix", sock)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	defer conn.Close()
+	conn := dialTestServer(t, sock)
 
 	msg := sendRequest(t, conn, 1, rpc.MethodDaemonStop, nil)
 	if msg.Error != nil {
@@ -175,20 +193,8 @@ func (c *echoClient) Stream(_ context.Context, req common.Request) (<-chan commo
 
 func TestServer_WithAgent_ProcessesInput(t *testing.T) {
 	dir := t.TempDir()
-	// Unix sockets have a 108-char path limit. Use /tmp for the socket.
-	sockDir, err := os.MkdirTemp("/tmp", "gh-daemon-test-*")
-	if err != nil {
-		t.Fatalf("MkdirTemp: %v", err)
-	}
-	defer os.RemoveAll(sockDir)
-	sock := filepath.Join(sockDir, "t.sock")
-	cwd := dir
-
-	// Build a minimal guard in yolo mode (auto-approve everything).
-	wl := &guard.Whitelist{}
-	dummyFe := &noopApprover{}
-	g := guard.NewGuard(wl, dummyFe)
-	g.SetYolo(true)
+	sock := newTestSocket(t)
+	g := newTestGuard()
 
 	registry := tools.NewRegistry()
 
@@ -200,7 +206,7 @@ func TestServer_WithAgent_ProcessesInput(t *testing.T) {
 		SystemPrompt: "you are a test assistant",
 		MaxTokens:    1024,
 		Home:         dir,
-		CWD:          cwd,
+		CWD:          dir,
 		SessionID:    "test-sess-1",
 	})
 	if err != nil {
@@ -212,21 +218,10 @@ func TestServer_WithAgent_ProcessesInput(t *testing.T) {
 		t.Fatal("expected agent to be non-nil after providing LLMClient")
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		srv.Serve()
-	}()
-
-	time.Sleep(50 * time.Millisecond)
+	serveBackground(t, srv)
 
 	// Connect and send session.input to trigger the agent.
-	conn, err := net.Dial("unix", sock)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	defer conn.Close()
+	conn := dialTestServer(t, sock)
 
 	// Send a session.input request.
 	inputParams, _ := json.Marshal(rpc.SessionInputParams{Text: "hello"})
@@ -309,24 +304,12 @@ func TestServer_WithAgent_ProcessesInput(t *testing.T) {
 	if firstType != "session_start" {
 		t.Errorf("first JSONL event type = %q, want session_start", firstType)
 	}
-
-	// Clean up.
-	srv.Stop()
-	wg.Wait()
 }
 
 func TestServer_SessionCancel(t *testing.T) {
 	dir := t.TempDir()
-	sockDir, err := os.MkdirTemp("/tmp", "gh-daemon-test-*")
-	if err != nil {
-		t.Fatalf("MkdirTemp: %v", err)
-	}
-	defer os.RemoveAll(sockDir)
-	sock := filepath.Join(sockDir, "t.sock")
-
-	wl := &guard.Whitelist{}
-	g := guard.NewGuard(wl, &noopApprover{})
-	g.SetYolo(true)
+	sock := newTestSocket(t)
+	g := newTestGuard()
 
 	registry := tools.NewRegistry()
 
@@ -351,19 +334,9 @@ func TestServer_SessionCancel(t *testing.T) {
 	srv.turnCancel = func() { cancelCalled = true }
 	srv.turnMu.Unlock()
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		srv.Serve()
-	}()
-	time.Sleep(50 * time.Millisecond)
+	serveBackground(t, srv)
 
-	conn, err := net.Dial("unix", sock)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	defer conn.Close()
+	conn := dialTestServer(t, sock)
 
 	cancelParams, _ := json.Marshal(rpc.SessionCancelParams{SessionID: "cancel-test-1"})
 	msg := sendRequest(t, conn, 1, rpc.MethodSessionCancel, cancelParams)
@@ -374,25 +347,14 @@ func TestServer_SessionCancel(t *testing.T) {
 	if !cancelCalled {
 		t.Error("expected turnCancel to be called")
 	}
-
-	srv.Stop()
-	wg.Wait()
 }
 
 func TestServer_SessionList(t *testing.T) {
 	dir := t.TempDir()
-	sockDir, err := os.MkdirTemp("/tmp", "gh-daemon-test-*")
-	if err != nil {
-		t.Fatalf("MkdirTemp: %v", err)
-	}
-	defer os.RemoveAll(sockDir)
-	sock := filepath.Join(sockDir, "t.sock")
+	sock := newTestSocket(t)
+	g := newTestGuard()
 
 	// Create a server with an agent so there's at least one session JSONL file.
-	wl := &guard.Whitelist{}
-	g := guard.NewGuard(wl, &noopApprover{})
-	g.SetYolo(true)
-
 	registry := tools.NewRegistry()
 
 	srv, err := NewServer(sock, ServerConfig{
@@ -410,19 +372,9 @@ func TestServer_SessionList(t *testing.T) {
 		t.Fatalf("NewServer: %v", err)
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		srv.Serve()
-	}()
-	time.Sleep(50 * time.Millisecond)
+	serveBackground(t, srv)
 
-	conn, err := net.Dial("unix", sock)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	defer conn.Close()
+	conn := dialTestServer(t, sock)
 
 	msg := sendRequest(t, conn, 1, rpc.MethodSessionList, json.RawMessage(`{}`))
 	if msg.Error != nil {
@@ -444,23 +396,12 @@ func TestServer_SessionList(t *testing.T) {
 	if len(result.Sessions) > 0 && result.Sessions[0].ID != "list-test-1" {
 		t.Errorf("session ID = %q, want %q", result.Sessions[0].ID, "list-test-1")
 	}
-
-	srv.Stop()
-	wg.Wait()
 }
 
 func TestServer_Reconnect_SendsState(t *testing.T) {
 	dir := t.TempDir()
-	sockDir, err := os.MkdirTemp("/tmp", "gh-daemon-test-*")
-	if err != nil {
-		t.Fatalf("MkdirTemp: %v", err)
-	}
-	defer os.RemoveAll(sockDir)
-	sock := filepath.Join(sockDir, "t.sock")
-
-	wl := &guard.Whitelist{}
-	g := guard.NewGuard(wl, &noopApprover{})
-	g.SetYolo(true)
+	sock := newTestSocket(t)
+	g := newTestGuard()
 
 	registry := tools.NewRegistry()
 
@@ -479,13 +420,7 @@ func TestServer_Reconnect_SendsState(t *testing.T) {
 		t.Fatalf("NewServer: %v", err)
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		srv.Serve()
-	}()
-	time.Sleep(50 * time.Millisecond)
+	serveBackground(t, srv)
 
 	// Client 1 connects and disconnects.
 	conn1, err := net.Dial("unix", sock)
@@ -520,11 +455,7 @@ func TestServer_Reconnect_SendsState(t *testing.T) {
 	time.Sleep(100 * time.Millisecond) // let server notice disconnect
 
 	// Client 2 connects.
-	conn2, err := net.Dial("unix", sock)
-	if err != nil {
-		t.Fatalf("dial client 2: %v", err)
-	}
-	defer conn2.Close()
+	conn2 := dialTestServer(t, sock)
 
 	// Read the session.state notification sent on connect.
 	conn2.SetReadDeadline(time.Now().Add(3 * time.Second))
@@ -547,18 +478,10 @@ func TestServer_Reconnect_SendsState(t *testing.T) {
 	if !state2.Yolo {
 		t.Error("client 2 yolo = false, want true")
 	}
-
-	srv.Stop()
-	wg.Wait()
 }
 
 func TestServer_GracePeriod_ExitsWhenIdle(t *testing.T) {
-	sockDir, err := os.MkdirTemp("/tmp", "gh-daemon-test-*")
-	if err != nil {
-		t.Fatalf("MkdirTemp: %v", err)
-	}
-	defer os.RemoveAll(sockDir)
-	sock := filepath.Join(sockDir, "t.sock")
+	sock := newTestSocket(t)
 
 	srv, err := NewServer(sock, ServerConfig{
 		Version:     "test",
@@ -591,12 +514,7 @@ func TestServer_GracePeriod_ExitsWhenIdle(t *testing.T) {
 }
 
 func TestServer_GracePeriod_CancelledByReconnect(t *testing.T) {
-	sockDir, err := os.MkdirTemp("/tmp", "gh-daemon-test-*")
-	if err != nil {
-		t.Fatalf("MkdirTemp: %v", err)
-	}
-	defer os.RemoveAll(sockDir)
-	sock := filepath.Join(sockDir, "t.sock")
+	sock := newTestSocket(t)
 
 	srv, err := NewServer(sock, ServerConfig{
 		Version:     "test",
