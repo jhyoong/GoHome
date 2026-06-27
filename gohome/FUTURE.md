@@ -5,13 +5,12 @@ design preserves so the feature can be added later without a rewrite.
 
 ---
 
-**Daemon mode**
-Run the agent as a background process, with a thin TUI client connecting over
-a Unix socket or stdin/stdout JSON-RPC.
-Seam: `agent.Frontend` is a pure interface. A second implementation that
-serialises all three methods (`Emit`, `RequestApproval`, `AwaitUserInput`)
-to JSON-RPC gives daemon mode without touching `internal/agent`,
-`internal/llm`, `internal/tools`, `internal/guard`, or `internal/session`.
+**Daemon mode** -- DELIVERED in v0.3.0
+The agent runs as a background daemon process communicating with the TUI
+over JSON-RPC 2.0 on a Unix socket (`~/.gohome/daemon.sock`). Subagents
+are goroutines in the daemon. The TUI is a thin Bubble Tea client that
+receives events and sends requests over the same connection. Auto-shutdown
+after a configurable grace period when idle.
 
 **Context compaction**
 Automatic or manual compaction of long conversation histories to stay within

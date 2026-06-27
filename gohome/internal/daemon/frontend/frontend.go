@@ -68,16 +68,19 @@ func (f *RPCFrontend) RequestApproval(ctx context.Context, req guard.ApprovalReq
 		return deny, nil
 	}
 
+	f.pending.Register(id)
+
 	err = f.conn.WriteRequest(rpc.Request{
 		ID:     rpc.NewID(id),
 		Method: rpc.MethodApprovalRequest,
 		Params: paramsData,
 	})
 	if err != nil {
+		f.pending.Cancel(id)
 		return deny, nil
 	}
 
-	raw, err := f.pending.Call(ctx, id)
+	raw, err := f.pending.Wait(ctx, id)
 	if err != nil {
 		return deny, nil
 	}

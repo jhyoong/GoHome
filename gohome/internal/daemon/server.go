@@ -65,6 +65,8 @@ type Server struct {
 	client    *rpc.Conn
 	fe        *frontend.RPCFrontend
 
+	graceTimer *time.Timer // started after client disconnect; fires auto-shutdown
+
 	// Agent-related fields (populated only when ServerConfig.LLMClient is set).
 	agent      *agent.Agent
 	turnMu     sync.Mutex
@@ -118,11 +120,9 @@ func (s *Server) Serve() {
 	for {
 		conn, err := s.listener.Accept()
 		if err != nil {
-			// Check if we were stopped intentionally.
 			if s.ctx.Err() != nil {
 				return
 			}
-			// Listener closed for another reason (e.g. Stop called).
 			if errors.Is(err, net.ErrClosed) {
 				return
 			}
@@ -130,7 +130,12 @@ func (s *Server) Serve() {
 			continue
 		}
 
+		s.cancelGraceTimer()
 		s.handleClient(conn)
+		if s.ctx.Err() != nil {
+			return
+		}
+		s.startGraceTimer()
 	}
 }
 
@@ -153,6 +158,8 @@ func (s *Server) Stop() {
 // handleClient creates an rpc.Conn and frontend.RPCFrontend for the given
 // connection, reads messages in a loop, and dispatches each one.
 func (s *Server) handleClient(conn net.Conn) {
+	s.cancelGraceTimer()
+
 	c := rpc.NewConn(conn)
 	fe := frontend.New(c)
 
@@ -641,6 +648,31 @@ func (s *Server) handleModelSet(c *rpc.Conn, msg *rpc.Message) {
 
 	result, _ := json.Marshal(rpc.ModelSetResult{ModelName: cfg.ModelName, ContextWindow: ctxWin})
 	_ = c.WriteResponse(rpc.Response{ID: msg.ID, Result: result})
+}
+
+// ---------- Grace period ----------
+
+func (s *Server) startGraceTimer() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.graceTimer = time.AfterFunc(s.config.GracePeriod, func() {
+		s.turnMu.Lock()
+		turnActive := s.turnCancel != nil
+		s.turnMu.Unlock()
+		if !turnActive {
+			slog.Info("daemon: grace period expired, shutting down")
+			s.Stop()
+		}
+	})
+}
+
+func (s *Server) cancelGraceTimer() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.graceTimer != nil {
+		s.graceTimer.Stop()
+		s.graceTimer = nil
+	}
 }
 
 // ---------- Helpers ----------

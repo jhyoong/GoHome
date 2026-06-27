@@ -155,18 +155,19 @@ func (cf *ClientFrontend) sendRequest(method string, params any) error {
 		return err
 	}
 
+	cf.pending.Register(id)
+
 	err = cf.conn.WriteRequest(rpc.Request{
 		ID:     rpc.NewID(id),
 		Method: method,
 		Params: paramsData,
 	})
 	if err != nil {
+		cf.pending.Cancel(id)
 		return err
 	}
 
-	// Block until the response arrives. Use a background context; callers
-	// that need cancellation can use the context-aware variant later.
-	_, err = cf.pending.Call(context.Background(), id)
+	_, err = cf.pending.Wait(context.Background(), id)
 	return err
 }
 
@@ -273,16 +274,19 @@ func (cf *ClientFrontend) sendRequestWithResult(method string, params any) (json
 		return nil, err
 	}
 
+	cf.pending.Register(id)
+
 	err = cf.conn.WriteRequest(rpc.Request{
 		ID:     rpc.NewID(id),
 		Method: method,
 		Params: paramsData,
 	})
 	if err != nil {
+		cf.pending.Cancel(id)
 		return nil, err
 	}
 
-	return cf.pending.Call(context.Background(), id)
+	return cf.pending.Wait(context.Background(), id)
 }
 
 // Close closes the underlying connection.

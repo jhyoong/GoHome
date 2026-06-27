@@ -32,11 +32,30 @@ func NewPending() *Pending {
 // Resolve is called with the matching id or ctx is cancelled. On RPC error
 // it returns a formatted error. The channel is cleaned up on return.
 func (p *Pending) Call(ctx context.Context, id int64) (json.RawMessage, error) {
-	ch := make(chan pendingResult, 1)
+	p.Register(id)
+	return p.Wait(ctx, id)
+}
 
+// Register creates a channel for the given id so that a subsequent Resolve
+// can deliver a result even before Wait is called. This avoids the race where
+// a response arrives between writing the request and calling Wait.
+func (p *Pending) Register(id int64) {
 	p.mu.Lock()
-	p.calls[id] = ch
+	p.calls[id] = make(chan pendingResult, 1)
 	p.mu.Unlock()
+}
+
+// Wait blocks until Resolve delivers a result for the given id or ctx is
+// cancelled. The channel is cleaned up on return. Register must be called
+// before Wait.
+func (p *Pending) Wait(ctx context.Context, id int64) (json.RawMessage, error) {
+	p.mu.Lock()
+	ch := p.calls[id]
+	p.mu.Unlock()
+
+	if ch == nil {
+		return nil, fmt.Errorf("pending: no registered call for id %d", id)
+	}
 
 	defer func() {
 		p.mu.Lock()
@@ -53,6 +72,14 @@ func (p *Pending) Call(ctx context.Context, id int64) (json.RawMessage, error) {
 		}
 		return res.data, nil
 	}
+}
+
+// Cancel removes a registered call without delivering a result. Use this to
+// clean up after Register if the write fails before Wait is called.
+func (p *Pending) Cancel(id int64) {
+	p.mu.Lock()
+	delete(p.calls, id)
+	p.mu.Unlock()
 }
 
 // Resolve delivers a response to a waiting Call with the matching id. If no

@@ -552,6 +552,100 @@ func TestServer_Reconnect_SendsState(t *testing.T) {
 	wg.Wait()
 }
 
+func TestServer_GracePeriod_ExitsWhenIdle(t *testing.T) {
+	sockDir, err := os.MkdirTemp("/tmp", "gh-daemon-test-*")
+	if err != nil {
+		t.Fatalf("MkdirTemp: %v", err)
+	}
+	defer os.RemoveAll(sockDir)
+	sock := filepath.Join(sockDir, "t.sock")
+
+	srv, err := NewServer(sock, ServerConfig{
+		Version:     "test",
+		GracePeriod: 200 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		srv.Serve()
+		close(done)
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	conn, err := net.Dial("unix", sock)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	conn.Close()
+
+	select {
+	case <-done:
+		// Success.
+	case <-time.After(2 * time.Second):
+		t.Fatal("server did not exit within grace period")
+	}
+}
+
+func TestServer_GracePeriod_CancelledByReconnect(t *testing.T) {
+	sockDir, err := os.MkdirTemp("/tmp", "gh-daemon-test-*")
+	if err != nil {
+		t.Fatalf("MkdirTemp: %v", err)
+	}
+	defer os.RemoveAll(sockDir)
+	sock := filepath.Join(sockDir, "t.sock")
+
+	srv, err := NewServer(sock, ServerConfig{
+		Version:     "test",
+		GracePeriod: 500 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		srv.Serve()
+		close(done)
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	conn1, err := net.Dial("unix", sock)
+	if err != nil {
+		t.Fatalf("dial 1: %v", err)
+	}
+	conn1.Close()
+
+	time.Sleep(100 * time.Millisecond)
+
+	conn2, err := net.Dial("unix", sock)
+	if err != nil {
+		t.Fatalf("dial 2: %v", err)
+	}
+
+	// Wait longer than the original grace period to verify cancellation.
+	time.Sleep(600 * time.Millisecond)
+
+	select {
+	case <-done:
+		t.Fatal("server should still be running (grace timer was cancelled)")
+	default:
+	}
+
+	conn2.Close()
+	srv.Stop()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("server did not stop after explicit Stop()")
+	}
+}
+
 // noopApprover satisfies guard.Frontend for test purposes.
 type noopApprover struct{}
 
