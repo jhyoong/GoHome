@@ -61,27 +61,6 @@ func setupLogging(home string) (*os.File, error) {
 	return f, nil
 }
 
-// pickResume finds the most-recent session for (home, cwd) and loads it.
-// Returns nil session when no sessions exist (caller should start fresh).
-// The returned path is the JSONL file path so the caller can open the writer
-// in append mode to the same file.
-func pickResume(home, cwd string) (*session.Session, []common.Message, string, error) {
-	listings, err := session.List(home, cwd)
-	if err != nil {
-		return nil, nil, "", fmt.Errorf("pickResume: list: %w", err)
-	}
-	if len(listings) == 0 {
-		return nil, nil, "", nil
-	}
-	// List returns sorted descending by StartedAt; index 0 is most recent.
-	listing := listings[0]
-	sess, history, err := session.Load(listing.Path)
-	if err != nil {
-		return nil, nil, "", fmt.Errorf("pickResume: load %s: %w", listing.Path, err)
-	}
-	return sess, history, listing.Path, nil
-}
-
 func main() {
 	flag.Parse()
 
