@@ -13,14 +13,22 @@ import (
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
 )
 
-func TestRPCFrontend_Emit(t *testing.T) {
-	// Create a pipe; the daemon side writes notifications, the TUI side reads them.
+func setupTestFrontend(t *testing.T) (fe *frontend.RPCFrontend, tuiRPC *rpc.Conn, daemonRPC *rpc.Conn, cleanup func()) {
+	t.Helper()
 	daemonConn, tuiConn := net.Pipe()
-	defer daemonConn.Close()
-	defer tuiConn.Close()
+	daemonRPC = rpc.NewConn(daemonConn)
+	tuiRPC = rpc.NewConn(tuiConn)
+	fe = frontend.New(daemonRPC)
+	cleanup = func() {
+		daemonConn.Close()
+		tuiConn.Close()
+	}
+	return
+}
 
-	fe := frontend.New(rpc.NewConn(daemonConn))
-	tuiRPC := rpc.NewConn(tuiConn)
+func TestRPCFrontend_Emit(t *testing.T) {
+	fe, tuiRPC, _, cleanup := setupTestFrontend(t)
+	defer cleanup()
 
 	ev := agent.Event{
 		Kind:      agent.EventTokenDelta,
@@ -61,13 +69,8 @@ func TestRPCFrontend_Emit(t *testing.T) {
 }
 
 func TestRPCFrontend_RequestApproval(t *testing.T) {
-	daemonConn, tuiConn := net.Pipe()
-	defer daemonConn.Close()
-	defer tuiConn.Close()
-
-	daemonRPC := rpc.NewConn(daemonConn)
-	fe := frontend.New(daemonRPC)
-	tuiRPC := rpc.NewConn(tuiConn)
+	fe, tuiRPC, daemonRPC, cleanup := setupTestFrontend(t)
+	defer cleanup()
 
 	// Simulate the TUI side: read the approval request and send back AllowOnce.
 	go func() {
@@ -137,15 +140,11 @@ func TestRPCFrontend_RequestApproval(t *testing.T) {
 }
 
 func TestRPCFrontend_RequestApproval_ContextCancelled(t *testing.T) {
-	daemonConn, tuiConn := net.Pipe()
-	defer daemonConn.Close()
-	defer tuiConn.Close()
-
-	fe := frontend.New(rpc.NewConn(daemonConn))
+	fe, tuiRPC, _, cleanup := setupTestFrontend(t)
+	defer cleanup()
 
 	// TUI side: read the request but never respond; just drain the message.
 	go func() {
-		tuiRPC := rpc.NewConn(tuiConn)
 		_, _ = tuiRPC.Read()
 	}()
 
@@ -170,12 +169,8 @@ func TestRPCFrontend_RequestApproval_ContextCancelled(t *testing.T) {
 }
 
 func TestRPCFrontend_AwaitUserInput(t *testing.T) {
-	daemonConn, tuiConn := net.Pipe()
-	defer daemonConn.Close()
-	defer tuiConn.Close()
-
-	fe := frontend.New(rpc.NewConn(daemonConn))
-	_ = tuiConn // not needed for this test
+	fe, _, _, cleanup := setupTestFrontend(t)
+	defer cleanup()
 
 	// Deliver input from a goroutine after a short delay.
 	go func() {
@@ -196,12 +191,8 @@ func TestRPCFrontend_AwaitUserInput(t *testing.T) {
 }
 
 func TestRPCFrontend_AwaitUserInput_ContextCancelled(t *testing.T) {
-	daemonConn, tuiConn := net.Pipe()
-	defer daemonConn.Close()
-	defer tuiConn.Close()
-
-	fe := frontend.New(rpc.NewConn(daemonConn))
-	_ = tuiConn
+	fe, _, _, cleanup := setupTestFrontend(t)
+	defer cleanup()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()

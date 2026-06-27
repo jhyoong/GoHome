@@ -6,13 +6,19 @@ import (
 	"testing"
 )
 
-func TestConn_WriteAndRead(t *testing.T) {
+func setupConnPair(t *testing.T) (conn1, conn2 *Conn, cleanup func()) {
+	t.Helper()
 	c1, c2 := net.Pipe()
-	defer c1.Close()
-	defer c2.Close()
+	cleanup = func() {
+		c1.Close()
+		c2.Close()
+	}
+	return NewConn(c1), NewConn(c2), cleanup
+}
 
-	conn1 := NewConn(c1)
-	conn2 := NewConn(c2)
+func TestConn_WriteAndRead(t *testing.T) {
+	conn1, conn2, cleanup := setupConnPair(t)
+	defer cleanup()
 
 	req := Request{
 		ID:     NewID(1),
@@ -52,12 +58,8 @@ func TestConn_WriteAndRead(t *testing.T) {
 }
 
 func TestConn_WriteNotification(t *testing.T) {
-	c1, c2 := net.Pipe()
-	defer c1.Close()
-	defer c2.Close()
-
-	conn1 := NewConn(c1)
-	conn2 := NewConn(c2)
+	conn1, conn2, cleanup := setupConnPair(t)
+	defer cleanup()
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -87,12 +89,8 @@ func TestConn_WriteNotification(t *testing.T) {
 }
 
 func TestConn_WriteResponse(t *testing.T) {
-	c1, c2 := net.Pipe()
-	defer c1.Close()
-	defer c2.Close()
-
-	conn1 := NewConn(c1)
-	conn2 := NewConn(c2)
+	conn1, conn2, cleanup := setupConnPair(t)
+	defer cleanup()
 
 	resp := Response{
 		ID:     NewID(7),
