@@ -14,7 +14,6 @@ const (
 	MethodAgentEvent      = "agent.event"
 	MethodSessionState    = "session.state"
 	MethodSessionInput    = "session.input"
-	MethodSessionApproval = "session.approval"
 	MethodSessionNew      = "session.new"
 	MethodSessionResume   = "session.resume"
 	MethodSessionList     = "session.list"
@@ -49,12 +48,6 @@ type SessionStateParams struct {
 type SessionInputParams struct {
 	SessionID string `json:"sessionID"`
 	Text      string `json:"text"`
-}
-
-// SessionApprovalParams carries a user's approval decision for a pending tool call.
-type SessionApprovalParams struct {
-	SessionID string                 `json:"sessionID"`
-	Decision  guard.ApprovalDecision `json:"decision"`
 }
 
 // SessionResumeParams carries the session ID to resume.

@@ -82,15 +82,6 @@ func (s *Server) dispatch(c *rpc.Conn, msg *rpc.Message) {
 	case rpc.MethodModelSet:
 		s.handleModelSet(c, msg)
 
-	case rpc.MethodSessionApproval:
-		// Approval responses flow through the JSON-RPC response path
-		// (msg.IsResponse -> fe.ResolvePending), not as a separate request.
-		// This method is unused in the current architecture.
-		_ = c.WriteResponse(rpc.Response{
-			ID:     msg.ID,
-			Result: json.RawMessage(`{}`),
-		})
-
 	default:
 		_ = c.WriteResponse(rpc.Response{
 			ID: msg.ID,

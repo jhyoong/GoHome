@@ -178,14 +178,6 @@ func (cf *ClientFrontend) SendInput(sessionID, text string) error {
 	})
 }
 
-// SendApproval sends a user approval decision to the daemon for the given session.
-func (cf *ClientFrontend) SendApproval(sessionID string, dec guard.ApprovalDecision) error {
-	return cf.sendRequest(rpc.MethodSessionApproval, rpc.SessionApprovalParams{
-		SessionID: sessionID,
-		Decision:  dec,
-	})
-}
-
 // SendCancel sends a cancel request to the daemon for the given session.
 func (cf *ClientFrontend) SendCancel(sessionID string) error {
 	return cf.sendRequest(rpc.MethodSessionCancel, rpc.SessionCancelParams{
