@@ -24,6 +24,14 @@ const (
 	MethodApprovalRequest = "approval.request"
 )
 
+// ---------- Standard JSON-RPC 2.0 error codes ----------
+
+const (
+	ErrServerError    = -32000
+	ErrMethodNotFound = -32601
+	ErrInvalidParams  = -32602
+)
+
 // ---------- Daemon -> TUI Notifications ----------
 
 // AgentEventParams carries a single agent event from daemon to TUI.
