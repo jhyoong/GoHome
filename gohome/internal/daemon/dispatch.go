@@ -1,7 +1,6 @@
 package daemon
 
 import (
-	"encoding/json"
 	"time"
 
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
@@ -13,10 +12,7 @@ import (
 func (s *Server) dispatch(c *rpc.Conn, msg *rpc.Message) {
 	// If this is a response (no method), forward to the frontend's pending tracker.
 	if msg.IsResponse() {
-		s.mu.Lock()
-		fe := s.fe
-		s.mu.Unlock()
-		if fe != nil {
+		if fe := s.frontend(); fe != nil {
 			fe.ResolvePending(msg.ID.Int64(), msg.Result, msg.Error)
 		}
 		return
@@ -25,45 +21,24 @@ func (s *Server) dispatch(c *rpc.Conn, msg *rpc.Message) {
 	switch msg.Method {
 	case rpc.MethodDaemonHealth:
 		uptime := int64(time.Since(s.startedAt).Seconds())
-		result := rpc.HealthResult{
+		respondOK(c, msg.ID, rpc.HealthResult{
 			Version:       s.config.Version,
 			UptimeSeconds: uptime,
-		}
-		data, _ := json.Marshal(result)
-		_ = c.WriteResponse(rpc.Response{
-			ID:     msg.ID,
-			Result: data,
 		})
 
 	case rpc.MethodDaemonStop:
-		_ = c.WriteResponse(rpc.Response{
-			ID:     msg.ID,
-			Result: json.RawMessage(`{}`),
-		})
+		respondOK(c, msg.ID, struct{}{})
 		s.Stop()
 
 	case rpc.MethodSessionInput:
 		var params rpc.SessionInputParams
-		if err := json.Unmarshal(msg.Params, &params); err != nil {
-			_ = c.WriteResponse(rpc.Response{
-				ID: msg.ID,
-				Error: &rpc.Error{
-					Code:    -32602,
-					Message: "invalid params: " + err.Error(),
-				},
-			})
+		if !unmarshalParams(c, msg.ID, msg.Params, &params) {
 			return
 		}
 		// Send the RPC response before delivering input so the TUI's
 		// sendInputCmd unblocks immediately, even if the agent is busy.
-		_ = c.WriteResponse(rpc.Response{
-			ID:     msg.ID,
-			Result: json.RawMessage(`{}`),
-		})
-		s.mu.Lock()
-		fe := s.fe
-		s.mu.Unlock()
-		if fe != nil {
+		respondOK(c, msg.ID, struct{}{})
+		if fe := s.frontend(); fe != nil {
 			fe.DeliverInput(params.Text)
 		}
 
@@ -83,13 +58,7 @@ func (s *Server) dispatch(c *rpc.Conn, msg *rpc.Message) {
 		s.handleModelSet(c, msg)
 
 	default:
-		_ = c.WriteResponse(rpc.Response{
-			ID: msg.ID,
-			Error: &rpc.Error{
-				Code:    -32601,
-				Message: "method not found",
-			},
-		})
+		respondError(c, msg.ID, rpc.ErrMethodNotFound, "method not found")
 	}
 }
 

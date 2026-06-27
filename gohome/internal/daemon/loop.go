@@ -19,9 +19,7 @@ func (s *Server) runLoop() {
 	for {
 		sessID := s.agent.State.Session().ID
 
-		s.mu.Lock()
-		fe := s.fe
-		s.mu.Unlock()
+		fe := s.frontend()
 
 		if fe == nil {
 			// No client connected yet; wait briefly and retry.

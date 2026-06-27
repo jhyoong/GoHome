@@ -14,27 +14,16 @@ import (
 func (s *Server) handleSessionList(c *rpc.Conn, msg *rpc.Message) {
 	listings, err := session.List(s.config.Home, s.config.CWD)
 	if err != nil {
-		_ = c.WriteResponse(rpc.Response{
-			ID: msg.ID,
-			Error: &rpc.Error{
-				Code:    -32000,
-				Message: "session list failed: " + err.Error(),
-			},
-		})
+		respondError(c, msg.ID, rpc.ErrServerError, "session list failed: "+err.Error())
 		return
 	}
-	result, _ := json.Marshal(rpc.SessionListResult{Sessions: listings})
-	_ = c.WriteResponse(rpc.Response{ID: msg.ID, Result: result})
+	respondOK(c, msg.ID, rpc.SessionListResult{Sessions: listings})
 }
 
 // handleSessionNew creates a new session, swaps it into the agent state, and
 // returns the new session ID.
 func (s *Server) handleSessionNew(c *rpc.Conn, msg *rpc.Message) {
-	if s.agent == nil {
-		_ = c.WriteResponse(rpc.Response{
-			ID:    msg.ID,
-			Error: &rpc.Error{Code: -32000, Message: "no agent configured"},
-		})
+	if !s.requireAgent(c, msg.ID) {
 		return
 	}
 
@@ -61,43 +50,28 @@ func (s *Server) handleSessionNew(c *rpc.Conn, msg *rpc.Message) {
 		return newSess, newWriter, nil
 	})
 	if err != nil {
-		_ = c.WriteResponse(rpc.Response{
-			ID:    msg.ID,
-			Error: &rpc.Error{Code: -32000, Message: "session new failed: " + err.Error()},
-		})
+		respondError(c, msg.ID, rpc.ErrServerError, "session new failed: "+err.Error())
 		return
 	}
 
-	result, _ := json.Marshal(rpc.SessionNewResult{SessionID: id})
-	_ = c.WriteResponse(rpc.Response{ID: msg.ID, Result: result})
+	respondOK(c, msg.ID, rpc.SessionNewResult{SessionID: id})
 }
 
 // handleSessionResume loads a session from its JSONL file, swaps it into the
 // agent state, and returns the session ID and history.
 func (s *Server) handleSessionResume(c *rpc.Conn, msg *rpc.Message) {
-	if s.agent == nil {
-		_ = c.WriteResponse(rpc.Response{
-			ID:    msg.ID,
-			Error: &rpc.Error{Code: -32000, Message: "no agent configured"},
-		})
+	if !s.requireAgent(c, msg.ID) {
 		return
 	}
 
 	var params rpc.SessionResumeParams
-	if err := json.Unmarshal(msg.Params, &params); err != nil {
-		_ = c.WriteResponse(rpc.Response{
-			ID:    msg.ID,
-			Error: &rpc.Error{Code: -32602, Message: "invalid params: " + err.Error()},
-		})
+	if !unmarshalParams(c, msg.ID, msg.Params, &params) {
 		return
 	}
 
 	listings, err := session.List(s.config.Home, s.config.CWD)
 	if err != nil {
-		_ = c.WriteResponse(rpc.Response{
-			ID:    msg.ID,
-			Error: &rpc.Error{Code: -32000, Message: "session list failed: " + err.Error()},
-		})
+		respondError(c, msg.ID, rpc.ErrServerError, "session list failed: "+err.Error())
 		return
 	}
 
@@ -109,19 +83,13 @@ func (s *Server) handleSessionResume(c *rpc.Conn, msg *rpc.Message) {
 		}
 	}
 	if path == "" {
-		_ = c.WriteResponse(rpc.Response{
-			ID:    msg.ID,
-			Error: &rpc.Error{Code: -32000, Message: "session not found: " + params.ID},
-		})
+		respondError(c, msg.ID, rpc.ErrServerError, "session not found: "+params.ID)
 		return
 	}
 
 	loaded, history, err := session.Load(path)
 	if err != nil {
-		_ = c.WriteResponse(rpc.Response{
-			ID:    msg.ID,
-			Error: &rpc.Error{Code: -32000, Message: "session load failed: " + err.Error()},
-		})
+		respondError(c, msg.ID, rpc.ErrServerError, "session load failed: "+err.Error())
 		return
 	}
 
@@ -135,16 +103,12 @@ func (s *Server) handleSessionResume(c *rpc.Conn, msg *rpc.Message) {
 		return loaded, newWriter, nil
 	})
 	if err != nil {
-		_ = c.WriteResponse(rpc.Response{
-			ID:    msg.ID,
-			Error: &rpc.Error{Code: -32000, Message: "session resume failed: " + err.Error()},
-		})
+		respondError(c, msg.ID, rpc.ErrServerError, "session resume failed: "+err.Error())
 		return
 	}
 
 	historyJSON, _ := json.Marshal(history)
-	result, _ := json.Marshal(rpc.SessionResumeResult{SessionID: loaded.ID, History: historyJSON})
-	_ = c.WriteResponse(rpc.Response{ID: msg.ID, Result: result})
+	respondOK(c, msg.ID, rpc.SessionResumeResult{SessionID: loaded.ID, History: historyJSON})
 }
 
 // handleSessionCancel cancels the current agent turn and clears any pending
@@ -161,53 +125,36 @@ func (s *Server) handleSessionCancel(c *rpc.Conn, msg *rpc.Message) {
 		s.agent.State.ClearPending()
 	}
 
-	_ = c.WriteResponse(rpc.Response{ID: msg.ID, Result: json.RawMessage(`{}`)})
+	respondOK(c, msg.ID, struct{}{})
 }
 
 // handleModelSet looks up a model config by name, creates a new LLM client,
 // and updates the agent state.
 func (s *Server) handleModelSet(c *rpc.Conn, msg *rpc.Message) {
-	if s.agent == nil {
-		_ = c.WriteResponse(rpc.Response{
-			ID:    msg.ID,
-			Error: &rpc.Error{Code: -32000, Message: "no agent configured"},
-		})
+	if !s.requireAgent(c, msg.ID) {
 		return
 	}
 
 	var params rpc.ModelSetParams
-	if err := json.Unmarshal(msg.Params, &params); err != nil {
-		_ = c.WriteResponse(rpc.Response{
-			ID:    msg.ID,
-			Error: &rpc.Error{Code: -32602, Message: "invalid params: " + err.Error()},
-		})
+	if !unmarshalParams(c, msg.ID, msg.Params, &params) {
 		return
 	}
 
 	cfg, ok := s.config.Settings.ModelConfig[params.Name]
 	if !ok {
-		_ = c.WriteResponse(rpc.Response{
-			ID:    msg.ID,
-			Error: &rpc.Error{Code: -32000, Message: "model config not found: " + params.Name},
-		})
+		respondError(c, msg.ID, rpc.ErrServerError, "model config not found: "+params.Name)
 		return
 	}
 
 	apiKey, err := config.ResolveAPIKey(cfg)
 	if err != nil {
-		_ = c.WriteResponse(rpc.Response{
-			ID:    msg.ID,
-			Error: &rpc.Error{Code: -32000, Message: "no API key for model config: " + params.Name},
-		})
+		respondError(c, msg.ID, rpc.ErrServerError, "no API key for model config: "+params.Name)
 		return
 	}
 
 	newClient, err := llm.New(cfg, apiKey)
 	if err != nil {
-		_ = c.WriteResponse(rpc.Response{
-			ID:    msg.ID,
-			Error: &rpc.Error{Code: -32000, Message: "cannot create LLM client: " + err.Error()},
-		})
+		respondError(c, msg.ID, rpc.ErrServerError, "cannot create LLM client: "+err.Error())
 		return
 	}
 
@@ -220,6 +167,5 @@ func (s *Server) handleModelSet(c *rpc.Conn, msg *rpc.Message) {
 		ctxWin = config.DefaultContextWindow
 	}
 
-	result, _ := json.Marshal(rpc.ModelSetResult{ModelName: cfg.ModelName, ContextWindow: ctxWin})
-	_ = c.WriteResponse(rpc.Response{ID: msg.ID, Result: result})
+	respondOK(c, msg.ID, rpc.ModelSetResult{ModelName: cfg.ModelName, ContextWindow: ctxWin})
 }
