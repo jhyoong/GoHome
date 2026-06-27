@@ -11,17 +11,28 @@ import (
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
 )
 
-func TestClientFrontend_ReceivesAgentEvent(t *testing.T) {
-	// Create a pipe: daemon side writes notifications, TUI client reads them.
+type readResult struct {
+	msg *rpc.Message
+	err error
+}
+
+func setupClientFrontend(t *testing.T) (cf *ClientFrontend, daemonConn *rpc.Conn, events chan AgentEventMsg, cleanup func()) {
+	t.Helper()
 	daemonRaw, tuiRaw := net.Pipe()
-	defer daemonRaw.Close()
-	defer tuiRaw.Close()
-
-	daemonConn := rpc.NewConn(daemonRaw)
+	daemonConn = rpc.NewConn(daemonRaw)
 	tuiConn := rpc.NewConn(tuiRaw)
+	events = make(chan AgentEventMsg, 4)
+	cf = NewClientFrontend(tuiConn, events)
+	cleanup = func() {
+		daemonRaw.Close()
+		tuiRaw.Close()
+	}
+	return
+}
 
-	events := make(chan AgentEventMsg, 4)
-	cf := NewClientFrontend(tuiConn, events)
+func TestClientFrontend_ReceivesAgentEvent(t *testing.T) {
+	cf, daemonConn, events, cleanup := setupClientFrontend(t)
+	defer cleanup()
 
 	// Run the read loop in a goroutine.
 	go cf.ReadLoop()
@@ -62,24 +73,13 @@ func TestClientFrontend_ReceivesAgentEvent(t *testing.T) {
 }
 
 func TestClientFrontend_SendInput(t *testing.T) {
-	daemonRaw, tuiRaw := net.Pipe()
-	defer daemonRaw.Close()
-	defer tuiRaw.Close()
-
-	daemonConn := rpc.NewConn(daemonRaw)
-	tuiConn := rpc.NewConn(tuiRaw)
-
-	events := make(chan AgentEventMsg, 4)
-	cf := NewClientFrontend(tuiConn, events)
+	cf, daemonConn, _, cleanup := setupClientFrontend(t)
+	defer cleanup()
 
 	// Start the read loop so we can handle responses (needed for pending calls).
 	go cf.ReadLoop()
 
 	// Daemon side: read the request and respond with success.
-	type readResult struct {
-		msg *rpc.Message
-		err error
-	}
 	ch := make(chan readResult, 1)
 	go func() {
 		msg, err := daemonConn.Read()
@@ -129,22 +129,11 @@ func TestClientFrontend_SendInput(t *testing.T) {
 }
 
 func TestClientFrontend_SendCancel(t *testing.T) {
-	daemonRaw, tuiRaw := net.Pipe()
-	defer daemonRaw.Close()
-	defer tuiRaw.Close()
-
-	daemonConn := rpc.NewConn(daemonRaw)
-	tuiConn := rpc.NewConn(tuiRaw)
-
-	events := make(chan AgentEventMsg, 4)
-	cf := NewClientFrontend(tuiConn, events)
+	cf, daemonConn, _, cleanup := setupClientFrontend(t)
+	defer cleanup()
 
 	go cf.ReadLoop()
 
-	type readResult struct {
-		msg *rpc.Message
-		err error
-	}
 	ch := make(chan readResult, 1)
 	go func() {
 		msg, err := daemonConn.Read()
@@ -185,24 +174,13 @@ func TestClientFrontend_SendCancel(t *testing.T) {
 }
 
 func TestClientFrontend_RespondApproval(t *testing.T) {
-	daemonRaw, tuiRaw := net.Pipe()
-	defer daemonRaw.Close()
-	defer tuiRaw.Close()
-
-	daemonConn := rpc.NewConn(daemonRaw)
-	tuiConn := rpc.NewConn(tuiRaw)
-
-	events := make(chan AgentEventMsg, 4)
-	cf := NewClientFrontend(tuiConn, events)
+	cf, daemonConn, _, cleanup := setupClientFrontend(t)
+	defer cleanup()
 
 	// Send a response for an approval.request from the daemon.
 	reqID := rpc.NewID(42)
 	dec := guard.ApprovalDecision{Outcome: guard.Deny}
 
-	type readResult struct {
-		msg *rpc.Message
-		err error
-	}
 	ch := make(chan readResult, 1)
 	go func() {
 		msg, err := daemonConn.Read()
@@ -239,15 +217,8 @@ func TestClientFrontend_RespondApproval(t *testing.T) {
 }
 
 func TestClientFrontend_ReceivesApprovalRequest(t *testing.T) {
-	daemonRaw, tuiRaw := net.Pipe()
-	defer daemonRaw.Close()
-	defer tuiRaw.Close()
-
-	daemonConn := rpc.NewConn(daemonRaw)
-	tuiConn := rpc.NewConn(tuiRaw)
-
-	events := make(chan AgentEventMsg, 4)
-	cf := NewClientFrontend(tuiConn, events)
+	cf, daemonConn, _, cleanup := setupClientFrontend(t)
+	defer cleanup()
 
 	go cf.ReadLoop()
 
@@ -320,15 +291,8 @@ func TestClientFrontend_ReceivesApprovalRequest(t *testing.T) {
 }
 
 func TestClientFrontend_ReceivesSessionState(t *testing.T) {
-	daemonRaw, tuiRaw := net.Pipe()
-	defer daemonRaw.Close()
-	defer tuiRaw.Close()
-
-	daemonConn := rpc.NewConn(daemonRaw)
-	tuiConn := rpc.NewConn(tuiRaw)
-
-	events := make(chan AgentEventMsg, 4)
-	cf := NewClientFrontend(tuiConn, events)
+	cf, daemonConn, _, cleanup := setupClientFrontend(t)
+	defer cleanup()
 
 	go cf.ReadLoop()
 
@@ -365,13 +329,8 @@ func TestClientFrontend_ReceivesSessionState(t *testing.T) {
 }
 
 func TestClientFrontend_Close(t *testing.T) {
-	daemonRaw, tuiRaw := net.Pipe()
-	defer daemonRaw.Close()
-	defer tuiRaw.Close()
-
-	tuiConn := rpc.NewConn(tuiRaw)
-	events := make(chan AgentEventMsg, 4)
-	cf := NewClientFrontend(tuiConn, events)
+	cf, _, _, cleanup := setupClientFrontend(t)
+	defer cleanup()
 
 	err := cf.Close()
 	if err != nil {
