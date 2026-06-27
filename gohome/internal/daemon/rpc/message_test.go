@@ -5,190 +5,86 @@ import (
 	"testing"
 )
 
-func TestEncodeRequest(t *testing.T) {
-	id := NewID(42)
-	req := Request{
-		ID:     id,
-		Method: "tools/list",
-		Params: json.RawMessage(`{"cursor":"abc"}`),
+func assertJSONField(t *testing.T, raw map[string]json.RawMessage, field, want string) {
+	t.Helper()
+	got, ok := raw[field]
+	if !ok {
+		t.Fatalf("missing %q field", field)
 	}
+	if string(got) != want {
+		t.Fatalf("%s = %s, want %s", field, got, want)
+	}
+}
 
-	data, err := json.Marshal(req)
+func assertNoJSONField(t *testing.T, raw map[string]json.RawMessage, field string) {
+	t.Helper()
+	if _, ok := raw[field]; ok {
+		t.Fatalf("unexpected %q field present", field)
+	}
+}
+
+func marshalToRaw(t *testing.T, v any) map[string]json.RawMessage {
+	t.Helper()
+	data, err := json.Marshal(v)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
 		t.Fatalf("unmarshal raw: %v", err)
 	}
+	return raw
+}
 
-	// Must include jsonrpc "2.0"
-	ver, ok := raw["jsonrpc"]
-	if !ok {
-		t.Fatal("missing jsonrpc field")
+func TestEncodeRequest(t *testing.T) {
+	req := Request{
+		ID:     NewID(42),
+		Method: "tools/list",
+		Params: json.RawMessage(`{"cursor":"abc"}`),
 	}
-	if string(ver) != `"2.0"` {
-		t.Fatalf("jsonrpc = %s, want \"2.0\"", ver)
-	}
+	raw := marshalToRaw(t, req)
 
-	// Must include id
-	idRaw, ok := raw["id"]
-	if !ok {
-		t.Fatal("missing id field")
-	}
-	if string(idRaw) != "42" {
-		t.Fatalf("id = %s, want 42", idRaw)
-	}
-
-	// Must include method
-	methodRaw, ok := raw["method"]
-	if !ok {
-		t.Fatal("missing method field")
-	}
-	if string(methodRaw) != `"tools/list"` {
-		t.Fatalf("method = %s, want \"tools/list\"", methodRaw)
-	}
-
-	// Must include params
-	paramsRaw, ok := raw["params"]
-	if !ok {
-		t.Fatal("missing params field")
-	}
-	if string(paramsRaw) != `{"cursor":"abc"}` {
-		t.Fatalf("params = %s, want {\"cursor\":\"abc\"}", paramsRaw)
-	}
+	assertJSONField(t, raw, "jsonrpc", `"2.0"`)
+	assertJSONField(t, raw, "id", "42")
+	assertJSONField(t, raw, "method", `"tools/list"`)
+	assertJSONField(t, raw, "params", `{"cursor":"abc"}`)
 }
 
 func TestEncodeNotification(t *testing.T) {
 	req := Request{
-		ID:     nil, // notification: no ID
+		ID:     nil,
 		Method: "notifications/initialized",
 	}
+	raw := marshalToRaw(t, req)
 
-	data, err := json.Marshal(req)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		t.Fatalf("unmarshal raw: %v", err)
-	}
-
-	// Must include jsonrpc "2.0"
-	ver, ok := raw["jsonrpc"]
-	if !ok {
-		t.Fatal("missing jsonrpc field")
-	}
-	if string(ver) != `"2.0"` {
-		t.Fatalf("jsonrpc = %s, want \"2.0\"", ver)
-	}
-
-	// Must NOT include id
-	if _, ok := raw["id"]; ok {
-		t.Fatal("notification must not have id field")
-	}
-
-	// Must include method
-	methodRaw, ok := raw["method"]
-	if !ok {
-		t.Fatal("missing method field")
-	}
-	if string(methodRaw) != `"notifications/initialized"` {
-		t.Fatalf("method = %s, want \"notifications/initialized\"", methodRaw)
-	}
+	assertJSONField(t, raw, "jsonrpc", `"2.0"`)
+	assertNoJSONField(t, raw, "id")
+	assertJSONField(t, raw, "method", `"notifications/initialized"`)
 }
 
 func TestEncodeResponse(t *testing.T) {
-	id := NewID(7)
 	resp := Response{
-		ID:     id,
+		ID:     NewID(7),
 		Result: json.RawMessage(`{"tools":[]}`),
 	}
+	raw := marshalToRaw(t, resp)
 
-	data, err := json.Marshal(resp)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		t.Fatalf("unmarshal raw: %v", err)
-	}
-
-	// Must include jsonrpc "2.0"
-	ver, ok := raw["jsonrpc"]
-	if !ok {
-		t.Fatal("missing jsonrpc field")
-	}
-	if string(ver) != `"2.0"` {
-		t.Fatalf("jsonrpc = %s, want \"2.0\"", ver)
-	}
-
-	// Must include id
-	idRaw, ok := raw["id"]
-	if !ok {
-		t.Fatal("missing id field")
-	}
-	if string(idRaw) != "7" {
-		t.Fatalf("id = %s, want 7", idRaw)
-	}
-
-	// Must include result
-	resultRaw, ok := raw["result"]
-	if !ok {
-		t.Fatal("missing result field")
-	}
-	if string(resultRaw) != `{"tools":[]}` {
-		t.Fatalf("result = %s, want {\"tools\":[]}", resultRaw)
-	}
-
-	// Must NOT include error
-	if _, ok := raw["error"]; ok {
-		t.Fatal("success response must not have error field")
-	}
+	assertJSONField(t, raw, "jsonrpc", `"2.0"`)
+	assertJSONField(t, raw, "id", "7")
+	assertJSONField(t, raw, "result", `{"tools":[]}`)
+	assertNoJSONField(t, raw, "error")
 }
 
 func TestEncodeErrorResponse(t *testing.T) {
-	id := &ID{str: "req-1", isStr: true}
 	resp := Response{
-		ID: id,
-		Error: &Error{
-			Code:    -32601,
-			Message: "Method not found",
-		},
+		ID:    &ID{str: "req-1", isStr: true},
+		Error: &Error{Code: -32601, Message: "Method not found"},
 	}
+	raw := marshalToRaw(t, resp)
 
-	data, err := json.Marshal(resp)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
+	assertJSONField(t, raw, "jsonrpc", `"2.0"`)
+	assertJSONField(t, raw, "id", `"req-1"`)
 
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		t.Fatalf("unmarshal raw: %v", err)
-	}
-
-	// Must include jsonrpc "2.0"
-	ver, ok := raw["jsonrpc"]
-	if !ok {
-		t.Fatal("missing jsonrpc field")
-	}
-	if string(ver) != `"2.0"` {
-		t.Fatalf("jsonrpc = %s, want \"2.0\"", ver)
-	}
-
-	// Must include id (string)
-	idRaw, ok := raw["id"]
-	if !ok {
-		t.Fatal("missing id field")
-	}
-	if string(idRaw) != `"req-1"` {
-		t.Fatalf("id = %s, want \"req-1\"", idRaw)
-	}
-
-	// Must include error
 	errRaw, ok := raw["error"]
 	if !ok {
 		t.Fatal("missing error field")
@@ -204,10 +100,7 @@ func TestEncodeErrorResponse(t *testing.T) {
 		t.Fatalf("error message = %q, want \"Method not found\"", errObj.Message)
 	}
 
-	// Must NOT include result
-	if _, ok := raw["result"]; ok {
-		t.Fatal("error response must not have result field")
-	}
+	assertNoJSONField(t, raw, "result")
 }
 
 func TestDecodeMessage_Request(t *testing.T) {
