@@ -62,7 +62,7 @@ type SessionView struct {
 	Completed bool
 	Usage     common.Usage
 
-	// Context-fullness warning sentinels (Task 11.16).
+	// Context-fullness warning sentinels.
 	warned80 bool
 	warned95 bool
 }
@@ -100,20 +100,20 @@ type Model struct {
 	// Up/Down move the cursor; Enter on a tool entry toggles expansion.
 	cursor int
 
-	// Phase 12 populates these; Phase 11 renders them.
+	// LLM and context window settings.
 	modelName      string  // LLM model name; "?" when empty
 	yolo           bool    // YOLO mode (skip approval)
 	contextWindow  int     // context window size; defaults to 128000
 	contextWarnPct float64 // ratio at which to show 80% warning
 	contextCritPct float64 // ratio at which to show 95% critical warning
 
-	// Approval overlay state (Task 11.9+).
+	// Approval overlay state.
 	// activeApproval is the prompt currently displayed in the input region.
 	// pendingApprovals maps sessionID -> prompt for non-focused sessions.
 	activeApproval   *approvalPrompt
 	pendingApprovals map[string]*approvalPrompt
 
-	// statusMsg is a transient message shown near the status bar (Task 11.14).
+	// statusMsg is a transient message shown near the status bar.
 	statusMsg string
 
 	// onYoloChange is called whenever the /yolo command toggles the YOLO flag.
@@ -121,7 +121,7 @@ type Model struct {
 	// to the guard without importing the guard package directly.
 	onYoloChange func(bool)
 
-	// Context warning tracking per session (Task 11.16).
+	// Context warning tracking per session.
 	// warned80/warned95 are set in handleAgentEvent to fire once per session.
 	contextNotice string // most recent context warning for the notification line
 

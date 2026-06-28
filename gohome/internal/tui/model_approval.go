@@ -158,7 +158,7 @@ func (m *Model) notificationLine() string {
 			}
 		}
 	}
-	// Context fullness warning for the focused session (Task 11.16).
+	// Context fullness warning for the focused session.
 	if m.contextNotice != "" {
 		return m.contextNotice
 	}

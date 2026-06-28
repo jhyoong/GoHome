@@ -101,7 +101,6 @@ func main() {
 		return
 	}
 
-	// Warn about --resume being deferred to Task 13.
 	if *resume {
 		fmt.Fprintf(os.Stderr, "gohome: --resume is not yet supported in daemon mode (will be added in a future update)\n")
 	}

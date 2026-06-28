@@ -87,6 +87,9 @@ func renderApprovalOverlay(ap *approvalPrompt, width int) string {
 
 	fmt.Fprintf(&sb, "Approve tool call -- %s\n", ap.req.SessionID)
 	fmt.Fprintf(&sb, "Tool: %s\n", ap.req.Tool)
+	if ap.req.Summary != "" {
+		fmt.Fprintf(&sb, "Summary: %s\n", ap.req.Summary)
+	}
 
 	if cmd := bashCommand(ap); cmd != "" {
 		fmt.Fprintf(&sb, "Command: %s\n", cmd)
