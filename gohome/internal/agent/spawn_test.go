@@ -40,13 +40,13 @@ func buildSpawnParent(t *testing.T, client common.Client, home string) *Agent {
 	// Simulate a parent session at depth 0.
 	parentSess := session.NewSession("parent-sess", home, "model", "anthropic")
 	a := &Agent{
-		Tools:    tools.NewRegistry(),
-		Guard:    g,
-		Frontend: fe,
-		State:    NewSessionState(parentSess, nil, client), // no parent writer for basic Spawn test
-		System:   "parent system",
-		Home:     home,
+		Tools:  tools.NewRegistry(),
+		Guard:  g,
+		State:  NewSessionState(parentSess, nil, client), // no parent writer for basic Spawn test
+		System: "parent system",
+		Home:   home,
 	}
+	a.SetFrontend(fe)
 	return a
 }
 
@@ -192,13 +192,13 @@ func TestSpawn_ParentWriterMarkers(t *testing.T) {
 
 	parentSess := session.NewSession("parent-sess", home, "model", "anthropic")
 	a := &Agent{
-		Tools:    tools.NewRegistry(),
-		Guard:    g,
-		Frontend: fe,
-		State:    NewSessionState(parentSess, pw, client),
-		System:   "parent system",
-		Home:     home,
+		Tools:  tools.NewRegistry(),
+		Guard:  g,
+		State:  NewSessionState(parentSess, pw, client),
+		System: "parent system",
+		Home:   home,
 	}
+	a.SetFrontend(fe)
 
 	_, _, err = a.Spawn(context.Background(), "the task", "")
 	if err != nil {
@@ -307,13 +307,13 @@ func TestSpawn_ChildJSONLHasUserMessage(t *testing.T) {
 
 	parentSess := session.NewSession("parent", home, "model", "anthropic")
 	a := &Agent{
-		Tools:    tools.NewRegistry(),
-		Guard:    g,
-		Frontend: fe,
-		State:    NewSessionState(parentSess, nil, client),
-		System:   "sys",
-		Home:     home,
+		Tools:  tools.NewRegistry(),
+		Guard:  g,
+		State:  NewSessionState(parentSess, nil, client),
+		System: "sys",
+		Home:   home,
 	}
+	a.SetFrontend(fe)
 
 	const wantTask = "specific task text"
 	_, _, err := a.Spawn(context.Background(), wantTask, "")
@@ -370,13 +370,13 @@ func TestSpawn_ChildJSONLHasSessionEnd(t *testing.T) {
 
 	parentSess := session.NewSession("parent", home, "model", "anthropic")
 	a := &Agent{
-		Tools:    tools.NewRegistry(),
-		Guard:    g,
-		Frontend: fe,
-		State:    NewSessionState(parentSess, nil, client),
-		System:   "sys",
-		Home:     home,
+		Tools:  tools.NewRegistry(),
+		Guard:  g,
+		State:  NewSessionState(parentSess, nil, client),
+		System: "sys",
+		Home:   home,
 	}
+	a.SetFrontend(fe)
 
 	_, _, err := a.Spawn(context.Background(), "task", "")
 	if err != nil {
@@ -424,7 +424,7 @@ func TestSpawn_EmitsSessionEndedEvent(t *testing.T) {
 	home := t.TempDir()
 	client := oneTextTurnClient("done")
 	a := buildSpawnParent(t, client, home)
-	fe := a.Frontend.(*fakeRecorder)
+	fe := a.Frontend().(*fakeRecorder)
 
 	_, _, err := a.Spawn(context.Background(), "task", "")
 	if err != nil {
@@ -466,13 +466,13 @@ func TestSpawn_EmitsSessionEndedOnCancel(t *testing.T) {
 
 	parentSess := session.NewSession("parent", home, "model", "anthropic")
 	a := &Agent{
-		Tools:    tools.NewRegistry(),
-		Guard:    g,
-		Frontend: fe,
-		State:    NewSessionState(parentSess, nil, client),
-		System:   "system",
-		Home:     home,
+		Tools:  tools.NewRegistry(),
+		Guard:  g,
+		State:  NewSessionState(parentSess, nil, client),
+		System: "system",
+		Home:   home,
 	}
+	a.SetFrontend(fe)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
@@ -505,7 +505,7 @@ func TestSpawn_EndReasonDone(t *testing.T) {
 	home := t.TempDir()
 	client := oneTextTurnClient("answer")
 	a := buildSpawnParent(t, client, home)
-	fe := a.Frontend.(*fakeRecorder)
+	fe := a.Frontend().(*fakeRecorder)
 
 	_, _, err := a.Spawn(context.Background(), "task", "")
 	if err != nil {
@@ -540,13 +540,13 @@ func TestSpawn_EndReasonCancelled(t *testing.T) {
 
 	parentSess := session.NewSession("parent", home, "model", "anthropic")
 	a := &Agent{
-		Tools:    tools.NewRegistry(),
-		Guard:    g,
-		Frontend: fe,
-		State:    NewSessionState(parentSess, nil, client),
-		System:   "system",
-		Home:     home,
+		Tools:  tools.NewRegistry(),
+		Guard:  g,
+		State:  NewSessionState(parentSess, nil, client),
+		System: "system",
+		Home:   home,
 	}
+	a.SetFrontend(fe)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {

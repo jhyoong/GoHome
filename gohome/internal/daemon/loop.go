@@ -32,7 +32,7 @@ func (s *Server) runLoop() {
 		}
 
 		// Set frontend on agent for this iteration.
-		s.agent.Frontend = fe
+		s.agent.SetFrontend(fe)
 
 		text, err := fe.AwaitUserInput(s.ctx, sessID)
 		if err != nil {

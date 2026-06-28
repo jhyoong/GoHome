@@ -56,12 +56,12 @@ func TestRun_CancelMidTurn(t *testing.T) {
 	g := guardNewYolo(wl)
 
 	a := &Agent{
-		Tools:    tools.NewRegistry(),
-		Guard:    g,
-		Frontend: fe,
-		State:    NewSessionState(sess, nil, client), // Run never emits session_end; no writer needed here
-		System:   "system",
+		Tools:  tools.NewRegistry(),
+		Guard:  g,
+		State:  NewSessionState(sess, nil, client), // Run never emits session_end; no writer needed here
+		System: "system",
 	}
+	a.SetFrontend(fe)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
