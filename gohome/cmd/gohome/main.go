@@ -348,9 +348,8 @@ func runClient(sockPath string, settings config.Settings, mc config.ModelConfig)
 		NewSession: func() (string, error) {
 			return cfe.SendSessionNew()
 		},
-		ResumeSession: func(id string) ([]common.Message, error) {
-			_, history, err := cfe.SendSessionResume(id)
-			return history, err
+		ResumeSession: func(id string) (string, []common.Message, error) {
+			return cfe.SendSessionResume(id)
 		},
 		CancelSession: func(id string) {
 			go cfe.SendCancel(id)

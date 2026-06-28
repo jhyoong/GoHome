@@ -97,11 +97,17 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 			m.activeModal = nil
 			var history []common.Message
 			if m.slashCB.ResumeSession != nil {
-				var err error
-				history, err = m.slashCB.ResumeSession(id)
+				var (
+					resolvedID string
+					err        error
+				)
+				resolvedID, history, err = m.slashCB.ResumeSession(id)
 				if err != nil {
 					m.statusMsg = fmt.Sprintf("/resume: %v", err)
 					return
+				}
+				if resolvedID != "" {
+					id = resolvedID
 				}
 			}
 			sv := m.getOrCreateSession(id, 0)

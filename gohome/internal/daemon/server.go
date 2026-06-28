@@ -5,7 +5,6 @@ package daemon
 import (
 	"context"
 	"errors"
-	"log"
 	"log/slog"
 	"net"
 	"os"
@@ -121,7 +120,7 @@ func (s *Server) Serve() {
 			if errors.Is(err, net.ErrClosed) {
 				return
 			}
-			log.Printf("daemon: accept error: %v", err)
+			slog.Error("daemon: accept error", "error", err)
 			continue
 		}
 
