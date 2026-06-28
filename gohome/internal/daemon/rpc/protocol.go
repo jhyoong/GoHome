@@ -19,6 +19,7 @@ const (
 	MethodSessionList     = "session.list"
 	MethodSessionCancel   = "session.cancel"
 	MethodModelSet        = "model.set"
+	MethodYoloSet         = "yolo.set"
 	MethodDaemonHealth    = "daemon.health"
 	MethodDaemonStop      = "daemon.stop"
 	MethodApprovalRequest = "approval.request"
@@ -66,6 +67,11 @@ type SessionResumeParams struct {
 // ModelSetParams carries the model name to switch to.
 type ModelSetParams struct {
 	Name string `json:"name"`
+}
+
+// YoloSetParams carries the desired yolo mode state.
+type YoloSetParams struct {
+	Enabled bool `json:"enabled"`
 }
 
 // ModelSetResult carries the result of a model switch.

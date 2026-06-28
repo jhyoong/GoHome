@@ -57,6 +57,9 @@ func (s *Server) dispatch(c *rpc.Conn, msg *rpc.Message) {
 	case rpc.MethodModelSet:
 		s.handleModelSet(c, msg)
 
+	case rpc.MethodYoloSet:
+		s.handleYoloSet(c, msg)
+
 	default:
 		respondError(c, msg.ID, rpc.ErrMethodNotFound, "method not found")
 	}

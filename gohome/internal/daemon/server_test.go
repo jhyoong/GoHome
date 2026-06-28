@@ -687,6 +687,52 @@ func TestDispatch_NilIDResponse_NoPanic(t *testing.T) {
 	}
 }
 
+func TestServer_YoloSet(t *testing.T) {
+	dir := t.TempDir()
+	sock := newTestSocket(t)
+	g := newTestGuard() // starts with yolo=true from newTestGuard
+
+	registry := tools.NewRegistry()
+
+	srv, err := NewServer(sock, ServerConfig{
+		Version:      "test-yolo",
+		LLMClient:    &echoClient{},
+		Guard:        g,
+		Registry:     registry,
+		SystemPrompt: "test",
+		MaxTokens:    1024,
+		Home:         dir,
+		CWD:          dir,
+		SessionID:    "yolo-test-1",
+	})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+
+	serveBackground(t, srv)
+	conn := dialTestServer(t, sock)
+
+	// Disable yolo.
+	params, _ := json.Marshal(rpc.YoloSetParams{Enabled: false})
+	msg := sendRequest(t, conn, 1, rpc.MethodYoloSet, params)
+	if msg.Error != nil {
+		t.Fatalf("yolo.set(false) error: %v", msg.Error)
+	}
+	if g.Yolo() {
+		t.Error("expected yolo=false after yolo.set(false)")
+	}
+
+	// Re-enable yolo.
+	params2, _ := json.Marshal(rpc.YoloSetParams{Enabled: true})
+	msg2 := sendRequest(t, conn, 2, rpc.MethodYoloSet, params2)
+	if msg2.Error != nil {
+		t.Fatalf("yolo.set(true) error: %v", msg2.Error)
+	}
+	if !g.Yolo() {
+		t.Error("expected yolo=true after yolo.set(true)")
+	}
+}
+
 // noopApprover satisfies guard.Frontend for test purposes.
 type noopApprover struct{}
 

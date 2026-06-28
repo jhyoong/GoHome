@@ -128,6 +128,18 @@ func (s *Server) handleSessionCancel(c *rpc.Conn, msg *rpc.Message) {
 	respondOK(c, msg.ID, struct{}{})
 }
 
+// handleYoloSet updates the guard's yolo mode.
+func (s *Server) handleYoloSet(c *rpc.Conn, msg *rpc.Message) {
+	var params rpc.YoloSetParams
+	if !unmarshalParams(c, msg.ID, msg.Params, &params) {
+		return
+	}
+	if s.agent != nil && s.agent.Guard != nil {
+		s.agent.Guard.SetYolo(params.Enabled)
+	}
+	respondOK(c, msg.ID, struct{}{})
+}
+
 // handleModelSet looks up a model config by name, creates a new LLM client,
 // and updates the agent state.
 func (s *Server) handleModelSet(c *rpc.Conn, msg *rpc.Message) {

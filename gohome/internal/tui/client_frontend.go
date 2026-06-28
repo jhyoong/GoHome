@@ -259,6 +259,12 @@ func (cf *ClientFrontend) SendModelSet(name string) (string, int, error) {
 	return result.ModelName, result.ContextWindow, nil
 }
 
+// SendYoloSet sends a yolo.set request to the daemon.
+func (cf *ClientFrontend) SendYoloSet(enabled bool) error {
+	_, err := cf.sendRequest(rpc.MethodYoloSet, rpc.YoloSetParams{Enabled: enabled})
+	return err
+}
+
 // Close cancels in-flight requests and closes the underlying connection.
 func (cf *ClientFrontend) Close() error {
 	cf.cancel()

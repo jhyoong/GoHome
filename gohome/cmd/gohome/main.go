@@ -312,6 +312,9 @@ func runClient(sockPath string, settings config.Settings, mc config.ModelConfig)
 	// Build TUI model.
 	m := tui.New("main")
 	m.SetClientFrontend(cfe)
+	m.SetYoloCallback(func(v bool) {
+		go cfe.SendYoloSet(v)
+	})
 	m.SetModelName(mc.ModelName)
 
 	contextWindow := mc.ContextWindow
