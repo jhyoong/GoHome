@@ -155,6 +155,10 @@ func (cf *ClientFrontend) handleRequest(msg *rpc.Message) {
 		}:
 		default:
 			slog.Warn("client_frontend: approvals channel full, dropping approval request")
+			_ = cf.conn.WriteResponse(rpc.Response{
+				ID:    msg.ID,
+				Error: &rpc.Error{Code: rpc.ErrServerError, Message: "approvals channel full"},
+			})
 		}
 	}
 }
