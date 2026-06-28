@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jhyoong/GoHome/gohome/internal/config"
 	"github.com/jhyoong/GoHome/gohome/internal/daemon/rpc"
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
@@ -730,6 +731,226 @@ func TestServer_YoloSet(t *testing.T) {
 	}
 	if !g.Yolo() {
 		t.Error("expected yolo=true after yolo.set(true)")
+	}
+}
+
+func TestServer_SessionResume(t *testing.T) {
+	dir := t.TempDir()
+	sock := newTestSocket(t)
+	g := newTestGuard()
+
+	registry := tools.NewRegistry()
+
+	srv, err := NewServer(sock, ServerConfig{
+		Version:      "test-resume",
+		LLMClient:    &echoClient{},
+		Guard:        g,
+		Registry:     registry,
+		SystemPrompt: "test",
+		MaxTokens:    1024,
+		Home:         dir,
+		CWD:          dir,
+		SessionID:    "resume-original",
+	})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+
+	serveBackground(t, srv)
+
+	conn := dialTestServer(t, sock)
+
+	// 1. Send session.input to create some history in the original session.
+	inputParams, _ := json.Marshal(rpc.SessionInputParams{Text: "hello from original"})
+	msg := sendRequest(t, conn, 1, rpc.MethodSessionInput, inputParams)
+	if msg.Error != nil {
+		t.Fatalf("session.input error: %v", msg.Error)
+	}
+
+	// Drain agent.event notifications so the agent turn completes.
+	conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	rc := rpc.NewConn(conn)
+	for {
+		_, err := rc.Read()
+		if err != nil {
+			break
+		}
+	}
+	conn.Close()
+
+	// 2. Reconnect and create a new session with session.new.
+	conn2 := dialTestServer(t, sock)
+
+	newMsg := sendRequest(t, conn2, 2, rpc.MethodSessionNew, json.RawMessage(`{}`))
+	if newMsg.Error != nil {
+		t.Fatalf("session.new error: code=%d message=%q", newMsg.Error.Code, newMsg.Error.Message)
+	}
+	var newResult rpc.SessionNewResult
+	if err := json.Unmarshal(newMsg.Result, &newResult); err != nil {
+		t.Fatalf("unmarshal session.new result: %v", err)
+	}
+	if newResult.SessionID == "resume-original" {
+		t.Fatal("new session ID should differ from original")
+	}
+
+	// 3. Resume the original session.
+	resumeParams, _ := json.Marshal(rpc.SessionResumeParams{ID: "resume-original"})
+	resumeMsg := sendRequest(t, conn2, 3, rpc.MethodSessionResume, resumeParams)
+	if resumeMsg.Error != nil {
+		t.Fatalf("session.resume error: code=%d message=%q", resumeMsg.Error.Code, resumeMsg.Error.Message)
+	}
+	if resumeMsg.Result == nil {
+		t.Fatal("expected result from session.resume, got nil")
+	}
+
+	var resumeResult rpc.SessionResumeResult
+	if err := json.Unmarshal(resumeMsg.Result, &resumeResult); err != nil {
+		t.Fatalf("unmarshal session.resume result: %v", err)
+	}
+
+	// Verify the resumed session ID matches the original.
+	if resumeResult.SessionID != "resume-original" {
+		t.Errorf("resumed sessionID = %q, want %q", resumeResult.SessionID, "resume-original")
+	}
+
+	// Verify history is non-empty (the original session had user input + agent reply).
+	if len(resumeResult.History) == 0 {
+		t.Error("expected non-empty history from resumed session")
+	}
+}
+
+func TestServer_SessionResume_NotFound(t *testing.T) {
+	dir := t.TempDir()
+	sock := newTestSocket(t)
+	g := newTestGuard()
+
+	registry := tools.NewRegistry()
+
+	srv, err := NewServer(sock, ServerConfig{
+		Version:      "test-resume-404",
+		LLMClient:    &echoClient{},
+		Guard:        g,
+		Registry:     registry,
+		SystemPrompt: "test",
+		MaxTokens:    1024,
+		Home:         dir,
+		CWD:          dir,
+		SessionID:    "some-session",
+	})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+
+	serveBackground(t, srv)
+
+	conn := dialTestServer(t, sock)
+
+	resumeParams, _ := json.Marshal(rpc.SessionResumeParams{ID: "nonexistent-session"})
+	msg := sendRequest(t, conn, 1, rpc.MethodSessionResume, resumeParams)
+	if msg.Error == nil {
+		t.Fatal("expected error for nonexistent session, got nil")
+	}
+	if msg.Error.Code != rpc.ErrServerError {
+		t.Errorf("error code = %d, want %d", msg.Error.Code, rpc.ErrServerError)
+	}
+}
+
+func TestServer_ModelSet_NotFound(t *testing.T) {
+	dir := t.TempDir()
+	sock := newTestSocket(t)
+	g := newTestGuard()
+
+	registry := tools.NewRegistry()
+
+	srv, err := NewServer(sock, ServerConfig{
+		Version:      "test-model-404",
+		LLMClient:    &echoClient{},
+		Guard:        g,
+		Registry:     registry,
+		SystemPrompt: "test",
+		MaxTokens:    1024,
+		Home:         dir,
+		CWD:          dir,
+		SessionID:    "model-test-1",
+		Settings:     config.Settings{ModelConfig: map[string]config.ModelConfig{}},
+	})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+
+	serveBackground(t, srv)
+
+	conn := dialTestServer(t, sock)
+
+	params, _ := json.Marshal(rpc.ModelSetParams{Name: "unknown-model"})
+	msg := sendRequest(t, conn, 1, rpc.MethodModelSet, params)
+	if msg.Error == nil {
+		t.Fatal("expected error for unknown model, got nil")
+	}
+	if msg.Error.Code != rpc.ErrServerError {
+		t.Errorf("error code = %d, want %d", msg.Error.Code, rpc.ErrServerError)
+	}
+}
+
+func TestServer_ModelSet_Success(t *testing.T) {
+	dir := t.TempDir()
+	sock := newTestSocket(t)
+	g := newTestGuard()
+
+	registry := tools.NewRegistry()
+
+	// Set a test API key env var for the model config to reference.
+	t.Setenv("TEST_GOHOME_MODEL_KEY", "test-key-value")
+
+	srv, err := NewServer(sock, ServerConfig{
+		Version:      "test-model-set",
+		LLMClient:    &echoClient{},
+		Guard:        g,
+		Registry:     registry,
+		SystemPrompt: "test",
+		MaxTokens:    1024,
+		Home:         dir,
+		CWD:          dir,
+		SessionID:    "model-set-1",
+		Settings: config.Settings{
+			ModelConfig: map[string]config.ModelConfig{
+				"test-model": {
+					Wire:          config.WireOpenAI,
+					BaseURL:       "http://localhost:0/v1", // not contacted
+					APIKeyEnv:     "TEST_GOHOME_MODEL_KEY",
+					ModelName:     "gpt-test-1",
+					ContextWindow: 64000,
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+
+	serveBackground(t, srv)
+
+	conn := dialTestServer(t, sock)
+
+	params, _ := json.Marshal(rpc.ModelSetParams{Name: "test-model"})
+	msg := sendRequest(t, conn, 1, rpc.MethodModelSet, params)
+	if msg.Error != nil {
+		t.Fatalf("model.set error: code=%d message=%q", msg.Error.Code, msg.Error.Message)
+	}
+	if msg.Result == nil {
+		t.Fatal("expected result from model.set, got nil")
+	}
+
+	var result rpc.ModelSetResult
+	if err := json.Unmarshal(msg.Result, &result); err != nil {
+		t.Fatalf("unmarshal model.set result: %v", err)
+	}
+
+	if result.ModelName != "gpt-test-1" {
+		t.Errorf("modelName = %q, want %q", result.ModelName, "gpt-test-1")
+	}
+	if result.ContextWindow != 64000 {
+		t.Errorf("contextWindow = %d, want %d", result.ContextWindow, 64000)
 	}
 }
 
