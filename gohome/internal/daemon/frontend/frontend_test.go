@@ -159,10 +159,11 @@ func TestRPCFrontend_RequestApproval_ContextCancelled(t *testing.T) {
 	}
 
 	decision, err := fe.RequestApproval(ctx, req)
-	if err != nil {
-		t.Fatalf("RequestApproval should not return error, got: %v", err)
+	// On context cancellation, the frontend should return Deny with an error
+	// so the caller knows it was a cancellation, not a deliberate deny.
+	if err == nil {
+		t.Fatal("expected error on context cancellation, got nil")
 	}
-	// On context cancellation, the frontend should return Deny.
 	if decision.Outcome != guard.Deny {
 		t.Errorf("outcome = %q, want %q on ctx cancel", decision.Outcome, guard.Deny)
 	}

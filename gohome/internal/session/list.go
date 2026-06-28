@@ -3,6 +3,7 @@ package session
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -130,6 +131,10 @@ func parseListing(path string) (Listing, error) {
 	}
 	if err := scanner.Err(); err != nil {
 		return Listing{}, err
+	}
+
+	if listing.ID == "" {
+		return Listing{}, fmt.Errorf("no session_start found in %s", path)
 	}
 
 	if lastTS != "" {

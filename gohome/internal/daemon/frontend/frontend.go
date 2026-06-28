@@ -78,7 +78,7 @@ func (f *RPCFrontend) RequestApproval(ctx context.Context, req guard.ApprovalReq
 	}
 	paramsData, err := json.Marshal(params)
 	if err != nil {
-		return deny, nil
+		return guard.ApprovalDecision{}, fmt.Errorf("marshal approval params: %w", err)
 	}
 
 	f.pending.Register(id)
@@ -90,17 +90,17 @@ func (f *RPCFrontend) RequestApproval(ctx context.Context, req guard.ApprovalReq
 	})
 	if err != nil {
 		f.pending.Cancel(id)
-		return deny, nil
+		return guard.ApprovalDecision{}, fmt.Errorf("write approval request: %w", err)
 	}
 
 	raw, err := f.pending.Wait(ctx, id)
 	if err != nil {
-		return deny, nil
+		return deny, fmt.Errorf("wait for approval response: %w", err)
 	}
 
 	var result rpc.ApprovalResponseResult
 	if err := json.Unmarshal(raw, &result); err != nil {
-		return deny, nil
+		return guard.ApprovalDecision{}, fmt.Errorf("unmarshal approval response: %w", err)
 	}
 
 	return result.Decision, nil

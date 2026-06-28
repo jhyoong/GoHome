@@ -77,9 +77,11 @@ func (s *Server) initAgent(cfg ServerConfig) error {
 		return err
 	}
 	writer.Emit(session.SessionStart{
-		ID:        sess.ID,
-		CWD:       cfg.CWD,
-		StartedAt: sess.StartedAt,
+		ID:          sess.ID,
+		CWD:         cfg.CWD,
+		Model:       cfg.ModelName,
+		ModelConfig: cfg.ModelConfig,
+		StartedAt:   sess.StartedAt,
 	})
 
 	state := agent.NewSessionState(sess, writer, cfg.LLMClient)
