@@ -12,7 +12,7 @@ import (
 func (s *Server) dispatch(c *rpc.Conn, msg *rpc.Message) {
 	// If this is a response (no method), forward to the frontend's pending tracker.
 	if msg.IsResponse() {
-		if fe := s.frontend(); fe != nil {
+		if fe := s.frontend(); fe != nil && msg.ID != nil {
 			fe.ResolvePending(msg.ID.Int64(), msg.Result, msg.Error)
 		}
 		return

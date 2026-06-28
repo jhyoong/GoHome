@@ -661,6 +661,32 @@ func TestServer_GracePeriod_CancelledByReconnect(t *testing.T) {
 	}
 }
 
+func TestDispatch_NilIDResponse_NoPanic(t *testing.T) {
+	sock := newTestSocket(t)
+
+	srv, err := NewServer(sock, ServerConfig{Version: "test"})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+
+	serveBackground(t, srv)
+
+	conn := dialTestServer(t, sock)
+
+	// Send a raw response with no "id" field (nil ID).
+	raw := []byte(`{"result":{}}` + "\n")
+	if _, err := conn.Write(raw); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	// If dispatch panics, the server would crash and the next request would fail.
+	// Send a health check to verify the server is still alive.
+	msg := sendRequest(t, conn, 1, "daemon.health", nil)
+	if msg.Error != nil {
+		t.Fatalf("health check after nil-ID response failed: %v", msg.Error)
+	}
+}
+
 // noopApprover satisfies guard.Frontend for test purposes.
 type noopApprover struct{}
 
