@@ -338,6 +338,38 @@ func TestClientFrontend_Close(t *testing.T) {
 	}
 }
 
+func TestClientFrontend_MalformedApprovalRequest_SendsErrorResponse(t *testing.T) {
+	server, client := net.Pipe()
+	sc := rpc.NewConn(server)
+	cc := rpc.NewConn(client)
+
+	eventCh := make(chan AgentEventMsg, 64)
+	cfe := NewClientFrontend(cc, eventCh)
+	go cfe.ReadLoop()
+	defer func() { cfe.Close(); sc.Close() }()
+
+	// Write a raw JSON-RPC request with params that are valid JSON but have
+	// wrong types so that Unmarshal into ApprovalRequestParams produces an
+	// error (params is a JSON string instead of an object).
+	raw := `{"jsonrpc":"2.0","id":42,"method":"approval.request","params":"not-an-object"}` + "\n"
+	_, err := server.Write([]byte(raw))
+	if err != nil {
+		t.Fatalf("write raw request: %v", err)
+	}
+
+	// Read the response from the server side.
+	msg, err := sc.Read()
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if msg.Error == nil {
+		t.Fatal("expected error response for malformed params")
+	}
+	if msg.Error.Code != rpc.ErrInvalidParams {
+		t.Errorf("error code = %d, want %d", msg.Error.Code, rpc.ErrInvalidParams)
+	}
+}
+
 func TestClientFrontend_Close_ClosesChannels(t *testing.T) {
 	server, client := net.Pipe()
 	sc := rpc.NewConn(server)

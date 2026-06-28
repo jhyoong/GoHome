@@ -128,6 +128,10 @@ func (cf *ClientFrontend) handleRequest(msg *rpc.Message) {
 	case rpc.MethodApprovalRequest:
 		var params rpc.ApprovalRequestParams
 		if err := json.Unmarshal(msg.Params, &params); err != nil {
+			_ = cf.conn.WriteResponse(rpc.Response{
+				ID:    msg.ID,
+				Error: &rpc.Error{Code: rpc.ErrInvalidParams, Message: "invalid approval params: " + err.Error()},
+			})
 			return
 		}
 		rpcID := msg.ID
