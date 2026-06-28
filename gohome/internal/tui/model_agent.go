@@ -170,8 +170,10 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 		}
 
 	case agent.EventSessionSwapped:
+		m.demoteActiveApproval()
 		m.focused = ev.SessionID
 		m.getOrCreateSession(ev.SessionID, 0)
+		m.promoteApproval()
 		m.statusMsg = "Switched to session: " + ev.SessionID
 
 	case agent.EventError:
