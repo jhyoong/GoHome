@@ -12,7 +12,6 @@ type EventKind string
 
 const (
 	EventTokenDelta     EventKind = "token_delta"
-	EventToolCallStart  EventKind = "tool_call_start"
 	EventToolCallDone   EventKind = "tool_call_done"
 	EventToolResult     EventKind = "tool_result"
 	EventUsageUpdated   EventKind = "usage_updated"

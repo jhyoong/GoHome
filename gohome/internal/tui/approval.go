@@ -18,9 +18,6 @@ type ApprovalReqMsg struct {
 	Resolve func(guard.ApprovalDecision)
 }
 
-// approvalReqMsg is an internal alias so the switch in Update compiles cleanly.
-type approvalReqMsg = ApprovalReqMsg
-
 // approvalPrompt holds all UI state for one pending approval request.
 type approvalPrompt struct {
 	req     guard.ApprovalRequest

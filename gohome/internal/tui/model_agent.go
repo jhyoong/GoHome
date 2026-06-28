@@ -9,7 +9,7 @@ import (
 
 // handleAgentEvent updates the relevant SessionView based on the event kind.
 // It returns a tea.Cmd (SpinnerTickCmd when the spinner starts, nil otherwise).
-func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
+func (m *Model) handleAgentEvent(msg AgentEventMsg) tea.Cmd {
 	ev := msg.Ev
 	depth := 0
 	if msg.SessionID != m.focused {

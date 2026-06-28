@@ -25,7 +25,7 @@ func TestEventSessionSwapped_PromotesApproval(t *testing.T) {
 	}
 
 	// Simulate EventSessionSwapped to sess-b.
-	m.handleAgentEvent(agentEventMsg{
+	m.handleAgentEvent(AgentEventMsg{
 		SessionID: "sess-b",
 		Ev: agent.Event{Kind: agent.EventSessionSwapped, SessionID: "sess-b"},
 	})
@@ -55,7 +55,7 @@ func TestEventSessionSwapped_DemotesActiveApproval(t *testing.T) {
 	}
 
 	// Simulate EventSessionSwapped to sess-b.
-	m.handleAgentEvent(agentEventMsg{
+	m.handleAgentEvent(AgentEventMsg{
 		SessionID: "sess-b",
 		Ev: agent.Event{Kind: agent.EventSessionSwapped, SessionID: "sess-b"},
 	})

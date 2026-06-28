@@ -28,14 +28,6 @@ func NewPending() *Pending {
 	}
 }
 
-// Call registers an in-flight request with the given id and blocks until
-// Resolve is called with the matching id or ctx is cancelled. On RPC error
-// it returns a formatted error. The channel is cleaned up on return.
-func (p *Pending) Call(ctx context.Context, id int64) (json.RawMessage, error) {
-	p.Register(id)
-	return p.Wait(ctx, id)
-}
-
 // Register creates a channel for the given id so that a subsequent Resolve
 // can deliver a result even before Wait is called. This avoids the race where
 // a response arrives between writing the request and calling Wait.

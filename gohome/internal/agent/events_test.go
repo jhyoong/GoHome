@@ -40,7 +40,6 @@ func TestEventKindConstants(t *testing.T) {
 		want string
 	}{
 		{EventTokenDelta, "token_delta"},
-		{EventToolCallStart, "tool_call_start"},
 		{EventToolCallDone, "tool_call_done"},
 		{EventToolResult, "tool_result"},
 		{EventUsageUpdated, "usage_updated"},

@@ -42,13 +42,10 @@ type AgentEventParams struct {
 }
 
 // SessionStateParams carries a full session state snapshot from daemon to TUI.
-// Timeline is encoded as json.RawMessage to avoid importing the tui package.
 type SessionStateParams struct {
-	SessionID       string                 `json:"sessionID"`
-	Model           string                 `json:"model"`
-	Yolo            bool                   `json:"yolo"`
-	Timeline        json.RawMessage        `json:"timeline"`
-	PendingApproval *ApprovalRequestParams `json:"pendingApproval,omitempty"`
+	SessionID string `json:"sessionID"`
+	Model     string `json:"model"`
+	Yolo      bool   `json:"yolo"`
 }
 
 // ---------- TUI -> Daemon Requests ----------

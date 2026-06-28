@@ -7,15 +7,16 @@ import (
 	"time"
 )
 
-func TestPending_CallAndResolve(t *testing.T) {
+func TestPending_RegisterWaitAndResolve(t *testing.T) {
 	p := NewPending()
 
 	var got json.RawMessage
 	var gotErr error
 	done := make(chan struct{})
 
+	p.Register(42)
 	go func() {
-		got, gotErr = p.Call(context.Background(), 42)
+		got, gotErr = p.Wait(context.Background(), 42)
 		close(done)
 	}()
 
@@ -34,13 +35,14 @@ func TestPending_CallAndResolve(t *testing.T) {
 	}
 }
 
-func TestPending_CallCancelled(t *testing.T) {
+func TestPending_WaitCancelled(t *testing.T) {
 	p := NewPending()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
 
-	_, err := p.Call(ctx, 99)
+	p.Register(99)
+	_, err := p.Wait(ctx, 99)
 	if err == nil {
 		t.Fatal("expected error from cancelled context, got nil")
 	}
@@ -52,8 +54,9 @@ func TestPending_ResolveWithError(t *testing.T) {
 	var gotErr error
 	done := make(chan struct{})
 
+	p.Register(7)
 	go func() {
-		_, gotErr = p.Call(context.Background(), 7)
+		_, gotErr = p.Wait(context.Background(), 7)
 		close(done)
 	}()
 

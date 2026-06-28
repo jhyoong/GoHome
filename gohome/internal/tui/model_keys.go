@@ -276,7 +276,7 @@ func (m *Model) replaceAtQuery(replacement string) {
 
 // openExternalEditor writes the current editor content to a temp file, launches
 // the user's preferred editor ($VISUAL / $EDITOR / vi), and returns a Cmd that
-// sends an externalEditorMsg when the editor exits.
+// sends an ExternalEditorMsg when the editor exits.
 func (m *Model) openExternalEditor() tea.Cmd {
 	content := m.editor.Value()
 
@@ -307,12 +307,12 @@ func (m *Model) openExternalEditor() tea.Cmd {
 	return tea.ExecProcess(c, func(err error) tea.Msg {
 		defer func() { _ = os.Remove(tmpPath) }()
 		if err != nil {
-			return externalEditorMsg{Err: err}
+			return ExternalEditorMsg{Err: err}
 		}
 		data, readErr := os.ReadFile(tmpPath)
 		if readErr != nil {
-			return externalEditorMsg{Err: readErr}
+			return ExternalEditorMsg{Err: readErr}
 		}
-		return externalEditorMsg{Content: string(data)}
+		return ExternalEditorMsg{Content: string(data)}
 	})
 }

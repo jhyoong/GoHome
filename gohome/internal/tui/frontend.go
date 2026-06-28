@@ -11,15 +11,8 @@ type AgentEventMsg struct {
 	Ev        agent.Event
 }
 
-// agentEventMsg is an internal alias kept so existing code compiles.
-// We use AgentEventMsg everywhere; this line ensures the switch in Update works.
-type agentEventMsg = AgentEventMsg
-
 // ExternalEditorMsg is sent when the external editor process exits.
 type ExternalEditorMsg struct {
 	Content string
 	Err     error
 }
-
-// externalEditorMsg is an internal alias.
-type externalEditorMsg = ExternalEditorMsg

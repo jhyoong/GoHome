@@ -91,9 +91,6 @@ type Model struct {
 	fileSearching bool
 	activeModal   Interactive
 
-	homeDir string
-	cwd     string
-
 	settings config.Settings
 
 	pendingMessages []string
@@ -203,8 +200,6 @@ func (m *Model) SetSlashCallbacks(cb SlashCallbacks) {
 	m.slashCB = cb
 }
 
-func (m *Model) SetHomeDir(dir string)         { m.homeDir = dir }
-func (m *Model) SetCWD(dir string)             { m.cwd = dir }
 func (m *Model) SetSettings(s config.Settings) { m.settings = s }
 func (m *Model) SetRenderThrottleMs(ms int)    { m.renderThrottleMs = ms }
 func (m *Model) SetClientFrontend(cfe *ClientFrontend) { m.cfe = cfe }
@@ -332,7 +327,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, SpinnerTickCmd()
 		}
 
-	case approvalReqMsg:
+	case ApprovalReqMsg:
 		m.handleApprovalReq(msg)
 
 	case tea.KeyMsg:
@@ -368,12 +363,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.focused = msg.SessionID
 		}
 
-	case agentEventMsg:
+	case AgentEventMsg:
 		if cmd := m.handleAgentEvent(msg); cmd != nil {
 			return m, cmd
 		}
 
-	case externalEditorMsg:
+	case ExternalEditorMsg:
 		m.handleExternalEditorResult(msg)
 	}
 
