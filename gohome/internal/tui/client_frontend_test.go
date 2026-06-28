@@ -337,3 +337,28 @@ func TestClientFrontend_Close(t *testing.T) {
 		t.Fatalf("Close: %v", err)
 	}
 }
+
+func TestClientFrontend_Close_ClosesChannels(t *testing.T) {
+	server, client := net.Pipe()
+	sc := rpc.NewConn(server)
+	cc := rpc.NewConn(client)
+	_ = sc
+
+	eventCh := make(chan AgentEventMsg, 64)
+	cfe := NewClientFrontend(cc, eventCh)
+	go cfe.ReadLoop()
+
+	_ = cfe.Close()
+	sc.Close()
+
+	// Approvals channel should be closed.
+	_, ok := <-cfe.Approvals()
+	if ok {
+		t.Error("approvals channel should be closed after Close()")
+	}
+	// StateSync channel should be closed.
+	_, ok = <-cfe.StateSync()
+	if ok {
+		t.Error("stateSync channel should be closed after Close()")
+	}
+}

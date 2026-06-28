@@ -68,6 +68,8 @@ func (cf *ClientFrontend) StateSync() <-chan StateSyncMsg {
 // goroutine. It returns when the connection is closed or an unrecoverable
 // read error occurs.
 func (cf *ClientFrontend) ReadLoop() {
+	defer close(cf.approvals)
+	defer close(cf.stateSync)
 	for {
 		msg, err := cf.conn.Read()
 		if err != nil {

@@ -304,7 +304,10 @@ func runClient(sockPath string, settings config.Settings, mc config.ModelConfig)
 	eventCh := make(chan tui.AgentEventMsg, 64)
 	cfe := tui.NewClientFrontend(c, eventCh)
 
-	go cfe.ReadLoop()
+	go func() {
+		cfe.ReadLoop()
+		close(eventCh)
+	}()
 
 	// Build TUI model.
 	m := tui.New("main")
