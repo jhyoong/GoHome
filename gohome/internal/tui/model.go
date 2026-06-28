@@ -262,24 +262,9 @@ func (m *Model) syncChatHeight() {
 	m.chat.SetMaxHeight(chatH)
 }
 
-// rebuildViewportKeepScroll refreshes the chat cursor and timeline without
-// resetting scroll position. Used after toggling block expansion.
-func (m *Model) rebuildViewportKeepScroll() {
-	sv, ok := m.sessions[m.focused]
-	if !ok {
-		return
-	}
-	cur := -1
-	if strings.TrimSpace(m.editor.Value()) == "" {
-		m.clampCursor()
-		cur = m.cursor
-	}
-	m.chat.SetTimeline(&sv.Timeline)
-	m.chat.SetCursor(cur)
-}
-
 // rebuildViewport refreshes the chat component state from the focused session.
-func (m *Model) rebuildViewport() {
+// When keepScroll is false, the viewport scrolls to the bottom.
+func (m *Model) rebuildViewport(keepScroll ...bool) {
 	sv, ok := m.sessions[m.focused]
 	if !ok {
 		return
@@ -291,7 +276,9 @@ func (m *Model) rebuildViewport() {
 	}
 	m.chat.SetTimeline(&sv.Timeline)
 	m.chat.SetCursor(cur)
-	m.chat.ScrollToBottom()
+	if len(keepScroll) == 0 || !keepScroll[0] {
+		m.chat.ScrollToBottom()
+	}
 }
 
 func (m *Model) cancelFocusedSession() {

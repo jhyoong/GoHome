@@ -3,6 +3,7 @@ package rpc
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"sync"
@@ -90,5 +91,5 @@ func (c *Conn) writeJSON(v any) error {
 
 // isClosedErr returns true if the error indicates a closed connection or pipe.
 func isClosedErr(err error) bool {
-	return err == io.ErrClosedPipe || err == net.ErrClosed
+	return errors.Is(err, io.ErrClosedPipe) || errors.Is(err, net.ErrClosed)
 }

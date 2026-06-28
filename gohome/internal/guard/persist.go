@@ -3,6 +3,7 @@ package guard
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -59,7 +60,7 @@ func (w *Whitelist) AddProject(tool, pattern string) error {
 // Must be called with w.mu already held.
 func (w *Whitelist) persistToFile(tool, pattern string) error {
 	// Ensure parent directories exist.
-	dir := dirOf(w.projectPath)
+	dir := filepath.Dir(w.projectPath)
 	if dir != "" {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
@@ -122,12 +123,3 @@ func containsStr(slice []string, s string) bool {
 	return false
 }
 
-// dirOf returns the directory component of a file path.
-func dirOf(path string) string {
-	for i := len(path) - 1; i >= 0; i-- {
-		if path[i] == '/' || path[i] == '\\' {
-			return path[:i]
-		}
-	}
-	return ""
-}

@@ -113,7 +113,7 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					if entry.Kind == KindTool || entry.Kind == KindThinking {
 						m.chat.DisableAutoScroll(m.winW)
 						entry.Expanded = !entry.Expanded
-						m.rebuildViewportKeepScroll()
+						m.rebuildViewport(true)
 					}
 				}
 			} else if strings.HasPrefix(text, "/") {
@@ -187,7 +187,7 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if m.cursor > 0 {
 					m.cursor--
 				}
-				m.rebuildViewportKeepScroll()
+				m.rebuildViewport(true)
 				m.syncChatHeight()
 				m.chat.EnsureCursorVisible(m.winW)
 				return m, nil
@@ -197,7 +197,7 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if ok && m.cursor < len(sv.Timeline)-1 {
 					m.cursor++
 				}
-				m.rebuildViewportKeepScroll()
+				m.rebuildViewport(true)
 				m.syncChatHeight()
 				m.chat.EnsureCursorVisible(m.winW)
 				return m, nil
