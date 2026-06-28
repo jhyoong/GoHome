@@ -398,6 +398,103 @@ func TestServer_SessionList(t *testing.T) {
 	}
 }
 
+func TestServer_SessionNew_SwapOrder(t *testing.T) {
+	dir := t.TempDir()
+	sock := newTestSocket(t)
+	g := newTestGuard()
+
+	registry := tools.NewRegistry()
+
+	srv, err := NewServer(sock, ServerConfig{
+		Version:      "test-swap",
+		LLMClient:    &echoClient{},
+		Guard:        g,
+		Registry:     registry,
+		SystemPrompt: "test",
+		MaxTokens:    1024,
+		Home:         dir,
+		CWD:          dir,
+		SessionID:    "swap-test-1",
+	})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+
+	serveBackground(t, srv)
+
+	conn := dialTestServer(t, sock)
+
+	// Send session.new -- this exercises the reordered swap closure.
+	msg := sendRequest(t, conn, 1, rpc.MethodSessionNew, json.RawMessage(`{}`))
+	if msg.Error != nil {
+		t.Fatalf("unexpected error on session.new: code=%d message=%q",
+			msg.Error.Code, msg.Error.Message)
+	}
+	if msg.Result == nil {
+		t.Fatal("expected result, got nil")
+	}
+
+	var result rpc.SessionNewResult
+	if err := json.Unmarshal(msg.Result, &result); err != nil {
+		t.Fatalf("unmarshal session.new result: %v", err)
+	}
+	if result.SessionID == "" {
+		t.Fatal("expected non-empty sessionID in session.new result")
+	}
+	if result.SessionID == "swap-test-1" {
+		t.Error("new session ID should differ from the original")
+	}
+
+	// Verify the old session's JSONL file contains a session_end event
+	// and the new session's JSONL file contains a session_start event.
+	sessionsDir := filepath.Join(dir, "sessions")
+	var jsonlFiles []string
+	filepath.Walk(sessionsDir, func(path string, info os.FileInfo, err error) error {
+		if err == nil && filepath.Ext(path) == ".jsonl" {
+			jsonlFiles = append(jsonlFiles, path)
+		}
+		return nil
+	})
+	if len(jsonlFiles) < 2 {
+		t.Fatalf("expected at least 2 JSONL files (old + new session), got %d", len(jsonlFiles))
+	}
+
+	// Verify the new session JSONL has a session_start event.
+	foundStart := false
+	for _, jf := range jsonlFiles {
+		data, err := os.ReadFile(jf)
+		if err != nil {
+			t.Fatalf("read JSONL: %v", err)
+		}
+		if len(data) == 0 {
+			continue
+		}
+		// Check first line for session_start.
+		var first map[string]json.RawMessage
+		lines := bufio.NewScanner(bufio.NewReader(
+			func() *os.File { f, _ := os.Open(jf); return f }(),
+		))
+		if lines.Scan() {
+			if err := json.Unmarshal(lines.Bytes(), &first); err == nil {
+				var evType string
+				json.Unmarshal(first["type"], &evType)
+				if evType == "session_start" {
+					var start map[string]json.RawMessage
+					json.Unmarshal(lines.Bytes(), &start)
+					var sid string
+					json.Unmarshal(start["id"], &sid)
+					if sid == result.SessionID {
+						foundStart = true
+					}
+				}
+			}
+		}
+	}
+	if !foundStart {
+		t.Error("expected to find session_start event for new session in JSONL files")
+	}
+}
+
 func TestServer_Reconnect_SendsState(t *testing.T) {
 	dir := t.TempDir()
 	sock := newTestSocket(t)

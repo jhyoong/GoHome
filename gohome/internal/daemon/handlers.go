@@ -34,8 +34,6 @@ func (s *Server) handleSessionNew(c *rpc.Conn, msg *rpc.Message) {
 	wrPath := session.SessionPath(s.config.Home, s.config.CWD, id, time.Now().UTC())
 
 	_, err := s.agent.State.Swap("new "+id, func(oldSess *session.Session, oldWriter *session.Writer) (*session.Session, *session.Writer, error) {
-		oldWriter.Emit(session.SessionEnd{Reason: "switch"})
-		_ = oldWriter.Close()
 		newWriter, err := session.OpenWriter(wrPath)
 		if err != nil {
 			return nil, nil, err
@@ -47,6 +45,8 @@ func (s *Server) handleSessionNew(c *rpc.Conn, msg *rpc.Message) {
 			ModelConfig: currentCfg,
 			StartedAt:   newSess.StartedAt,
 		})
+		oldWriter.Emit(session.SessionEnd{Reason: "switch"})
+		_ = oldWriter.Close()
 		return newSess, newWriter, nil
 	})
 	if err != nil {
@@ -94,12 +94,12 @@ func (s *Server) handleSessionResume(c *rpc.Conn, msg *rpc.Message) {
 	}
 
 	_, err = s.agent.State.Swap("resume "+loaded.ID, func(oldSess *session.Session, oldWriter *session.Writer) (*session.Session, *session.Writer, error) {
-		oldWriter.Emit(session.SessionEnd{Reason: "switch"})
-		_ = oldWriter.Close()
 		newWriter, err := session.OpenWriter(path)
 		if err != nil {
 			return nil, nil, err
 		}
+		oldWriter.Emit(session.SessionEnd{Reason: "switch"})
+		_ = oldWriter.Close()
 		return loaded, newWriter, nil
 	})
 	if err != nil {
