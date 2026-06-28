@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 )
 
@@ -17,6 +18,7 @@ type Frontend interface {
 // the whitelist and, when required, prompts the frontend for approval.
 type Guard struct {
 	whitelist *Whitelist
+	mu        sync.Mutex // guards frontend
 	frontend  Frontend
 	yolo      atomic.Bool
 }
@@ -53,7 +55,11 @@ func (g *Guard) Check(ctx context.Context, sessionID, tool string, input json.Ra
 		SuggestedPattern: Suggest(tool, input),
 	}
 
-	dec, err := g.frontend.RequestApproval(ctx, req)
+	g.mu.Lock()
+	fe := g.frontend
+	g.mu.Unlock()
+
+	dec, err := fe.RequestApproval(ctx, req)
 	if err != nil {
 		return Decision{}, err
 	}
@@ -86,7 +92,9 @@ func (g *Guard) Check(ctx context.Context, sessionID, tool string, input json.Ra
 // to wire the RPCFrontend when a client connects, so that tool approval
 // requests are routed to the connected TUI.
 func (g *Guard) SetFrontend(fe Frontend) {
+	g.mu.Lock()
 	g.frontend = fe
+	g.mu.Unlock()
 }
 
 // summaryFor builds a short human-readable summary of a tool call.
