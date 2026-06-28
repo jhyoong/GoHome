@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"sync/atomic"
 
 	"github.com/jhyoong/GoHome/gohome/internal/daemon/rpc"
@@ -100,9 +101,13 @@ func (cf *ClientFrontend) handleNotification(msg *rpc.Message) {
 		if err := json.Unmarshal(msg.Params, &params); err != nil {
 			return
 		}
-		cf.events <- AgentEventMsg{
+		select {
+		case cf.events <- AgentEventMsg{
 			SessionID: params.SessionID,
 			Ev:        params.Event,
+		}:
+		default:
+			slog.Warn("client_frontend: events channel full, dropping agent event")
 		}
 
 	case rpc.MethodSessionState:
@@ -135,7 +140,8 @@ func (cf *ClientFrontend) handleRequest(msg *rpc.Message) {
 			return
 		}
 		rpcID := msg.ID
-		cf.approvals <- ApprovalReqMsg{
+		select {
+		case cf.approvals <- ApprovalReqMsg{
 			Req: guard.ApprovalRequest{
 				SessionID:        params.SessionID,
 				Tool:             params.Tool,
@@ -146,6 +152,9 @@ func (cf *ClientFrontend) handleRequest(msg *rpc.Message) {
 			Resolve: func(dec guard.ApprovalDecision) {
 				_ = cf.RespondApproval(rpcID, dec)
 			},
+		}:
+		default:
+			slog.Warn("client_frontend: approvals channel full, dropping approval request")
 		}
 	}
 }

@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"log/slog"
 	"time"
 
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
@@ -35,12 +36,14 @@ func (s *Server) dispatch(c *rpc.Conn, msg *rpc.Message) {
 		if !unmarshalParams(c, msg.ID, msg.Params, &params) {
 			return
 		}
-		// Send the RPC response before delivering input so the TUI's
-		// sendInputCmd unblocks immediately, even if the agent is busy.
-		respondOK(c, msg.ID, struct{}{})
 		if fe := s.frontend(); fe != nil {
-			fe.DeliverInput(params.Text)
+			if err := fe.DeliverInput(params.Text); err != nil {
+				slog.Warn("dispatch: DeliverInput failed", "error", err)
+				respondError(c, msg.ID, rpc.ErrServerError, err.Error())
+				return
+			}
 		}
+		respondOK(c, msg.ID, struct{}{})
 
 	case rpc.MethodSessionList:
 		s.handleSessionList(c, msg)

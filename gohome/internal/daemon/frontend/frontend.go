@@ -121,8 +121,14 @@ func (f *RPCFrontend) AwaitUserInput(ctx context.Context, _ string) (string, err
 
 // DeliverInput pushes user input text into the frontend. It is called by the
 // daemon server when it receives a session.input request from the TUI.
-func (f *RPCFrontend) DeliverInput(text string) {
-	f.inputCh <- text
+// It returns an error if the input channel is full (agent is not awaiting input).
+func (f *RPCFrontend) DeliverInput(text string) error {
+	select {
+	case f.inputCh <- text:
+		return nil
+	default:
+		return fmt.Errorf("input channel full: agent is not awaiting input")
+	}
 }
 
 // ResolvePending delivers a JSON-RPC response to a waiting RequestApproval

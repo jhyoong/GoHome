@@ -175,7 +175,9 @@ func TestRPCFrontend_AwaitUserInput(t *testing.T) {
 	// Deliver input from a goroutine after a short delay.
 	go func() {
 		time.Sleep(10 * time.Millisecond)
-		fe.DeliverInput("hello")
+		if err := fe.DeliverInput("hello"); err != nil {
+			t.Errorf("DeliverInput: %v", err)
+		}
 	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
