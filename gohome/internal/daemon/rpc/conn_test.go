@@ -3,6 +3,7 @@ package rpc
 import (
 	"encoding/json"
 	"net"
+	"strings"
 	"testing"
 )
 
@@ -124,5 +125,24 @@ func TestConn_WriteResponse(t *testing.T) {
 	}
 	if string(msg.Result) != `{"tools":[]}` {
 		t.Fatalf("result = %s, want {\"tools\":[]}", msg.Result)
+	}
+}
+
+func TestConn_LargeMessage(t *testing.T) {
+	server, client := net.Pipe()
+	sc := NewConn(server)
+	cc := NewConn(client)
+
+	bigPayload := strings.Repeat("x", 100*1024) // 100 KB
+	go func() {
+		_ = sc.Notify("test.large", json.RawMessage(`"`+bigPayload+`"`))
+	}()
+
+	msg, err := cc.Read()
+	if err != nil {
+		t.Fatalf("Read failed: %v", err)
+	}
+	if msg.Method != "test.large" {
+		t.Errorf("method = %q, want test.large", msg.Method)
 	}
 }

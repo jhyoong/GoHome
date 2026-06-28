@@ -19,9 +19,11 @@ type Conn struct {
 // NewConn creates a Conn that reads and writes JSON-RPC messages over c using
 // newline-delimited JSON framing.
 func NewConn(c net.Conn) *Conn {
+	s := bufio.NewScanner(c)
+	s.Buffer(make([]byte, 0, 64*1024), 1<<20)
 	return &Conn{
 		conn:    c,
-		scanner: bufio.NewScanner(c),
+		scanner: s,
 	}
 }
 
