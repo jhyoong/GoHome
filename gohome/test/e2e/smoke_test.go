@@ -42,7 +42,7 @@ func (noopFrontend) RequestApproval(_ context.Context, _ guard.ApprovalRequest) 
 	return guard.ApprovalDecision{Outcome: guard.AllowOnce}, nil
 }
 
-func (noopFrontend) AwaitUserInput(_ context.Context, _ string) (string, error) {
+func (noopFrontend) AwaitUserInput(_ context.Context) (string, error) {
 	return "", errors.New("no interactive input in e2e tests")
 }
 

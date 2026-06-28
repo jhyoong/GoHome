@@ -17,8 +17,6 @@ import (
 // returns when the server context is cancelled.
 func (s *Server) runLoop() {
 	for {
-		sessID := s.agent.State.Session().ID
-
 		fe := s.frontend()
 
 		if fe == nil {
@@ -34,7 +32,7 @@ func (s *Server) runLoop() {
 		// Set frontend on agent for this iteration.
 		s.agent.SetFrontend(fe)
 
-		text, err := fe.AwaitUserInput(s.ctx, sessID)
+		text, err := fe.AwaitUserInput(s.ctx)
 		if err != nil {
 			if s.ctx.Err() != nil {
 				return

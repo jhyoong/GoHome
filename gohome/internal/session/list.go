@@ -146,8 +146,8 @@ func parseListing(path string) (Listing, error) {
 	return listing, nil
 }
 
-// IsBlank reports whether the JSONL file at path contains no user_message events.
-func IsBlank(path string) (bool, error) {
+// isBlank reports whether the JSONL file at path contains no user_message events.
+func isBlank(path string) (bool, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return false, err
@@ -176,9 +176,9 @@ func IsBlank(path string) (bool, error) {
 	return true, nil
 }
 
-// CleanBlank removes all session JSONL files under home/sessions/<slug> that
+// cleanBlank removes all session JSONL files under home/sessions/<slug> that
 // contain no user_message events. Returns the number of files removed.
-func CleanBlank(home, cwd string) (int, error) {
+func cleanBlank(home, cwd string) (int, error) {
 	dir := filepath.Join(home, "sessions", ProjectSlug(cwd))
 	entries, err := os.ReadDir(dir)
 	if os.IsNotExist(err) {
@@ -197,7 +197,7 @@ func CleanBlank(home, cwd string) (int, error) {
 			continue
 		}
 		path := filepath.Join(dir, entry.Name())
-		blank, err := IsBlank(path)
+		blank, err := isBlank(path)
 		if err != nil {
 			continue
 		}

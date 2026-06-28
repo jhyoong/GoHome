@@ -24,7 +24,7 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 	tctx := tools.WithSession(ctx, sess)
 
 	for {
-		stopReason, err := a.Turn(tctx, sess)
+		_, err := a.Turn(tctx, sess)
 		if err != nil {
 			if ctx.Err() != nil {
 				// Context was cancelled during Turn. Emit a frontend event but
@@ -96,8 +96,6 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 			Role:    common.RoleTool,
 			Content: resultBlocks,
 		})
-
-		_ = stopReason // used implicitly: we continue the loop when toolUseBlocks non-empty
 	}
 }
 

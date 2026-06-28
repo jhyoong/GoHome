@@ -9,7 +9,7 @@ import (
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 )
 
-func TestValidateHistory_ValidThinkingWithSignature(t *testing.T) {
+func TestValidateHistoryValidThinkingWithSignature(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
@@ -20,14 +20,14 @@ func TestValidateHistory_ValidThinkingWithSignature(t *testing.T) {
 		}},
 	}
 
-	ValidateHistory(logger, "sess-1", msgs)
+	validateHistory(logger, "sess-1", msgs)
 
 	if buf.Len() != 0 {
 		t.Errorf("expected no warnings, got: %s", buf.String())
 	}
 }
 
-func TestValidateHistory_ValidThinkingWithoutSignature(t *testing.T) {
+func TestValidateHistoryValidThinkingWithoutSignature(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
@@ -38,14 +38,14 @@ func TestValidateHistory_ValidThinkingWithoutSignature(t *testing.T) {
 		}},
 	}
 
-	ValidateHistory(logger, "sess-1", msgs)
+	validateHistory(logger, "sess-1", msgs)
 
 	if buf.Len() != 0 {
 		t.Errorf("expected no warnings for empty signature (OpenAI), got: %s", buf.String())
 	}
 }
 
-func TestValidateHistory_EmptyTextWarns(t *testing.T) {
+func TestValidateHistoryEmptyTextWarns(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
@@ -56,14 +56,14 @@ func TestValidateHistory_EmptyTextWarns(t *testing.T) {
 		}},
 	}
 
-	ValidateHistory(logger, "sess-1", msgs)
+	validateHistory(logger, "sess-1", msgs)
 
 	if !strings.Contains(buf.String(), "empty thinking block") {
 		t.Errorf("expected warning about empty thinking block, got: %s", buf.String())
 	}
 }
 
-func TestValidateHistory_MixedBlocksOnlyWarnsInvalid(t *testing.T) {
+func TestValidateHistoryMixedBlocksOnlyWarnsInvalid(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
@@ -78,7 +78,7 @@ func TestValidateHistory_MixedBlocksOnlyWarnsInvalid(t *testing.T) {
 		}},
 	}
 
-	ValidateHistory(logger, "sess-1", msgs)
+	validateHistory(logger, "sess-1", msgs)
 
 	output := buf.String()
 	if !strings.Contains(output, "empty thinking block") {
@@ -90,7 +90,7 @@ func TestValidateHistory_MixedBlocksOnlyWarnsInvalid(t *testing.T) {
 	}
 }
 
-func TestValidateHistory_NoThinkingBlocks(t *testing.T) {
+func TestValidateHistoryNoThinkingBlocks(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
@@ -103,7 +103,7 @@ func TestValidateHistory_NoThinkingBlocks(t *testing.T) {
 		}},
 	}
 
-	ValidateHistory(logger, "sess-1", msgs)
+	validateHistory(logger, "sess-1", msgs)
 
 	if buf.Len() != 0 {
 		t.Errorf("expected no warnings, got: %s", buf.String())

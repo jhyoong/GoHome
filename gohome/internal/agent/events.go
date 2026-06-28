@@ -62,5 +62,5 @@ type Frontend interface {
 
 	// AwaitUserInput blocks until the user submits a follow-up prompt or ctx
 	// is cancelled.
-	AwaitUserInput(ctx context.Context, sessionID string) (string, error)
+	AwaitUserInput(ctx context.Context) (string, error)
 }

@@ -29,7 +29,7 @@ func (f *fakeRecorder) RequestApproval(_ context.Context, _ guard.ApprovalReques
 	return f.approval, f.approvalErr
 }
 
-func (f *fakeRecorder) AwaitUserInput(_ context.Context, _ string) (string, error) {
+func (f *fakeRecorder) AwaitUserInput(_ context.Context) (string, error) {
 	return f.userInput, f.userInputErr
 }
 

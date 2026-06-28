@@ -33,7 +33,7 @@ func (s *Server) handleSessionNew(c *rpc.Conn, msg *rpc.Message) {
 	newSess := session.NewSession(id, s.config.CWD, currentModel, currentCfg)
 	wrPath := session.SessionPath(s.config.Home, s.config.CWD, id, time.Now().UTC())
 
-	_, err := s.agent.State.Swap("new "+id, func(oldSess *session.Session, oldWriter *session.Writer) (*session.Session, *session.Writer, error) {
+	err := s.agent.State.Swap("new "+id, func(oldSess *session.Session, oldWriter *session.Writer) (*session.Session, *session.Writer, error) {
 		newWriter, err := session.OpenWriter(wrPath)
 		if err != nil {
 			return nil, nil, err
@@ -93,7 +93,7 @@ func (s *Server) handleSessionResume(c *rpc.Conn, msg *rpc.Message) {
 		return
 	}
 
-	_, err = s.agent.State.Swap("resume "+loaded.ID, func(oldSess *session.Session, oldWriter *session.Writer) (*session.Session, *session.Writer, error) {
+	err = s.agent.State.Swap("resume "+loaded.ID, func(oldSess *session.Session, oldWriter *session.Writer) (*session.Session, *session.Writer, error) {
 		newWriter, err := session.OpenWriter(path)
 		if err != nil {
 			return nil, nil, err

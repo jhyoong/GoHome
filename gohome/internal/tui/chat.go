@@ -583,7 +583,7 @@ func expandTabs(s string, tabStop int) string {
 
 // renderToolLine builds the collapsed single-line representation of a tool entry.
 func renderToolLine(e TimelineEntry, maxWidth int) string {
-	arg := shortArg(e.Text)
+	arg := shortSummary(strings.TrimSpace(e.Text))
 	result := shortSummary(e.ToolResult)
 
 	var st lipgloss.Style

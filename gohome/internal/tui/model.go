@@ -433,12 +433,6 @@ func shortSummary(s string) string {
 	return fmt.Sprintf("%d lines", len(lines))
 }
 
-// shortArg extracts a brief summary from a tool's InputJSON (the args).
-// It delegates to shortSummary to produce a compact single-line representation.
-func shortArg(inputJSON string) string {
-	return shortSummary(strings.TrimSpace(inputJSON))
-}
-
 // clampCursor ensures m.cursor is within the valid range for the focused session.
 func (m *Model) clampCursor() {
 	sv, ok := m.sessions[m.focused]

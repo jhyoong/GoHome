@@ -38,14 +38,11 @@ func TestSwapWhileIdle(t *testing.T) {
 	sess2 := session.NewSession("s2", t.TempDir(), "m", "ep")
 	w2 := openTestWriter(t)
 
-	queued, err := st.Swap("resume s2", func(_ *session.Session, _ *session.Writer) (*session.Session, *session.Writer, error) {
+	err := st.Swap("resume s2", func(_ *session.Session, _ *session.Writer) (*session.Session, *session.Writer, error) {
 		return sess2, w2, nil
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	if queued {
-		t.Fatal("expected immediate execution, got queued")
 	}
 	if st.Session().ID != "s2" {
 		t.Errorf("session = %q, want s2", st.Session().ID)
@@ -64,15 +61,13 @@ func TestSwapWhileBusy(t *testing.T) {
 	sess2 := session.NewSession("s2", t.TempDir(), "m", "ep")
 	w2 := openTestWriter(t)
 
-	queued, err := st.Swap("resume s2", func(_ *session.Session, _ *session.Writer) (*session.Session, *session.Writer, error) {
+	err := st.Swap("resume s2", func(_ *session.Session, _ *session.Writer) (*session.Session, *session.Writer, error) {
 		return sess2, w2, nil
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !queued {
-		t.Fatal("expected queued, got immediate execution")
-	}
+	// When busy, the swap is queued (session unchanged until DrainPending).
 	if st.Session().ID != "s1" {
 		t.Errorf("session should still be s1 while busy, got %q", st.Session().ID)
 	}
@@ -87,7 +82,7 @@ func TestDrainPendingExecutesSwap(t *testing.T) {
 	sess2 := session.NewSession("s2", t.TempDir(), "m", "ep")
 	w2 := openTestWriter(t)
 
-	_, _ = st.Swap("resume s2", func(_ *session.Session, _ *session.Writer) (*session.Session, *session.Writer, error) {
+	_ = st.Swap("resume s2", func(_ *session.Session, _ *session.Writer) (*session.Session, *session.Writer, error) {
 		return sess2, w2, nil
 	})
 
@@ -128,7 +123,7 @@ func TestClearPendingDiscardsSwap(t *testing.T) {
 	sess2 := session.NewSession("s2", t.TempDir(), "m", "ep")
 	w2 := openTestWriter(t)
 
-	_, _ = st.Swap("new", func(_ *session.Session, _ *session.Writer) (*session.Session, *session.Writer, error) {
+	_ = st.Swap("new", func(_ *session.Session, _ *session.Writer) (*session.Session, *session.Writer, error) {
 		return sess2, w2, nil
 	})
 
@@ -152,7 +147,7 @@ func TestSwapError(t *testing.T) {
 	w1 := openTestWriter(t)
 	st := NewSessionState(sess1, w1, nil)
 
-	_, err := st.Swap("bad", func(_ *session.Session, _ *session.Writer) (*session.Session, *session.Writer, error) {
+	err := st.Swap("bad", func(_ *session.Session, _ *session.Writer) (*session.Session, *session.Writer, error) {
 		return nil, nil, errors.New("writer open failed")
 	})
 	if err == nil {
@@ -172,16 +167,13 @@ func TestSwapClosureUsesOldWriter(t *testing.T) {
 	w2 := openTestWriter(t)
 
 	var capturedWriter *session.Writer
-	queued, err := st.Swap("new s2", func(_ *session.Session, oldWriter *session.Writer) (*session.Session, *session.Writer, error) {
+	err := st.Swap("new s2", func(_ *session.Session, oldWriter *session.Writer) (*session.Session, *session.Writer, error) {
 		capturedWriter = oldWriter
 		oldWriter.Emit(session.SessionEnd{Reason: "switch"})
 		return sess2, w2, nil
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	if queued {
-		t.Fatal("expected immediate execution, got queued")
 	}
 	if capturedWriter != w1 {
 		t.Error("closure did not receive the old writer")
@@ -201,7 +193,7 @@ func TestDrainPendingClosureUsesOldWriter(t *testing.T) {
 	w2 := openTestWriter(t)
 
 	var capturedWriter *session.Writer
-	_, _ = st.Swap("new s2", func(_ *session.Session, oldWriter *session.Writer) (*session.Session, *session.Writer, error) {
+	_ = st.Swap("new s2", func(_ *session.Session, oldWriter *session.Writer) (*session.Session, *session.Writer, error) {
 		capturedWriter = oldWriter
 		oldWriter.Emit(session.SessionEnd{Reason: "switch"})
 		return sess2, w2, nil

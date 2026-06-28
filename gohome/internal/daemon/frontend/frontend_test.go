@@ -184,7 +184,7 @@ func TestRPCFrontend_AwaitUserInput(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	text, err := fe.AwaitUserInput(ctx, "s1")
+	text, err := fe.AwaitUserInput(ctx)
 	if err != nil {
 		t.Fatalf("AwaitUserInput: %v", err)
 	}
@@ -200,7 +200,7 @@ func TestRPCFrontend_AwaitUserInput_ContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
-	_, err := fe.AwaitUserInput(ctx, "s1")
+	_, err := fe.AwaitUserInput(ctx)
 	if err == nil {
 		t.Fatal("expected error on context cancellation, got nil")
 	}

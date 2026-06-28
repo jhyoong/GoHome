@@ -44,24 +44,22 @@ type Approval struct {
 }
 
 type SubagentSpawn struct {
-	ToolUseID string `json:"toolUseId"`
-	ChildID   string `json:"childId"`
-	Task      string `json:"task"`
+	ChildID string `json:"childId"`
+	Task    string `json:"task"`
 }
 
 type SubagentDone struct {
-	ToolUseID string `json:"toolUseId"`
-	ChildID   string `json:"childId"`
-	IsError   bool   `json:"isError"`
+	ChildID string `json:"childId"`
+	IsError bool   `json:"isError"`
 }
 
 type SessionEnd struct {
 	Reason string `json:"reason"`
 }
 
-// Encode serialises ev as a flat single-line JSON object with "type" and "ts" fields.
+// encode serialises ev as a flat single-line JSON object with "type" and "ts" fields.
 // Returns an error for unknown event types.
-func Encode(ev any) ([]byte, error) {
+func encode(ev any) ([]byte, error) {
 	var typeName string
 	switch ev.(type) {
 	case SessionStart:

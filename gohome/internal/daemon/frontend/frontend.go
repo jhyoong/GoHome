@@ -108,7 +108,7 @@ func (f *RPCFrontend) RequestApproval(ctx context.Context, req guard.ApprovalReq
 
 // AwaitUserInput blocks until DeliverInput is called, ctx is cancelled, or the
 // frontend is closed.
-func (f *RPCFrontend) AwaitUserInput(ctx context.Context, _ string) (string, error) {
+func (f *RPCFrontend) AwaitUserInput(ctx context.Context) (string, error) {
 	select {
 	case <-ctx.Done():
 		return "", ctx.Err()
