@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
-	"time"
 
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
 	"github.com/jhyoong/GoHome/gohome/internal/daemon/rpc"
@@ -20,11 +19,10 @@ func (s *Server) runLoop() {
 		fe := s.frontend()
 
 		if fe == nil {
-			// No client connected yet; wait briefly and retry.
 			select {
 			case <-s.ctx.Done():
 				return
-			case <-time.After(100 * time.Millisecond):
+			case <-s.feReady:
 				continue
 			}
 		}

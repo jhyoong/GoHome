@@ -141,7 +141,10 @@ func (a *Agent) dispatchTool(
 		return fmt.Sprintf("unknown tool: %s", block.ToolName), true
 	}
 
-	res, _ := safeExecute(tctx, tool, input, tools.NullSink{})
+	res, execErr := safeExecute(tctx, tool, input, tools.NullSink{})
+	if execErr != nil {
+		return fmt.Sprintf("tool execution error: %v", execErr), true
+	}
 	return res.Content, res.IsError
 }
 

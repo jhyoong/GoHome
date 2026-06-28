@@ -60,6 +60,7 @@ type Server struct {
 	fe        *frontend.RPCFrontend
 
 	graceTimer *time.Timer // started after client disconnect; fires auto-shutdown
+	feReady    chan struct{}
 
 	// Agent-related fields (populated only when ServerConfig.LLMClient is set).
 	agent      *agent.Agent
@@ -94,6 +95,7 @@ func NewServer(sockPath string, cfg ServerConfig) (*Server, error) {
 		startedAt: time.Now(),
 		cancel:    cancel,
 		ctx:       ctx,
+		feReady:   make(chan struct{}, 1),
 	}
 
 	if cfg.LLMClient != nil {
@@ -164,6 +166,11 @@ func (s *Server) handleClient(conn net.Conn) {
 	s.client = c
 	s.fe = fe
 	s.mu.Unlock()
+
+	select {
+	case s.feReady <- struct{}{}:
+	default:
+	}
 
 	// Send current state to the new client so it can display the correct
 	// model name, yolo status, and session ID immediately.
