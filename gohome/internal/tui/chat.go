@@ -180,6 +180,9 @@ func (c *ChatComponent) entryLineCount(e *TimelineEntry, maxWidth int) int {
 				for _, pl := range pv {
 					count += len(WrapText(pl, indent))
 				}
+				if total := len(strings.Split(strings.TrimSpace(e.ToolResult), "\n")); total > maxPreviewLines {
+					count++
+				}
 			}
 		} else {
 			if e.Shadow {
@@ -249,6 +252,9 @@ func (c *ChatComponent) countLines(maxWidth int) int {
 					}
 					for _, pl := range pv {
 						count += len(WrapText(pl, indent))
+					}
+					if total := len(strings.Split(strings.TrimSpace(e.ToolResult), "\n")); total > maxPreviewLines {
+						count++
 					}
 				}
 			} else {
@@ -401,6 +407,10 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 							lines = append(lines, "             "+ansiDim+wl+ansiReset)
 						}
 					}
+					if total := len(strings.Split(strings.TrimSpace(e.ToolResult), "\n")); total > maxPreviewLines {
+						hint := fmt.Sprintf("... (%d earlier lines, enter to expand)", total-maxPreviewLines)
+						lines = append(lines, "             "+ansiDim+hint+ansiReset)
+					}
 				}
 			} else {
 				if e.Text != "" {
@@ -431,6 +441,10 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 						for _, wl := range WrapText(pl, maxWidth-9) {
 							lines = append(lines, "       "+ansiDim+wl+ansiReset)
 						}
+					}
+					if total := len(strings.Split(strings.TrimSpace(e.ToolResult), "\n")); total > maxPreviewLines {
+						hint := fmt.Sprintf("... (%d earlier lines, enter to expand)", total-maxPreviewLines)
+						lines = append(lines, "       "+ansiDim+hint+ansiReset)
 					}
 				}
 			} else {

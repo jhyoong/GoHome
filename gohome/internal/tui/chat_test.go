@@ -416,6 +416,92 @@ func TestExtractToolArg(t *testing.T) {
 	}
 }
 
+func TestExpandHintOnTruncatedOutput(t *testing.T) {
+	// 6-line result: preview shows last 3 lines + hint showing "3 earlier lines"
+	entries := []TimelineEntry{{
+		Kind:     KindTool,
+		ToolName: "bash",
+		Text:     `{"command":"find ."}`,
+		ToolResult: "line1\nline2\nline3\nline4\nline5\nline6",
+		Status:   "success",
+	}}
+	c := NewChat(&entries, 20)
+	lines := c.Render(80)
+	joined := StripAnsi(strings.Join(lines, "\n"))
+	if !strings.Contains(joined, "... (3 earlier lines, enter to expand)") {
+		t.Errorf("expected expand hint with 3 earlier lines, got:\n%s", joined)
+	}
+}
+
+func TestExpandHintOnTruncatedOutput_Shadow(t *testing.T) {
+	// Shadow entry with 5-line result: preview shows last 3 + hint "2 earlier lines"
+	entries := []TimelineEntry{{
+		Kind:       KindTool,
+		ToolName:   "bash",
+		Text:       `{"command":"ls"}`,
+		ToolResult: "a\nb\nc\nd\ne",
+		Status:     "success",
+		Shadow:     true,
+	}}
+	c := NewChat(&entries, 20)
+	lines := c.Render(80)
+	joined := StripAnsi(strings.Join(lines, "\n"))
+	if !strings.Contains(joined, "... (2 earlier lines, enter to expand)") {
+		t.Errorf("expected expand hint with 2 earlier lines for shadow entry, got:\n%s", joined)
+	}
+}
+
+func TestNoExpandHintWhenFewLines(t *testing.T) {
+	// 3-line result: all 3 lines shown in preview, no hint needed
+	entries := []TimelineEntry{{
+		Kind:       KindTool,
+		ToolName:   "bash",
+		Text:       `{"command":"ls"}`,
+		ToolResult: "line1\nline2\nline3",
+		Status:     "success",
+	}}
+	c := NewChat(&entries, 20)
+	lines := c.Render(80)
+	joined := StripAnsi(strings.Join(lines, "\n"))
+	if strings.Contains(joined, "earlier lines") {
+		t.Errorf("should NOT show expand hint for result with <= maxPreviewLines lines, got:\n%s", joined)
+	}
+}
+
+func TestNoExpandHintWhenSingleLine(t *testing.T) {
+	// 1-line result: no preview at all, no hint
+	entries := []TimelineEntry{{
+		Kind:       KindTool,
+		ToolName:   "bash",
+		Text:       `{"command":"echo hi"}`,
+		ToolResult: "hi",
+		Status:     "success",
+	}}
+	c := NewChat(&entries, 20)
+	lines := c.Render(80)
+	joined := StripAnsi(strings.Join(lines, "\n"))
+	if strings.Contains(joined, "earlier lines") {
+		t.Errorf("should NOT show expand hint for single-line result, got:\n%s", joined)
+	}
+}
+
+func TestExpandHintLineCount(t *testing.T) {
+	// Verify entryLineCount accounts for the hint line
+	entries := []TimelineEntry{{
+		Kind:       KindTool,
+		ToolName:   "bash",
+		Text:       `{"command":"find ."}`,
+		ToolResult: "line1\nline2\nline3\nline4\nline5\nline6",
+		Status:     "success",
+	}}
+	c := NewChat(&entries, 40)
+	lines := c.Render(80)
+	// 1 (header) + 3 (preview lines) + 1 (hint) = 5
+	if len(lines) != 5 {
+		t.Errorf("expected 5 lines (header + 3 preview + hint), got %d: %v", len(lines), lines)
+	}
+}
+
 func TestRenderThrottle_SkipsIntermediateRebuilds(t *testing.T) {
 	m := New("main")
 	m.SetRenderThrottleMs(100)
