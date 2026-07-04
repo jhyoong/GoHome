@@ -102,6 +102,33 @@ func dialTestServer(t *testing.T, sockPath string) net.Conn {
 	return conn
 }
 
+// newTestAgentServer creates a Server with sensible defaults for agent-based
+// tests. Use functional options to override individual ServerConfig fields.
+func newTestAgentServer(t *testing.T, sock string, opts ...func(*ServerConfig)) *Server {
+	t.Helper()
+	dir := t.TempDir()
+	cfg := ServerConfig{
+		Version:      "test",
+		LLMClient:    &echoClient{},
+		Guard:        newTestGuard(),
+		Registry:     tools.NewRegistry(),
+		SystemPrompt: "test",
+		MaxTokens:    1024,
+		Home:         dir,
+		CWD:          dir,
+		SessionID:    "test-sess",
+		Settings:     config.Settings{ModelConfig: map[string]config.ModelConfig{}},
+	}
+	for _, fn := range opts {
+		fn(&cfg)
+	}
+	srv, err := NewServer(sock, cfg)
+	if err != nil {
+		t.Fatalf("newTestAgentServer: %v", err)
+	}
+	return srv
+}
+
 func TestServer_HealthCheck(t *testing.T) {
 	sock := newTestSocket(t)
 
@@ -193,26 +220,8 @@ func (c *echoClient) Stream(_ context.Context, req common.Request) (<-chan commo
 }
 
 func TestServer_WithAgent_ProcessesInput(t *testing.T) {
-	dir := t.TempDir()
 	sock := newTestSocket(t)
-	g := newTestGuard()
-
-	registry := tools.NewRegistry()
-
-	srv, err := NewServer(sock, ServerConfig{
-		Version:      "test-agent",
-		LLMClient:    &echoClient{},
-		Guard:        g,
-		Registry:     registry,
-		SystemPrompt: "you are a test assistant",
-		MaxTokens:    1024,
-		Home:         dir,
-		CWD:          dir,
-		SessionID:    "test-sess-1",
-	})
-	if err != nil {
-		t.Fatalf("NewServer: %v", err)
-	}
+	srv := newTestAgentServer(t, sock)
 
 	// Verify the agent was built.
 	if srv.agent == nil {
@@ -267,7 +276,7 @@ func TestServer_WithAgent_ProcessesInput(t *testing.T) {
 	}
 
 	// Verify session JSONL was written.
-	sessionsDir := filepath.Join(dir, "sessions")
+	sessionsDir := filepath.Join(srv.config.Home, "sessions")
 	var jsonlFiles []string
 	_ = filepath.Walk(sessionsDir, func(path string, info os.FileInfo, err error) error {
 		if err == nil && filepath.Ext(path) == ".jsonl" {
@@ -308,26 +317,10 @@ func TestServer_WithAgent_ProcessesInput(t *testing.T) {
 }
 
 func TestServer_SessionCancel(t *testing.T) {
-	dir := t.TempDir()
 	sock := newTestSocket(t)
-	g := newTestGuard()
-
-	registry := tools.NewRegistry()
-
-	srv, err := NewServer(sock, ServerConfig{
-		Version:      "test-cancel",
-		LLMClient:    &echoClient{},
-		Guard:        g,
-		Registry:     registry,
-		SystemPrompt: "test",
-		MaxTokens:    1024,
-		Home:         dir,
-		CWD:          dir,
-		SessionID:    "cancel-test-1",
+	srv := newTestAgentServer(t, sock, func(cfg *ServerConfig) {
+		cfg.SessionID = "cancel-test-1"
 	})
-	if err != nil {
-		t.Fatalf("NewServer: %v", err)
-	}
 
 	// Track whether cancel was called by setting a turn cancel function.
 	cancelCalled := false
@@ -351,27 +344,10 @@ func TestServer_SessionCancel(t *testing.T) {
 }
 
 func TestServer_SessionList(t *testing.T) {
-	dir := t.TempDir()
 	sock := newTestSocket(t)
-	g := newTestGuard()
-
-	// Create a server with an agent so there's at least one session JSONL file.
-	registry := tools.NewRegistry()
-
-	srv, err := NewServer(sock, ServerConfig{
-		Version:      "test-list",
-		LLMClient:    &echoClient{},
-		Guard:        g,
-		Registry:     registry,
-		SystemPrompt: "test",
-		MaxTokens:    1024,
-		Home:         dir,
-		CWD:          dir,
-		SessionID:    "list-test-1",
+	srv := newTestAgentServer(t, sock, func(cfg *ServerConfig) {
+		cfg.SessionID = "list-test-1"
 	})
-	if err != nil {
-		t.Fatalf("NewServer: %v", err)
-	}
 
 	serveBackground(t, srv)
 
@@ -400,26 +376,10 @@ func TestServer_SessionList(t *testing.T) {
 }
 
 func TestServer_SessionNew_SwapOrder(t *testing.T) {
-	dir := t.TempDir()
 	sock := newTestSocket(t)
-	g := newTestGuard()
-
-	registry := tools.NewRegistry()
-
-	srv, err := NewServer(sock, ServerConfig{
-		Version:      "test-swap",
-		LLMClient:    &echoClient{},
-		Guard:        g,
-		Registry:     registry,
-		SystemPrompt: "test",
-		MaxTokens:    1024,
-		Home:         dir,
-		CWD:          dir,
-		SessionID:    "swap-test-1",
+	srv := newTestAgentServer(t, sock, func(cfg *ServerConfig) {
+		cfg.SessionID = "swap-test-1"
 	})
-	if err != nil {
-		t.Fatalf("NewServer: %v", err)
-	}
 
 	serveBackground(t, srv)
 
@@ -448,7 +408,7 @@ func TestServer_SessionNew_SwapOrder(t *testing.T) {
 
 	// Verify the old session's JSONL file contains a session_end event
 	// and the new session's JSONL file contains a session_start event.
-	sessionsDir := filepath.Join(dir, "sessions")
+	sessionsDir := filepath.Join(srv.config.Home, "sessions")
 	var jsonlFiles []string
 	_ = filepath.Walk(sessionsDir, func(path string, info os.FileInfo, err error) error {
 		if err == nil && filepath.Ext(path) == ".jsonl" {
@@ -497,26 +457,10 @@ func TestServer_SessionNew_SwapOrder(t *testing.T) {
 }
 
 func TestServer_Reconnect_SendsState(t *testing.T) {
-	dir := t.TempDir()
 	sock := newTestSocket(t)
-	g := newTestGuard()
-
-	registry := tools.NewRegistry()
-
-	srv, err := NewServer(sock, ServerConfig{
-		Version:      "test-reconnect",
-		LLMClient:    &echoClient{},
-		Guard:        g,
-		Registry:     registry,
-		SystemPrompt: "test",
-		MaxTokens:    1024,
-		Home:         dir,
-		CWD:          dir,
-		SessionID:    "reconnect-sess-1",
+	srv := newTestAgentServer(t, sock, func(cfg *ServerConfig) {
+		cfg.SessionID = "reconnect-sess-1"
 	})
-	if err != nil {
-		t.Fatalf("NewServer: %v", err)
-	}
 
 	serveBackground(t, srv)
 
@@ -689,26 +633,10 @@ func TestDispatch_NilIDResponse_NoPanic(t *testing.T) {
 }
 
 func TestServer_YoloSet(t *testing.T) {
-	dir := t.TempDir()
 	sock := newTestSocket(t)
-	g := newTestGuard() // starts with yolo=true from newTestGuard
-
-	registry := tools.NewRegistry()
-
-	srv, err := NewServer(sock, ServerConfig{
-		Version:      "test-yolo",
-		LLMClient:    &echoClient{},
-		Guard:        g,
-		Registry:     registry,
-		SystemPrompt: "test",
-		MaxTokens:    1024,
-		Home:         dir,
-		CWD:          dir,
-		SessionID:    "yolo-test-1",
+	srv := newTestAgentServer(t, sock, func(cfg *ServerConfig) {
+		cfg.SessionID = "yolo-test-1"
 	})
-	if err != nil {
-		t.Fatalf("NewServer: %v", err)
-	}
 
 	serveBackground(t, srv)
 	conn := dialTestServer(t, sock)
@@ -719,7 +647,7 @@ func TestServer_YoloSet(t *testing.T) {
 	if msg.Error != nil {
 		t.Fatalf("yolo.set(false) error: %v", msg.Error)
 	}
-	if g.Yolo() {
+	if srv.config.Guard.Yolo() {
 		t.Error("expected yolo=false after yolo.set(false)")
 	}
 
@@ -729,32 +657,16 @@ func TestServer_YoloSet(t *testing.T) {
 	if msg2.Error != nil {
 		t.Fatalf("yolo.set(true) error: %v", msg2.Error)
 	}
-	if !g.Yolo() {
+	if !srv.config.Guard.Yolo() {
 		t.Error("expected yolo=true after yolo.set(true)")
 	}
 }
 
 func TestServer_SessionResume(t *testing.T) {
-	dir := t.TempDir()
 	sock := newTestSocket(t)
-	g := newTestGuard()
-
-	registry := tools.NewRegistry()
-
-	srv, err := NewServer(sock, ServerConfig{
-		Version:      "test-resume",
-		LLMClient:    &echoClient{},
-		Guard:        g,
-		Registry:     registry,
-		SystemPrompt: "test",
-		MaxTokens:    1024,
-		Home:         dir,
-		CWD:          dir,
-		SessionID:    "resume-original",
+	srv := newTestAgentServer(t, sock, func(cfg *ServerConfig) {
+		cfg.SessionID = "resume-original"
 	})
-	if err != nil {
-		t.Fatalf("NewServer: %v", err)
-	}
 
 	serveBackground(t, srv)
 
@@ -820,26 +732,10 @@ func TestServer_SessionResume(t *testing.T) {
 }
 
 func TestServer_SessionResume_NotFound(t *testing.T) {
-	dir := t.TempDir()
 	sock := newTestSocket(t)
-	g := newTestGuard()
-
-	registry := tools.NewRegistry()
-
-	srv, err := NewServer(sock, ServerConfig{
-		Version:      "test-resume-404",
-		LLMClient:    &echoClient{},
-		Guard:        g,
-		Registry:     registry,
-		SystemPrompt: "test",
-		MaxTokens:    1024,
-		Home:         dir,
-		CWD:          dir,
-		SessionID:    "some-session",
+	srv := newTestAgentServer(t, sock, func(cfg *ServerConfig) {
+		cfg.SessionID = "some-session"
 	})
-	if err != nil {
-		t.Fatalf("NewServer: %v", err)
-	}
 
 	serveBackground(t, srv)
 
@@ -856,27 +752,10 @@ func TestServer_SessionResume_NotFound(t *testing.T) {
 }
 
 func TestServer_ModelSet_NotFound(t *testing.T) {
-	dir := t.TempDir()
 	sock := newTestSocket(t)
-	g := newTestGuard()
-
-	registry := tools.NewRegistry()
-
-	srv, err := NewServer(sock, ServerConfig{
-		Version:      "test-model-404",
-		LLMClient:    &echoClient{},
-		Guard:        g,
-		Registry:     registry,
-		SystemPrompt: "test",
-		MaxTokens:    1024,
-		Home:         dir,
-		CWD:          dir,
-		SessionID:    "model-test-1",
-		Settings:     config.Settings{ModelConfig: map[string]config.ModelConfig{}},
+	srv := newTestAgentServer(t, sock, func(cfg *ServerConfig) {
+		cfg.SessionID = "model-test-1"
 	})
-	if err != nil {
-		t.Fatalf("NewServer: %v", err)
-	}
 
 	serveBackground(t, srv)
 
@@ -893,26 +772,14 @@ func TestServer_ModelSet_NotFound(t *testing.T) {
 }
 
 func TestServer_ModelSet_Success(t *testing.T) {
-	dir := t.TempDir()
 	sock := newTestSocket(t)
-	g := newTestGuard()
-
-	registry := tools.NewRegistry()
 
 	// Set a test API key env var for the model config to reference.
 	t.Setenv("TEST_GOHOME_MODEL_KEY", "test-key-value")
 
-	srv, err := NewServer(sock, ServerConfig{
-		Version:      "test-model-set",
-		LLMClient:    &echoClient{},
-		Guard:        g,
-		Registry:     registry,
-		SystemPrompt: "test",
-		MaxTokens:    1024,
-		Home:         dir,
-		CWD:          dir,
-		SessionID:    "model-set-1",
-		Settings: config.Settings{
+	srv := newTestAgentServer(t, sock, func(cfg *ServerConfig) {
+		cfg.SessionID = "model-set-1"
+		cfg.Settings = config.Settings{
 			ModelConfig: map[string]config.ModelConfig{
 				"test-model": {
 					Wire:          config.WireOpenAI,
@@ -922,11 +789,8 @@ func TestServer_ModelSet_Success(t *testing.T) {
 					ContextWindow: 64000,
 				},
 			},
-		},
+		}
 	})
-	if err != nil {
-		t.Fatalf("NewServer: %v", err)
-	}
 
 	serveBackground(t, srv)
 
