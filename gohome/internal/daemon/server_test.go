@@ -230,36 +230,51 @@ func TestServer_WithAgent_ProcessesInput(t *testing.T) {
 
 	serveBackground(t, srv)
 
-	// Connect and send session.input to trigger the agent.
+	// Use a single rpc.Conn for the entire test to avoid buffered-reader
+	// conflicts (a bare bufio.Scanner and rpc.Conn sharing one net.Conn
+	// causes the scanner to consume notifications on fast CI runners).
 	conn := dialTestServer(t, sock)
-
-	// Send a session.input request.
-	inputParams, _ := json.Marshal(rpc.SessionInputParams{Text: "hello"})
-	msg := sendRequest(t, conn, 1, rpc.MethodSessionInput, inputParams)
-	if msg.Error != nil {
-		t.Fatalf("unexpected error on session.input: %v", msg.Error)
-	}
-
-	// The agent should process the input and emit events back. We read
-	// notifications from the connection. Give the agent loop time to run.
-	_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
 	rc := rpc.NewConn(conn)
 
-	var notifications []*rpc.Message
-	for {
-		notif, err := rc.Read()
-		if err != nil {
-			break // timeout or connection closed
-		}
-		notifications = append(notifications, notif)
+	// Skip the session.state notification sent on connect.
+	if stateMsg, err := rc.Read(); err != nil {
+		t.Fatalf("read state notification: %v", err)
+	} else if stateMsg.Method != rpc.MethodSessionState {
+		t.Fatalf("expected session.state notification, got method=%q", stateMsg.Method)
 	}
 
-	// We should have received at least one agent.event notification.
+	// Send a session.input request via the rpc.Conn.
+	inputParams, _ := json.Marshal(rpc.SessionInputParams{Text: "hello"})
+	if err := rc.WriteRequest(rpc.Request{
+		ID:     rpc.NewID(1),
+		Method: rpc.MethodSessionInput,
+		Params: inputParams,
+	}); err != nil {
+		t.Fatalf("write session.input: %v", err)
+	}
+
+	// Read messages until the read deadline. Collect the response and any
+	// agent.event notifications that follow.
+	_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+	var notifications []*rpc.Message
+	for {
+		msg, err := rc.Read()
+		if err != nil {
+			break
+		}
+		if msg.IsResponse() {
+			if msg.Error != nil {
+				t.Fatalf("unexpected error on session.input: %v", msg.Error)
+			}
+			continue
+		}
+		notifications = append(notifications, msg)
+	}
+
 	if len(notifications) == 0 {
 		t.Fatal("expected at least one agent.event notification, got none")
 	}
 
-	// Verify we got a token_delta event with "echo reply".
 	foundEcho := false
 	for _, n := range notifications {
 		if n.Method == rpc.MethodAgentEvent {
@@ -671,21 +686,32 @@ func TestServer_SessionResume(t *testing.T) {
 	serveBackground(t, srv)
 
 	conn := dialTestServer(t, sock)
+	rc := rpc.NewConn(conn)
+
+	// Skip the session.state notification sent on connect.
+	if _, err := rc.Read(); err != nil {
+		t.Fatalf("read state notification: %v", err)
+	}
 
 	// 1. Send session.input to create some history in the original session.
 	inputParams, _ := json.Marshal(rpc.SessionInputParams{Text: "hello from original"})
-	msg := sendRequest(t, conn, 1, rpc.MethodSessionInput, inputParams)
-	if msg.Error != nil {
-		t.Fatalf("session.input error: %v", msg.Error)
+	if err := rc.WriteRequest(rpc.Request{
+		ID:     rpc.NewID(1),
+		Method: rpc.MethodSessionInput,
+		Params: inputParams,
+	}); err != nil {
+		t.Fatalf("write session.input: %v", err)
 	}
 
-	// Drain agent.event notifications so the agent turn completes.
+	// Drain the response and agent.event notifications so the agent turn completes.
 	_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
-	rc := rpc.NewConn(conn)
 	for {
-		_, err := rc.Read()
+		msg, err := rc.Read()
 		if err != nil {
 			break
+		}
+		if msg.IsResponse() && msg.Error != nil {
+			t.Fatalf("session.input error: %v", msg.Error)
 		}
 	}
 	_ = conn.Close()
