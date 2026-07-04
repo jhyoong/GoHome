@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -59,7 +60,10 @@ func sendRequest(t *testing.T, conn net.Conn, id int64, method string, params js
 
 func newTestSocket(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "gh-daemon-test-*")
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix sockets not supported on Windows")
+	}
+	dir, err := os.MkdirTemp("", "gh-daemon-test-*")
 	if err != nil {
 		t.Fatalf("MkdirTemp: %v", err)
 	}
