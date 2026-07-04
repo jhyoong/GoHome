@@ -291,6 +291,12 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 	return nil
 }
 
+func pipeToProgram[T any](p *tea.Program, ch <-chan T) {
+	for msg := range ch {
+		p.Send(msg)
+	}
+}
+
 // runClient connects to the daemon and runs the TUI.
 func runClient(sockPath string, settings config.Settings, mc config.ModelConfig) {
 	conn, err := net.Dial("unix", sockPath)
@@ -360,26 +366,9 @@ func runClient(sockPath string, settings config.Settings, mc config.ModelConfig)
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
-	// Feed agent events from the daemon ReadLoop into Bubble Tea.
-	go func() {
-		for ev := range eventCh {
-			p.Send(ev)
-		}
-	}()
-
-	// Feed approval requests from the daemon into Bubble Tea.
-	go func() {
-		for areq := range cfe.Approvals() {
-			p.Send(areq)
-		}
-	}()
-
-	// Feed state sync messages from the daemon into Bubble Tea.
-	go func() {
-		for ss := range cfe.StateSync() {
-			p.Send(ss)
-		}
-	}()
+	go pipeToProgram(p, eventCh)
+	go pipeToProgram(p, cfe.Approvals())
+	go pipeToProgram(p, cfe.StateSync())
 
 	// Handle signals.
 	sigCh := make(chan os.Signal, 1)
