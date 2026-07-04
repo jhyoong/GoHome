@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -406,7 +407,7 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 
 	case KindTool:
 		if e.Shadow {
-			line := renderToolLine(*e, maxWidth-6)
+			line := renderToolSummary(*e, maxWidth-6)
 			lines = append(lines, marker+"    "+ansiDim+line+ansiReset)
 			if !e.Expanded {
 				if pv := previewLines(e.ToolResult, maxPreviewLines); len(pv) > 0 {
@@ -437,7 +438,7 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 				lines = append(lines, diffLines...)
 			}
 		} else {
-			line := renderToolLine(*e, maxWidth-2)
+			line := renderToolSummary(*e, maxWidth-2)
 			lines = append(lines, marker+line)
 			if !e.Expanded {
 				if pv := previewLines(e.ToolResult, maxPreviewLines); len(pv) > 0 {
@@ -581,9 +582,50 @@ func expandTabs(s string, tabStop int) string {
 	return b.String()
 }
 
-// renderToolLine builds the collapsed single-line representation of a tool entry.
-func renderToolLine(e TimelineEntry, maxWidth int) string {
-	arg := shortSummary(strings.TrimSpace(e.Text))
+// extractToolArg parses the JSON input for a tool call and returns the most
+// relevant argument for display. Known fields: "command" (bash), "file_path"
+// (read/write/edit), "prompt" (subagent). Falls back to shortSummary on parse
+// failure or unknown tools.
+func extractToolArg(toolName, inputJSON string) string {
+	inputJSON = strings.TrimSpace(inputJSON)
+	if inputJSON == "" {
+		return ""
+	}
+
+	var key string
+	switch toolName {
+	case "bash":
+		key = "command"
+	case "read":
+		key = "file_path"
+	case "write":
+		key = "file_path"
+	case "edit":
+		key = "file_path"
+	case "subagent":
+		key = "prompt"
+	}
+
+	if key != "" {
+		var m map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(inputJSON), &m); err == nil {
+			if raw, ok := m[key]; ok {
+				var val string
+				if err2 := json.Unmarshal(raw, &val); err2 == nil {
+					return val
+				}
+			}
+		}
+	}
+
+	// Fallback for unknown tools or parse failures.
+	return shortSummary(inputJSON)
+}
+
+// renderToolSummary builds the collapsed single-line representation of a tool entry
+// using contextual display (e.g. "$ cmd" for bash, file paths for read/edit/write).
+func renderToolSummary(e TimelineEntry, maxWidth int) string {
+	arg := extractToolArg(e.ToolName, e.Text)
 	result := shortSummary(e.ToolResult)
 
 	var st lipgloss.Style
@@ -596,14 +638,32 @@ func renderToolLine(e TimelineEntry, maxWidth int) string {
 		st = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Italic(true)
 	}
 
-	line := st.Render(fmt.Sprintf("[tool] %s", e.ToolName))
-	if arg != "" {
-		line += " " + arg
+	// Build the contextual prefix based on tool type.
+	var prefix string
+	switch e.ToolName {
+	case "bash":
+		prefix = "$ " + arg
+	case "read":
+		prefix = arg
+	case "write":
+		prefix = "write " + arg
+	case "edit":
+		prefix = "edit " + arg
+	case "subagent":
+		prefix = "subagent: " + arg
+	default:
+		if arg != "" {
+			prefix = e.ToolName + ": " + arg
+		} else {
+			prefix = e.ToolName
+		}
 	}
+
+	line := st.Render(prefix)
 	if e.Status == "error" && result != "" {
-		line += "  ->  ERROR: " + result
+		line += " -> ERROR: " + result
 	} else if result != "" {
-		line += "  ->  " + result
+		line += " -> " + result
 	}
 	if VisualWidth(StripAnsi(line)) > maxWidth {
 		line = TruncateText(line, maxWidth)

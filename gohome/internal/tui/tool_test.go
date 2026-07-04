@@ -60,9 +60,9 @@ func TestToolCallExpansionToggle(t *testing.T) {
 		},
 	}})
 
-	// Wait for the collapsed line to appear.
+	// Wait for the collapsed line to appear (contextual format: "$ ls -la").
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("bash"))
+		return bytes.Contains(out, []byte("$ ls -la"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
 	// With empty input, Up moves cursor to the tool entry; then Enter expands it.

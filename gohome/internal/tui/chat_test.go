@@ -37,8 +37,8 @@ func TestChatRenderToolCollapsed(t *testing.T) {
 	c := NewChat(&entries, 20)
 	lines := c.Render(80)
 	joined := StripAnsi(strings.Join(lines, "\n"))
-	if !strings.Contains(joined, "bash") {
-		t.Errorf("tool name missing: %q", joined)
+	if !strings.Contains(joined, "$ ls") {
+		t.Errorf("tool summary missing: %q", joined)
 	}
 }
 
@@ -73,8 +73,8 @@ func TestToolStatusPending(t *testing.T) {
 	c := NewChat(&entries, 20)
 	lines := c.Render(80)
 	joined := strings.Join(lines, "\n")
-	if !strings.Contains(joined, "bash") {
-		t.Errorf("tool name not found: %q", joined)
+	if !strings.Contains(joined, "$ ls") {
+		t.Errorf("tool summary not found: %q", joined)
 	}
 }
 
@@ -89,8 +89,8 @@ func TestToolStatusSuccess(t *testing.T) {
 	c := NewChat(&entries, 20)
 	lines := c.Render(80)
 	joined := strings.Join(lines, "\n")
-	if !strings.Contains(joined, "bash") {
-		t.Errorf("tool name not found: %q", joined)
+	if !strings.Contains(joined, "$ ls") {
+		t.Errorf("tool summary not found: %q", joined)
 	}
 }
 
@@ -255,6 +255,159 @@ func TestCountLinesCacheBehavior(t *testing.T) {
 	// After disabling, autoScroll should be false and scrollTop should be set.
 	if c.IsAutoScroll() {
 		t.Error("expected autoScroll to be false after DisableAutoScroll")
+	}
+}
+
+func TestRenderToolSummary(t *testing.T) {
+	tests := []struct {
+		name     string
+		entry    TimelineEntry
+		maxWidth int
+		wantSub  string // substring expected in stripped output
+	}{
+		{
+			name: "bash command",
+			entry: TimelineEntry{
+				Kind:       KindTool,
+				ToolName:   "bash",
+				Text:       `{"command":"ls -la"}`,
+				ToolResult: "27 lines",
+				Status:     "success",
+			},
+			maxWidth: 80,
+			wantSub:  "$ ls -la -> 27 lines",
+		},
+		{
+			name: "read file_path",
+			entry: TimelineEntry{
+				Kind:       KindTool,
+				ToolName:   "read",
+				Text:       `{"file_path":"/src/main.go"}`,
+				ToolResult: "200 lines",
+				Status:     "success",
+			},
+			maxWidth: 80,
+			wantSub:  "/src/main.go -> 200 lines",
+		},
+		{
+			name: "write file_path",
+			entry: TimelineEntry{
+				Kind:       KindTool,
+				ToolName:   "write",
+				Text:       `{"file_path":"/tmp/out.txt","content":"hello"}`,
+				ToolResult: "ok",
+				Status:     "success",
+			},
+			maxWidth: 80,
+			wantSub:  "write /tmp/out.txt -> ok",
+		},
+		{
+			name: "edit file_path",
+			entry: TimelineEntry{
+				Kind:       KindTool,
+				ToolName:   "edit",
+				Text:       `{"file_path":"/src/foo.go","old_string":"a","new_string":"b"}`,
+				ToolResult: "applied",
+				Status:     "success",
+			},
+			maxWidth: 80,
+			wantSub:  "edit /src/foo.go -> applied",
+		},
+		{
+			name: "subagent prompt",
+			entry: TimelineEntry{
+				Kind:       KindTool,
+				ToolName:   "subagent",
+				Text:       `{"prompt":"Refactor the logging module"}`,
+				ToolResult: "done",
+				Status:     "success",
+			},
+			maxWidth: 80,
+			wantSub:  "subagent: Refactor the logging module -> done",
+		},
+		{
+			name: "unknown tool",
+			entry: TimelineEntry{
+				Kind:       KindTool,
+				ToolName:   "custom_tool",
+				Text:       `{"query":"find stuff"}`,
+				ToolResult: "3 results",
+				Status:     "success",
+			},
+			maxWidth: 80,
+			wantSub:  "custom_tool:",
+		},
+		{
+			name: "invalid json fallback",
+			entry: TimelineEntry{
+				Kind:       KindTool,
+				ToolName:   "bash",
+				Text:       `not valid json`,
+				ToolResult: "error",
+				Status:     "error",
+			},
+			maxWidth: 80,
+			wantSub:  "$ not valid json -> ERROR: error",
+		},
+		{
+			name: "error status",
+			entry: TimelineEntry{
+				Kind:       KindTool,
+				ToolName:   "bash",
+				Text:       `{"command":"rm -rf /"}`,
+				ToolResult: "permission denied",
+				Status:     "error",
+			},
+			maxWidth: 80,
+			wantSub:  "$ rm -rf / -> ERROR: permission denied",
+		},
+		{
+			name: "pending status no result",
+			entry: TimelineEntry{
+				Kind:     KindTool,
+				ToolName: "bash",
+				Text:     `{"command":"sleep 10"}`,
+				Status:   "pending",
+			},
+			maxWidth: 80,
+			wantSub:  "$ sleep 10",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := StripAnsi(renderToolSummary(tt.entry, tt.maxWidth))
+			if !strings.Contains(got, tt.wantSub) {
+				t.Errorf("renderToolSummary() = %q, want substring %q", got, tt.wantSub)
+			}
+		})
+	}
+}
+
+func TestExtractToolArg(t *testing.T) {
+	tests := []struct {
+		name     string
+		toolName string
+		input    string
+		want     string
+	}{
+		{"bash", "bash", `{"command":"echo hi"}`, "echo hi"},
+		{"read", "read", `{"file_path":"/foo/bar.go"}`, "/foo/bar.go"},
+		{"write", "write", `{"file_path":"/x.txt","content":"data"}`, "/x.txt"},
+		{"edit", "edit", `{"file_path":"/a.go","old_string":"x","new_string":"y"}`, "/a.go"},
+		{"subagent", "subagent", `{"prompt":"do thing"}`, "do thing"},
+		{"unknown", "grep", `{"pattern":"foo"}`, `{"pattern":"foo"}`},
+		{"invalid json", "bash", `not json`, "not json"},
+		{"empty", "bash", "", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractToolArg(tt.toolName, tt.input)
+			if got != tt.want {
+				t.Errorf("extractToolArg(%q, %q) = %q, want %q", tt.toolName, tt.input, got, tt.want)
+			}
+		})
 	}
 }
 
