@@ -10,21 +10,18 @@ import (
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
 )
 
-// ApprovalReqMsg is sent by Frontend.RequestApproval into the Bubble Tea loop.
+// ApprovalReqMsg is sent into the Bubble Tea loop when a tool call needs
+// approval. It carries a resolve callback that delivers the user's decision.
 // It is exported so that tests can send it directly via tm.Send.
-// The reply channel must be buffered (cap >= 1) so resolving never blocks Update.
 type ApprovalReqMsg struct {
-	Req   guard.ApprovalRequest
-	Reply chan guard.ApprovalDecision
+	Req     guard.ApprovalRequest
+	Resolve func(guard.ApprovalDecision)
 }
-
-// approvalReqMsg is an internal alias so the switch in Update compiles cleanly.
-type approvalReqMsg = ApprovalReqMsg
 
 // approvalPrompt holds all UI state for one pending approval request.
 type approvalPrompt struct {
 	req     guard.ApprovalRequest
-	reply   chan guard.ApprovalDecision
+	resolve func(guard.ApprovalDecision)
 	pattern string // current (possibly edited) pattern
 
 	// selected is the currently highlighted menu item (0=Allow once, 1=Allow always,
@@ -40,8 +37,8 @@ type approvalPrompt struct {
 	steerInput textinput.Model
 }
 
-// newApprovalPrompt builds an approvalPrompt from a request.
-func newApprovalPrompt(req guard.ApprovalRequest, reply chan guard.ApprovalDecision) *approvalPrompt {
+// newApprovalPrompt builds an approvalPrompt from a request and resolve callback.
+func newApprovalPrompt(req guard.ApprovalRequest, resolve func(guard.ApprovalDecision)) *approvalPrompt {
 	pi := textinput.New()
 	pi.Placeholder = "pattern"
 	pi.SetValue(req.SuggestedPattern)
@@ -51,7 +48,7 @@ func newApprovalPrompt(req guard.ApprovalRequest, reply chan guard.ApprovalDecis
 
 	return &approvalPrompt{
 		req:          req,
-		reply:        reply,
+		resolve:      resolve,
 		pattern:      req.SuggestedPattern,
 		patternInput: pi,
 		steerInput:   si,
@@ -90,6 +87,9 @@ func renderApprovalOverlay(ap *approvalPrompt, width int) string {
 
 	fmt.Fprintf(&sb, "Approve tool call -- %s\n", ap.req.SessionID)
 	fmt.Fprintf(&sb, "Tool: %s\n", ap.req.Tool)
+	if ap.req.Summary != "" {
+		fmt.Fprintf(&sb, "Summary: %s\n", ap.req.Summary)
+	}
 
 	if cmd := bashCommand(ap); cmd != "" {
 		fmt.Fprintf(&sb, "Command: %s\n", cmd)

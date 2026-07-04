@@ -168,7 +168,7 @@ func TestIsBlankTrue(t *testing.T) {
 	cwd := "/test/project"
 	now := time.Now().UTC()
 	path := writeBlankJSONL(t, home, cwd, "blank1", now)
-	blank, err := IsBlank(path)
+	blank, err := isBlank(path)
 	if err != nil {
 		t.Fatalf("IsBlank: %v", err)
 	}
@@ -182,7 +182,7 @@ func TestIsBlankFalse(t *testing.T) {
 	cwd := "/test/project"
 	now := time.Now().UTC()
 	path := writeTestJSONL(t, home, cwd, "used1", now, "hello world")
-	blank, err := IsBlank(path)
+	blank, err := isBlank(path)
 	if err != nil {
 		t.Fatalf("IsBlank: %v", err)
 	}
@@ -200,7 +200,7 @@ func TestCleanBlank(t *testing.T) {
 	writeBlankJSONL(t, home, cwd, "blank2", now.Add(-time.Hour))
 	usedPath := writeTestJSONL(t, home, cwd, "used1", now, "hello")
 
-	removed, err := CleanBlank(home, cwd)
+	removed, err := cleanBlank(home, cwd)
 	if err != nil {
 		t.Fatalf("CleanBlank: %v", err)
 	}
@@ -228,7 +228,7 @@ func TestCleanBlank(t *testing.T) {
 
 func TestCleanBlankNoDir(t *testing.T) {
 	home := t.TempDir()
-	removed, err := CleanBlank(home, "/nonexistent/project")
+	removed, err := cleanBlank(home, "/nonexistent/project")
 	if err != nil {
 		t.Fatalf("CleanBlank should not error on missing dir: %v", err)
 	}

@@ -9,9 +9,13 @@ import (
 
 // handleAgentEvent updates the relevant SessionView based on the event kind.
 // It returns a tea.Cmd (SpinnerTickCmd when the spinner starts, nil otherwise).
-func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
+func (m *Model) handleAgentEvent(msg AgentEventMsg) tea.Cmd {
 	ev := msg.Ev
-	sv := m.getOrCreateSession(msg.SessionID, 1)
+	depth := 0
+	if msg.SessionID != m.focused {
+		depth = 1
+	}
+	sv := m.getOrCreateSession(msg.SessionID, depth)
 	var dequeuedCmd tea.Cmd
 
 	switch ev.Kind {
@@ -166,8 +170,10 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 		}
 
 	case agent.EventSessionSwapped:
+		m.demoteActiveApproval()
 		m.focused = ev.SessionID
 		m.getOrCreateSession(ev.SessionID, 0)
+		m.promoteApproval()
 		m.statusMsg = "Switched to session: " + ev.SessionID
 
 	case agent.EventError:
@@ -319,12 +325,16 @@ func (m *Model) updateShadowResult(childID string, content string, isError bool)
 	}
 }
 
-// sendInputCmd returns a Cmd that delivers text to the input channel
-// without blocking the update loop.
+// sendInputCmd returns a Cmd that delivers text to the agent via the
+// ClientFrontend RPC. Returns nil if no ClientFrontend is set (tests).
 func (m *Model) sendInputCmd(text string) tea.Cmd {
-	ch := m.inputCh
+	if m.cfe == nil {
+		return nil
+	}
+	cfe := m.cfe
+	sid := m.focused
 	return func() tea.Msg {
-		ch <- text
+		_ = cfe.SendInput(sid, text)
 		return nil
 	}
 }

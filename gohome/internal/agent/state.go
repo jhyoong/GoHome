@@ -56,23 +56,24 @@ func (s *SessionState) MarkIdle() {
 }
 
 // Swap replaces the session and writer. If the agent is busy, the swap
-// function is stored as pending and queued returns true. Otherwise the
-// function is executed immediately and the session/writer are replaced.
-func (s *SessionState) Swap(tag string, fn func(oldSess *session.Session, oldWriter *session.Writer) (*session.Session, *session.Writer, error)) (queued bool, err error) {
+// function is stored as pending and executed later via DrainPending.
+// Otherwise the function is executed immediately and the session/writer
+// are replaced.
+func (s *SessionState) Swap(tag string, fn func(oldSess *session.Session, oldWriter *session.Writer) (*session.Session, *session.Writer, error)) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.busy {
 		s.pending = fn
 		s.pendingTag = tag
-		return true, nil
+		return nil
 	}
 	newSess, newWriter, err := fn(s.sess, s.writer)
 	if err != nil {
-		return false, err
+		return err
 	}
 	s.sess = newSess
 	s.writer = newWriter
-	return false, nil
+	return nil
 }
 
 // DrainPending executes and clears any pending swap. Returns the tag

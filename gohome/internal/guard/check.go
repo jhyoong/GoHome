@@ -3,6 +3,8 @@ package guard
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
+	"sync"
 	"sync/atomic"
 )
 
@@ -16,6 +18,7 @@ type Frontend interface {
 // the whitelist and, when required, prompts the frontend for approval.
 type Guard struct {
 	whitelist *Whitelist
+	mu        sync.Mutex // guards frontend
 	frontend  Frontend
 	yolo      atomic.Bool
 }
@@ -52,7 +55,11 @@ func (g *Guard) Check(ctx context.Context, sessionID, tool string, input json.Ra
 		SuggestedPattern: Suggest(tool, input),
 	}
 
-	dec, err := g.frontend.RequestApproval(ctx, req)
+	g.mu.Lock()
+	fe := g.frontend
+	g.mu.Unlock()
+
+	dec, err := fe.RequestApproval(ctx, req)
 	if err != nil {
 		return Decision{}, err
 	}
@@ -66,7 +73,7 @@ func (g *Guard) Check(ctx context.Context, sessionID, tool string, input json.Ra
 		if err := g.whitelist.AddProject(tool, dec.SavedPattern); err != nil {
 			// Log but don't fail the allow — the user said yes.
 			// Future calls will re-prompt, which is acceptable.
-			_ = err
+			slog.Warn("whitelist persist failed", "err", err)
 		}
 		return Decision{Allow: true, Reason: "user_always", SavedPattern: dec.SavedPattern}, nil
 
@@ -79,6 +86,15 @@ func (g *Guard) Check(ctx context.Context, sessionID, tool string, input json.Ra
 	default:
 		return Decision{Allow: false, Reason: "unknown_outcome"}, nil
 	}
+}
+
+// SetFrontend replaces the guard's frontend. This is used by the daemon server
+// to wire the RPCFrontend when a client connects, so that tool approval
+// requests are routed to the connected TUI.
+func (g *Guard) SetFrontend(fe Frontend) {
+	g.mu.Lock()
+	g.frontend = fe
+	g.mu.Unlock()
 }
 
 // summaryFor builds a short human-readable summary of a tool call.

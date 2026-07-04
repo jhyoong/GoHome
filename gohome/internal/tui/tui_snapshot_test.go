@@ -44,7 +44,7 @@ func apply(m *tui.Model, msg tea.Msg) *tui.Model {
 
 // newSized builds a Model already sized to 80x24.
 func newSized() *tui.Model {
-	m := tui.New(nil, "")
+	m := tui.New("")
 	m = apply(m, tea.WindowSizeMsg{Width: snapshotW, Height: snapshotH})
 	return m
 }
@@ -82,7 +82,6 @@ func TestSnapshots(t *testing.T) {
 	// (d) With an approval prompt active.
 	t.Run("with_approval_prompt", func(t *testing.T) {
 		m := newSized()
-		reply := make(chan guard.ApprovalDecision, 1)
 		m = apply(m, tui.ApprovalReqMsg{
 			Req: guard.ApprovalRequest{
 				SessionID:        "main",
@@ -90,7 +89,7 @@ func TestSnapshots(t *testing.T) {
 				Input:            []byte(`{"command":"ls -la"}`),
 				SuggestedPattern: "ls*",
 			},
-			Reply: reply,
+			Resolve: func(guard.ApprovalDecision) {},
 		})
 		golden.RequireEqual(t, []byte(m.View()))
 	})
@@ -208,7 +207,7 @@ func TestSnapshots(t *testing.T) {
 			},
 		}})
 		// Focus the completed session.
-		m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlCloseBracket})
+		m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlRight})
 		golden.RequireEqual(t, []byte(m.View()))
 	})
 
@@ -648,7 +647,7 @@ func TestCompletedSession_RejectsInput(t *testing.T) {
 		},
 	}})
 	// Focus the completed session.
-	m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlCloseBracket})
+	m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlRight})
 
 	// Type something into the editor.
 	for _, r := range "hello" {
@@ -700,7 +699,7 @@ func TestCompletedSession_AllowsNavigation(t *testing.T) {
 		},
 	}})
 	// Focus the completed session.
-	m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlCloseBracket})
+	m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlRight})
 
 	// Arrow down should work (not panic or be blocked).
 	_ = apply(m, tea.KeyMsg{Type: tea.KeyDown})

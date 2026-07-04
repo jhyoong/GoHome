@@ -42,7 +42,7 @@ func (noopFrontend) RequestApproval(_ context.Context, _ guard.ApprovalRequest) 
 	return guard.ApprovalDecision{Outcome: guard.AllowOnce}, nil
 }
 
-func (noopFrontend) AwaitUserInput(_ context.Context, _ string) (string, error) {
+func (noopFrontend) AwaitUserInput(_ context.Context) (string, error) {
 	return "", errors.New("no interactive input in e2e tests")
 }
 
@@ -105,15 +105,16 @@ func TestE2ESmokeRoundtrip(t *testing.T) {
 		},
 	}
 
+	state := agent.NewSessionState(sess, w, client)
+
 	a := &agent.Agent{
-		Client:    client,
 		Tools:     reg,
 		Guard:     g,
-		Frontend:  fe,
-		Writer:    w,
+		State:     state,
 		System:    "You are a helpful assistant.",
 		MaxTokens: 64,
 	}
+	a.SetFrontend(fe)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()

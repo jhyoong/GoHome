@@ -129,6 +129,6 @@ func Load(path string) (*Session, []common.Message, error) {
 	}
 
 	sess.History = history
-	ValidateHistory(slog.Default(), sess.ID, history)
+	validateHistory(slog.Default(), sess.ID, history)
 	return sess, history, nil
 }

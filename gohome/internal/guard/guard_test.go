@@ -233,6 +233,25 @@ func TestCheck_DenySteer(t *testing.T) {
 	}
 }
 
+func TestCheck_SetFrontend_ConcurrentSafe(t *testing.T) {
+	fe1 := &fakeFrontend{response: ApprovalDecision{Outcome: AllowOnce}}
+	fe2 := &fakeFrontend{response: ApprovalDecision{Outcome: AllowOnce}}
+	g := newTestGuard(emptyWhitelist(t), fe1)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range 100 {
+			g.SetFrontend(fe2)
+			g.SetFrontend(fe1)
+		}
+	}()
+	for range 100 {
+		_, _ = g.Check(context.Background(), "sess1", "write", json.RawMessage(`{}`))
+	}
+	<-done
+}
+
 func TestCheck_ApprovalRequest_Summary(t *testing.T) {
 	fe := &fakeFrontend{
 		response: ApprovalDecision{Outcome: AllowOnce},

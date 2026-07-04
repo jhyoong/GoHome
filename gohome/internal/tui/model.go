@@ -62,7 +62,7 @@ type SessionView struct {
 	Completed bool
 	Usage     common.Usage
 
-	// Context-fullness warning sentinels (Task 11.16).
+	// Context-fullness warning sentinels.
 	warned80 bool
 	warned95 bool
 }
@@ -84,16 +84,12 @@ type Model struct {
 	editor  *EditorComponent
 	chat    *ChatComponent
 	spinner *SpinnerComponent
-	inputCh chan string
 	winW    int
 	winH    int
 
 	fileSearch    *FileSearchPopup
 	fileSearching bool
 	activeModal   Interactive
-
-	homeDir string
-	cwd     string
 
 	settings config.Settings
 
@@ -104,20 +100,20 @@ type Model struct {
 	// Up/Down move the cursor; Enter on a tool entry toggles expansion.
 	cursor int
 
-	// Phase 12 populates these; Phase 11 renders them.
+	// LLM and context window settings.
 	modelName      string  // LLM model name; "?" when empty
 	yolo           bool    // YOLO mode (skip approval)
 	contextWindow  int     // context window size; defaults to 128000
 	contextWarnPct float64 // ratio at which to show 80% warning
 	contextCritPct float64 // ratio at which to show 95% critical warning
 
-	// Approval overlay state (Task 11.9+).
+	// Approval overlay state.
 	// activeApproval is the prompt currently displayed in the input region.
 	// pendingApprovals maps sessionID -> prompt for non-focused sessions.
 	activeApproval   *approvalPrompt
 	pendingApprovals map[string]*approvalPrompt
 
-	// statusMsg is a transient message shown near the status bar (Task 11.14).
+	// statusMsg is a transient message shown near the status bar.
 	statusMsg string
 
 	// onYoloChange is called whenever the /yolo command toggles the YOLO flag.
@@ -125,7 +121,7 @@ type Model struct {
 	// to the guard without importing the guard package directly.
 	onYoloChange func(bool)
 
-	// Context warning tracking per session (Task 11.16).
+	// Context warning tracking per session.
 	// warned80/warned95 are set in handleAgentEvent to fire once per session.
 	contextNotice string // most recent context warning for the notification line
 
@@ -140,16 +136,19 @@ type Model struct {
 	renderThrottleMs int
 	lastRenderTime   time.Time
 	renderPending    bool
+
+	// cfe is the ClientFrontend for daemon mode. Input submission and
+	// approval responses go through the daemon RPC. Set via SetClientFrontend.
+	cfe *ClientFrontend
 }
 
 // renderThrottleMsg fires when a deferred render is due.
 type renderThrottleMsg struct{}
 
 // New creates and returns a new Model with an initial session whose ID matches
-// the agent session. fe may be nil (tests that do not need agent routing or
-// input submission). When fe is non-nil, the Model shares fe.input so submitted
-// text reaches AwaitUserInput.
-func New(fe *Frontend, sessionID string) *Model {
+// the agent session. Input submission goes through the ClientFrontend (daemon
+// RPC) which is wired via SetClientFrontend.
+func New(sessionID string) *Model {
 	if sessionID == "" {
 		sessionID = "main"
 	}
@@ -159,20 +158,12 @@ func New(fe *Frontend, sessionID string) *Model {
 		Title: "main",
 	}
 
-	var inputCh chan string
-	if fe != nil {
-		inputCh = fe.input
-	} else {
-		inputCh = make(chan string, 1)
-	}
-
 	m := &Model{
 		theme:            style.Default(),
 		sessions:         map[string]*SessionView{sessionID: main},
 		order:            []string{sessionID},
 		focused:          sessionID,
 		childToParent:    make(map[string]string),
-		inputCh:          inputCh,
 		contextWindow:    config.DefaultContextWindow,
 		contextWarnPct:   config.DefaultContextWarnPct,
 		contextCritPct:   config.DefaultContextCritPct,
@@ -209,10 +200,9 @@ func (m *Model) SetSlashCallbacks(cb SlashCallbacks) {
 	m.slashCB = cb
 }
 
-func (m *Model) SetHomeDir(dir string)         { m.homeDir = dir }
-func (m *Model) SetCWD(dir string)             { m.cwd = dir }
-func (m *Model) SetSettings(s config.Settings) { m.settings = s }
-func (m *Model) SetRenderThrottleMs(ms int)    { m.renderThrottleMs = ms }
+func (m *Model) SetSettings(s config.Settings)         { m.settings = s }
+func (m *Model) SetRenderThrottleMs(ms int)            { m.renderThrottleMs = ms }
+func (m *Model) SetClientFrontend(cfe *ClientFrontend) { m.cfe = cfe }
 
 // SetContextWindow sets the total context window size used in the token bar.
 // If size <= 0 the default is used.
@@ -272,24 +262,9 @@ func (m *Model) syncChatHeight() {
 	m.chat.SetMaxHeight(chatH)
 }
 
-// rebuildViewportKeepScroll refreshes the chat cursor and timeline without
-// resetting scroll position. Used after toggling block expansion.
-func (m *Model) rebuildViewportKeepScroll() {
-	sv, ok := m.sessions[m.focused]
-	if !ok {
-		return
-	}
-	cur := -1
-	if strings.TrimSpace(m.editor.Value()) == "" {
-		m.clampCursor()
-		cur = m.cursor
-	}
-	m.chat.SetTimeline(&sv.Timeline)
-	m.chat.SetCursor(cur)
-}
-
 // rebuildViewport refreshes the chat component state from the focused session.
-func (m *Model) rebuildViewport() {
+// When keepScroll is false, the viewport scrolls to the bottom.
+func (m *Model) rebuildViewport(keepScroll ...bool) {
 	sv, ok := m.sessions[m.focused]
 	if !ok {
 		return
@@ -301,7 +276,9 @@ func (m *Model) rebuildViewport() {
 	}
 	m.chat.SetTimeline(&sv.Timeline)
 	m.chat.SetCursor(cur)
-	m.chat.ScrollToBottom()
+	if len(keepScroll) == 0 || !keepScroll[0] {
+		m.chat.ScrollToBottom()
+	}
 }
 
 func (m *Model) cancelFocusedSession() {
@@ -337,7 +314,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, SpinnerTickCmd()
 		}
 
-	case approvalReqMsg:
+	case ApprovalReqMsg:
 		m.handleApprovalReq(msg)
 
 	case tea.KeyMsg:
@@ -355,12 +332,30 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.rebuildViewport()
 		}
 
-	case agentEventMsg:
+	case StateSyncMsg:
+		m.modelName = msg.Model
+		m.yolo = msg.Yolo
+		if msg.SessionID != "" && msg.SessionID != m.focused {
+			// Remove the placeholder session if it has no content.
+			if old, ok := m.sessions[m.focused]; ok && len(old.Timeline) == 0 {
+				delete(m.sessions, m.focused)
+				for i, id := range m.order {
+					if id == m.focused {
+						m.order = append(m.order[:i], m.order[i+1:]...)
+						break
+					}
+				}
+			}
+			m.getOrCreateSession(msg.SessionID, 0)
+			m.focused = msg.SessionID
+		}
+
+	case AgentEventMsg:
 		if cmd := m.handleAgentEvent(msg); cmd != nil {
 			return m, cmd
 		}
 
-	case externalEditorMsg:
+	case ExternalEditorMsg:
 		m.handleExternalEditorResult(msg)
 	}
 
@@ -423,12 +418,6 @@ func shortSummary(s string) string {
 		return s
 	}
 	return fmt.Sprintf("%d lines", len(lines))
-}
-
-// shortArg extracts a brief summary from a tool's InputJSON (the args).
-// It delegates to shortSummary to produce a compact single-line representation.
-func shortArg(inputJSON string) string {
-	return shortSummary(strings.TrimSpace(inputJSON))
 }
 
 // clampCursor ensures m.cursor is within the valid range for the focused session.

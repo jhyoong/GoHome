@@ -14,7 +14,7 @@ import (
 )
 
 func TestSlashResumeOpensAndCloses(t *testing.T) {
-	m := tui.New(nil, "")
+	m := tui.New("")
 	m.SetSlashCallbacks(tui.SlashCallbacks{
 		ListSessions: func() ([]session.Listing, error) {
 			return []session.Listing{
@@ -45,7 +45,7 @@ func TestSlashResumeOpensAndCloses(t *testing.T) {
 }
 
 func TestSlashResumeWithFilterPreFills(t *testing.T) {
-	m := tui.New(nil, "")
+	m := tui.New("")
 	m.SetSlashCallbacks(tui.SlashCallbacks{
 		ListSessions: func() ([]session.Listing, error) {
 			return []session.Listing{
@@ -77,15 +77,15 @@ func TestSlashResumeWithFilterPreFills(t *testing.T) {
 }
 
 func TestSlashResumeLoadsHistory(t *testing.T) {
-	m := tui.New(nil, "")
+	m := tui.New("")
 	m.SetSlashCallbacks(tui.SlashCallbacks{
 		ListSessions: func() ([]session.Listing, error) {
 			return []session.Listing{
 				{ID: "s1", Title: "test session"},
 			}, nil
 		},
-		ResumeSession: func(id string) ([]common.Message, error) {
-			return []common.Message{
+		ResumeSession: func(id string) (string, []common.Message, error) {
+			return id, []common.Message{
 				{Role: common.RoleUser, Content: []common.Block{
 					{Kind: common.BlockText, Text: "previous question"},
 				}},
@@ -121,27 +121,20 @@ func TestSlashResumeLoadsHistory(t *testing.T) {
 }
 
 func TestStatusMsgClearedOnSend(t *testing.T) {
-	fe := tui.NewFrontend()
-	m := tui.New(fe, "")
+	m := tui.New("")
 	m.SetSlashCallbacks(tui.SlashCallbacks{
 		ListSessions: func() ([]session.Listing, error) {
 			return []session.Listing{
 				{ID: "s1", Title: "test session"},
 			}, nil
 		},
-		ResumeSession: func(id string) ([]common.Message, error) {
-			return nil, nil
+		ResumeSession: func(id string) (string, []common.Message, error) {
+			return id, nil, nil
 		},
 	})
 
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
-
-	// Drain input channel so sends don't block.
-	go func() {
-		for range fe.InputCh() {
-		}
-	}()
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("─"))
@@ -175,7 +168,7 @@ func TestStatusMsgClearedOnSend(t *testing.T) {
 }
 
 func TestSlashModelOpensSelector(t *testing.T) {
-	m := tui.New(nil, "")
+	m := tui.New("")
 	m.SetSettings(config.Settings{
 		ModelConfig: map[string]config.ModelConfig{
 			"anthropic": {ModelName: "claude-sonnet-4-20250514"},

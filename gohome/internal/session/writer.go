@@ -63,7 +63,7 @@ func isCritical(ev any) bool {
 func (w *Writer) run() {
 	defer close(w.done)
 	for ev := range w.ch {
-		line, err := Encode(ev)
+		line, err := encode(ev)
 		if err != nil {
 			// Skip unencodable events rather than crashing the goroutine.
 			continue

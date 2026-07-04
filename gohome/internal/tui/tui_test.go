@@ -12,7 +12,7 @@ import (
 )
 
 func TestSkeletonRender(t *testing.T) {
-	m := tui.New(nil, "")
+	m := tui.New("")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() {
 		_ = tm.Quit()
@@ -25,7 +25,7 @@ func TestSkeletonRender(t *testing.T) {
 }
 
 func TestSessionViewTimelineRender(t *testing.T) {
-	m := tui.New(nil, "")
+	m := tui.New("")
 	// Add a user entry to the focused "main" session.
 	m.AddTimelineEntry("main", tui.TimelineEntry{Kind: tui.KindUser, Text: "hello"})
 
@@ -40,7 +40,7 @@ func TestSessionViewTimelineRender(t *testing.T) {
 }
 
 func TestAgentEventTokenDelta(t *testing.T) {
-	m := tui.New(nil, "")
+	m := tui.New("")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() {
 		_ = tm.Quit()
@@ -58,33 +58,15 @@ func TestAgentEventTokenDelta(t *testing.T) {
 }
 
 func TestInputTextareaSubmit(t *testing.T) {
-	fe := tui.NewFrontend()
-	m := tui.New(fe, "")
+	m := tui.New("")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() {
 		_ = tm.Quit()
 	})
 
-	// Read the submitted text from the input channel in a goroutine.
-	received := make(chan string, 1)
-	go func() {
-		select {
-		case s := <-fe.InputCh():
-			received <- s
-		case <-time.After(3 * time.Second):
-			received <- ""
-		}
-	}()
-
 	// Type "world" then Enter.
 	tm.Type("world")
 	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
-
-	// Assert the input channel received the text.
-	got := <-received
-	if got != "world" {
-		t.Fatalf("expected input channel to receive %q, got %q", "world", got)
-	}
 
 	// Assert the user entry appears in the rendered view.
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
@@ -93,7 +75,7 @@ func TestInputTextareaSubmit(t *testing.T) {
 }
 
 func TestAgentEventThinkingDelta(t *testing.T) {
-	m := tui.New(nil, "")
+	m := tui.New("")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() {
 		_ = tm.Quit()
@@ -111,7 +93,7 @@ func TestAgentEventThinkingDelta(t *testing.T) {
 }
 
 func TestFileSearchResultMsgShowsPopup(t *testing.T) {
-	m := tui.New(nil, "")
+	m := tui.New("")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() {
 		_ = tm.Quit()
@@ -131,8 +113,7 @@ func TestFileSearchResultMsgShowsPopup(t *testing.T) {
 }
 
 func TestPendingQueue_EnterWhileStreaming(t *testing.T) {
-	fe := tui.NewFrontend()
-	m := tui.New(fe, "")
+	m := tui.New("")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() {
 		_ = tm.Quit()
@@ -156,20 +137,11 @@ func TestPendingQueue_EnterWhileStreaming(t *testing.T) {
 }
 
 func TestPendingQueue_DequeueOnTurnDone(t *testing.T) {
-	fe := tui.NewFrontend()
-	m := tui.New(fe, "")
+	m := tui.New("")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() {
 		_ = tm.Quit()
 	})
-
-	// Read input channel in background.
-	received := make(chan string, 2)
-	go func() {
-		for s := range fe.InputCh() {
-			received <- s
-		}
-	}()
 
 	// Start streaming.
 	tm.Send(tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
@@ -182,25 +154,22 @@ func TestPendingQueue_DequeueOnTurnDone(t *testing.T) {
 	tm.Type("queued msg")
 	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
 
-	// End the turn -- should auto-dequeue.
+	// End the turn -- should auto-dequeue and the message should appear as
+	// a user entry in the timeline (cfe is nil so sendInputCmd is a no-op,
+	// but the dequeue logic adds it to the timeline).
 	tm.Send(tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
 		Kind:      agent.EventTurnDone,
 		SessionID: "main",
 	}})
 
-	// The dequeued message should arrive on the input channel.
-	select {
-	case got := <-received:
-		if got != "queued msg" {
-			t.Errorf("dequeued message: got %q, want %q", got, "queued msg")
-		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("timeout waiting for dequeued message")
-	}
+	// The dequeued message should appear as a user entry in the view.
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("queued msg"))
+	}, teatest.WithDuration(3*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
 
 func TestViewportScrollback(t *testing.T) {
-	m := tui.New(nil, "")
+	m := tui.New("")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() {
 		_ = tm.Quit()

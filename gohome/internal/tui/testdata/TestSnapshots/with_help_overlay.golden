@@ -3,8 +3,8 @@ Keyboard shortcuts
   Ctrl+C        Cancel turn / double-tap to quit
   Ctrl+E        Open external editor
   Ctrl+H        Show this help
-  Ctrl+]        Focus next session
-  Ctrl+[        Focus prev session
+  Ctrl+Right    Focus next session
+  Ctrl+Left     Focus prev session
   PgUp/PgDown   Scroll chat (or this help)
   Up/Down       Scroll this help
   Enter         Submit input / toggle tool detail

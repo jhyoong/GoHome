@@ -68,7 +68,7 @@ func assertTSPresent(t *testing.T, m map[string]json.RawMessage) {
 
 func TestEncodeSessionStart(t *testing.T) {
 	ev := SessionStart{ID: "s1", ParentID: "p1", CWD: "/home", Model: "gpt-4o", ModelConfig: "https://x", Depth: 2}
-	b, err := Encode(ev)
+	b, err := encode(ev)
 	if err != nil {
 		t.Fatalf("Encode: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestEncodeSessionStart(t *testing.T) {
 
 func TestEncodeUserMessage(t *testing.T) {
 	ev := UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: "hello"}}}
-	b, err := Encode(ev)
+	b, err := encode(ev)
 	if err != nil {
 		t.Fatalf("Encode: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestEncodeAssistantMessage(t *testing.T) {
 		StopReason: "end_turn",
 		Usage:      u,
 	}
-	b, err := Encode(ev)
+	b, err := encode(ev)
 	if err != nil {
 		t.Fatalf("Encode: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestEncodeAssistantMessage(t *testing.T) {
 
 func TestEncodeToolResult(t *testing.T) {
 	ev := ToolResult{ToolUseID: "tu1", Content: "output", IsError: false}
-	b, err := Encode(ev)
+	b, err := encode(ev)
 	if err != nil {
 		t.Fatalf("Encode: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestEncodeToolResult(t *testing.T) {
 
 func TestEncodeApproval(t *testing.T) {
 	ev := Approval{ToolUseID: "tu2", Outcome: "allow", SavedPattern: "", SteerMessage: ""}
-	b, err := Encode(ev)
+	b, err := encode(ev)
 	if err != nil {
 		t.Fatalf("Encode: %v", err)
 	}
@@ -137,8 +137,8 @@ func TestEncodeApproval(t *testing.T) {
 }
 
 func TestEncodeSubagentSpawn(t *testing.T) {
-	ev := SubagentSpawn{ToolUseID: "tu3", ChildID: "child1", Task: "do something"}
-	b, err := Encode(ev)
+	ev := SubagentSpawn{ChildID: "child1", Task: "do something"}
+	b, err := encode(ev)
 	if err != nil {
 		t.Fatalf("Encode: %v", err)
 	}
@@ -149,8 +149,8 @@ func TestEncodeSubagentSpawn(t *testing.T) {
 }
 
 func TestEncodeSubagentDone(t *testing.T) {
-	ev := SubagentDone{ToolUseID: "tu4", ChildID: "child1", IsError: true}
-	b, err := Encode(ev)
+	ev := SubagentDone{ChildID: "child1", IsError: true}
+	b, err := encode(ev)
 	if err != nil {
 		t.Fatalf("Encode: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestEncodeSubagentDone(t *testing.T) {
 
 func TestEncodeSessionEnd(t *testing.T) {
 	ev := SessionEnd{Reason: "done"}
-	b, err := Encode(ev)
+	b, err := encode(ev)
 	if err != nil {
 		t.Fatalf("Encode: %v", err)
 	}
@@ -171,7 +171,7 @@ func TestEncodeSessionEnd(t *testing.T) {
 }
 
 func TestEncodeUnknownType(t *testing.T) {
-	_, err := Encode(struct{ X string }{X: "??"})
+	_, err := encode(struct{ X string }{X: "??"})
 	if err == nil {
 		t.Error("expected error for unknown type, got nil")
 	}

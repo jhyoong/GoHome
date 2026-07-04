@@ -57,17 +57,17 @@ type toolState struct {
 
 // translateEvents converts a channel of OpenAI sseFrames to common.StreamEvent values.
 //
-// Text delta handling (Task 4.4):
+// Text delta handling:
 //
 //	Non-empty delta.content emits EventTextDelta.
 //
-// Tool call accumulation (Task 4.5):
+// Tool call accumulation:
 //
 //	delta.tool_calls elements are keyed by index; arguments strings are
 //	concatenated. When [DONE] is received (or finish_reason=="tool_calls"),
 //	one EventToolCallDone is emitted per accumulated tool call.
 //
-// Usage + turn done (Task 4.6):
+// Usage + turn done:
 //
 //	finish_reason from a choice sets the stop reason. A usage chunk
 //	(choices empty, usage non-nil) captures token counts. On [DONE],

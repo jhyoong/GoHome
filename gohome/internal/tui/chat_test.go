@@ -259,12 +259,12 @@ func TestCountLinesCacheBehavior(t *testing.T) {
 }
 
 func TestRenderThrottle_SkipsIntermediateRebuilds(t *testing.T) {
-	m := New(nil, "main")
+	m := New("main")
 	m.SetRenderThrottleMs(100)
 	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 
 	// Send first token delta -- should render immediately (lastRenderTime is zero).
-	model1, _ := m.Update(agentEventMsg{SessionID: "main", Ev: agent.Event{
+	model1, _ := m.Update(AgentEventMsg{SessionID: "main", Ev: agent.Event{
 		Kind:      agent.EventTokenDelta,
 		SessionID: "main",
 		TextDelta: "Hello ",
@@ -273,7 +273,7 @@ func TestRenderThrottle_SkipsIntermediateRebuilds(t *testing.T) {
 
 	// Send second token delta immediately -- should be throttled because
 	// less than 100ms has elapsed since the first render.
-	model2, cmd2 := m1.Update(agentEventMsg{SessionID: "main", Ev: agent.Event{
+	model2, cmd2 := m1.Update(AgentEventMsg{SessionID: "main", Ev: agent.Event{
 		Kind:      agent.EventTokenDelta,
 		SessionID: "main",
 		TextDelta: "world",

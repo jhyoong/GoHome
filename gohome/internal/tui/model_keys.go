@@ -68,9 +68,9 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg.Type {
-	case tea.KeyCtrlCloseBracket:
+	case tea.KeyCtrlRight:
 		m.focusNext()
-	case tea.KeyCtrlOpenBracket:
+	case tea.KeyCtrlLeft:
 		m.focusPrev()
 	case tea.KeyCtrlH:
 		helpH := m.winH - stripHeight - statusHeight - 2
@@ -113,7 +113,7 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					if entry.Kind == KindTool || entry.Kind == KindThinking {
 						m.chat.DisableAutoScroll(m.winW)
 						entry.Expanded = !entry.Expanded
-						m.rebuildViewportKeepScroll()
+						m.rebuildViewport(true)
 					}
 				}
 			} else if strings.HasPrefix(text, "/") {
@@ -187,7 +187,7 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if m.cursor > 0 {
 					m.cursor--
 				}
-				m.rebuildViewportKeepScroll()
+				m.rebuildViewport(true)
 				m.syncChatHeight()
 				m.chat.EnsureCursorVisible(m.winW)
 				return m, nil
@@ -197,7 +197,7 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if ok && m.cursor < len(sv.Timeline)-1 {
 					m.cursor++
 				}
-				m.rebuildViewportKeepScroll()
+				m.rebuildViewport(true)
 				m.syncChatHeight()
 				m.chat.EnsureCursorVisible(m.winW)
 				return m, nil
@@ -276,7 +276,7 @@ func (m *Model) replaceAtQuery(replacement string) {
 
 // openExternalEditor writes the current editor content to a temp file, launches
 // the user's preferred editor ($VISUAL / $EDITOR / vi), and returns a Cmd that
-// sends an externalEditorMsg when the editor exits.
+// sends an ExternalEditorMsg when the editor exits.
 func (m *Model) openExternalEditor() tea.Cmd {
 	content := m.editor.Value()
 
@@ -307,12 +307,12 @@ func (m *Model) openExternalEditor() tea.Cmd {
 	return tea.ExecProcess(c, func(err error) tea.Msg {
 		defer func() { _ = os.Remove(tmpPath) }()
 		if err != nil {
-			return externalEditorMsg{Err: err}
+			return ExternalEditorMsg{Err: err}
 		}
 		data, readErr := os.ReadFile(tmpPath)
 		if readErr != nil {
-			return externalEditorMsg{Err: readErr}
+			return ExternalEditorMsg{Err: readErr}
 		}
-		return externalEditorMsg{Content: string(data)}
+		return ExternalEditorMsg{Content: string(data)}
 	})
 }

@@ -44,24 +44,22 @@ type Approval struct {
 }
 
 type SubagentSpawn struct {
-	ToolUseID string `json:"toolUseId"`
-	ChildID   string `json:"childId"`
-	Task      string `json:"task"`
+	ChildID string `json:"childId"`
+	Task    string `json:"task"`
 }
 
 type SubagentDone struct {
-	ToolUseID string `json:"toolUseId"`
-	ChildID   string `json:"childId"`
-	IsError   bool   `json:"isError"`
+	ChildID string `json:"childId"`
+	IsError bool   `json:"isError"`
 }
 
 type SessionEnd struct {
 	Reason string `json:"reason"`
 }
 
-// Encode serialises ev as a flat single-line JSON object with "type" and "ts" fields.
+// encode serialises ev as a flat single-line JSON object with "type" and "ts" fields.
 // Returns an error for unknown event types.
-func Encode(ev any) ([]byte, error) {
+func encode(ev any) ([]byte, error) {
 	var typeName string
 	switch ev.(type) {
 	case SessionStart:
@@ -84,27 +82,15 @@ func Encode(ev any) ([]byte, error) {
 		return nil, fmt.Errorf("session: unknown event type %T", ev)
 	}
 
-	// Marshal the struct to raw bytes, then unmarshal into a map so we can
-	// inject the "type" and "ts" fields into the flat object.
 	raw, err := json.Marshal(ev)
 	if err != nil {
 		return nil, fmt.Errorf("session: marshal event: %w", err)
 	}
 
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &m); err != nil {
-		return nil, fmt.Errorf("session: unmarshal into map: %w", err)
+	ts := time.Now().UTC().Format(time.RFC3339)
+	header := fmt.Sprintf(`{"type":%q,"ts":%q`, typeName, ts)
+	if len(raw) > 2 {
+		return append([]byte(header+","), raw[1:]...), nil
 	}
-
-	typeJSON, _ := json.Marshal(typeName)
-	m["type"] = json.RawMessage(typeJSON)
-
-	tsJSON, _ := json.Marshal(time.Now().UTC().Format(time.RFC3339))
-	m["ts"] = json.RawMessage(tsJSON)
-
-	out, err := json.Marshal(m)
-	if err != nil {
-		return nil, fmt.Errorf("session: marshal flat event: %w", err)
-	}
-	return out, nil
+	return []byte(header + "}"), nil
 }

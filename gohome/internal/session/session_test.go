@@ -1,6 +1,7 @@
 package session
 
 import (
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -46,6 +47,20 @@ func TestMarkReadHasRead(t *testing.T) {
 	}
 	if s.HasRead("/tmp/x/bar.go") {
 		t.Error("HasRead returned true for unread path")
+	}
+}
+
+func TestNewID(t *testing.T) {
+	id := NewID()
+	if len(id) != 8 {
+		t.Fatalf("NewID: expected 8-char ID, got %d chars: %q", len(id), id)
+	}
+	if id != strings.ToLower(id) {
+		t.Fatalf("NewID: expected lowercase, got %q", id)
+	}
+	id2 := NewID()
+	if id == id2 {
+		t.Fatal("NewID: two calls returned the same ID")
 	}
 }
 

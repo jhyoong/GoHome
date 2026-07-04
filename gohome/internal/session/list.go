@@ -3,6 +3,7 @@ package session
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -11,12 +12,12 @@ import (
 
 // Listing holds metadata about a previously persisted session.
 type Listing struct {
-	Path       string
-	ID         string
-	StartedAt  time.Time
-	LastActive time.Time
-	Title      string // first user_message text block, truncated to <=60 runes
-	Depth      int
+	Path       string    `json:"path"`
+	ID         string    `json:"id"`
+	StartedAt  time.Time `json:"startedAt"`
+	LastActive time.Time `json:"lastActive"`
+	Title      string    `json:"title"` // first user_message text block, truncated to <=60 runes
+	Depth      int       `json:"depth"`
 }
 
 // List returns all resumable sessions stored under home for the given cwd.
@@ -132,6 +133,10 @@ func parseListing(path string) (Listing, error) {
 		return Listing{}, err
 	}
 
+	if listing.ID == "" {
+		return Listing{}, fmt.Errorf("no session_start found in %s", path)
+	}
+
 	if lastTS != "" {
 		if t, err := time.Parse(time.RFC3339, lastTS); err == nil {
 			listing.LastActive = t
@@ -141,8 +146,8 @@ func parseListing(path string) (Listing, error) {
 	return listing, nil
 }
 
-// IsBlank reports whether the JSONL file at path contains no user_message events.
-func IsBlank(path string) (bool, error) {
+// isBlank reports whether the JSONL file at path contains no user_message events.
+func isBlank(path string) (bool, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return false, err
@@ -171,9 +176,9 @@ func IsBlank(path string) (bool, error) {
 	return true, nil
 }
 
-// CleanBlank removes all session JSONL files under home/sessions/<slug> that
+// cleanBlank removes all session JSONL files under home/sessions/<slug> that
 // contain no user_message events. Returns the number of files removed.
-func CleanBlank(home, cwd string) (int, error) {
+func cleanBlank(home, cwd string) (int, error) {
 	dir := filepath.Join(home, "sessions", ProjectSlug(cwd))
 	entries, err := os.ReadDir(dir)
 	if os.IsNotExist(err) {
@@ -192,7 +197,7 @@ func CleanBlank(home, cwd string) (int, error) {
 			continue
 		}
 		path := filepath.Join(dir, entry.Name())
-		blank, err := IsBlank(path)
+		blank, err := isBlank(path)
 		if err != nil {
 			continue
 		}

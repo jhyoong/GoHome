@@ -1,23 +1,21 @@
 package main
 
 import (
-	"context"
-	"crypto/rand"
-	"encoding/base32"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
-	"sync"
 	"syscall"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/jhyoong/GoHome/gohome/internal/agent"
 	"github.com/jhyoong/GoHome/gohome/internal/config"
+	"github.com/jhyoong/GoHome/gohome/internal/daemon"
+	"github.com/jhyoong/GoHome/gohome/internal/daemon/rpc"
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
 	"github.com/jhyoong/GoHome/gohome/internal/llm"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
@@ -33,17 +31,8 @@ var (
 	yolo        = flag.Bool("yolo", false, "disable all approval prompts")
 	resume      = flag.Bool("resume", false, "resume a past session")
 	showVersion = flag.Bool("version", false, "print version and exit")
+	stopFlag    = flag.Bool("stop", false, "stop the running daemon and exit")
 )
-
-// newSessionID generates an 8-char lowercase base32 session ID using crypto/rand.
-func newSessionID() string {
-	buf := make([]byte, 5) // 5 bytes -> 8 base32 chars (no padding)
-	if _, err := rand.Read(buf); err != nil {
-		panic("newSessionID: crypto/rand failed: " + err.Error())
-	}
-	enc := base32.StdEncoding.WithPadding(base32.NoPadding)
-	return strings.ToLower(enc.EncodeToString(buf))
-}
 
 // setupLogging configures the global slog logger to write JSON to
 // <home>/.gohome/logs/<YYYY-MM-DD>.log. Returns the open log file so the
@@ -72,95 +61,6 @@ func setupLogging(home string) (*os.File, error) {
 	return f, nil
 }
 
-// pickResume finds the most-recent session for (home, cwd) and loads it.
-// Returns nil session when no sessions exist (caller should start fresh).
-// The returned path is the JSONL file path so the caller can open the writer
-// in append mode to the same file.
-func pickResume(home, cwd string) (*session.Session, []common.Message, string, error) {
-	listings, err := session.List(home, cwd)
-	if err != nil {
-		return nil, nil, "", fmt.Errorf("pickResume: list: %w", err)
-	}
-	if len(listings) == 0 {
-		return nil, nil, "", nil
-	}
-	// List returns sorted descending by StartedAt; index 0 is most recent.
-	listing := listings[0]
-	sess, history, err := session.Load(listing.Path)
-	if err != nil {
-		return nil, nil, "", fmt.Errorf("pickResume: load %s: %w", listing.Path, err)
-	}
-	return sess, history, listing.Path, nil
-}
-
-// runLoop is the agent's REPL: it waits for user input, appends it to the
-// session history, persists it, and runs the agent. It returns when ctx is
-// cancelled.
-func runLoop(
-	ctx context.Context,
-	a *agent.Agent,
-	fe agent.Frontend,
-	turnMu *sync.Mutex,
-	turnCancel *context.CancelFunc,
-) {
-	for {
-		sessID := a.State.Session().ID
-
-		text, err := fe.AwaitUserInput(ctx, sessID)
-		if err != nil {
-			return
-		}
-
-		// Re-fetch after blocking: the session and writer may have been
-		// swapped (via /resume or /new) while we waited for input.
-		sess := a.State.Session()
-		writer := a.State.Writer()
-
-		sess.History = append(sess.History, common.Message{
-			Role: common.RoleUser,
-			Content: []common.Block{
-				{Kind: common.BlockText, Text: text},
-			},
-		})
-		writer.Emit(session.UserMessage{
-			Content: []common.Block{
-				{Kind: common.BlockText, Text: text},
-			},
-		})
-
-		turnCtx, cancel := context.WithCancel(ctx)
-		turnMu.Lock()
-		*turnCancel = cancel
-		turnMu.Unlock()
-
-		runErr := a.Run(turnCtx, sess)
-
-		turnMu.Lock()
-		*turnCancel = nil
-		turnMu.Unlock()
-		cancel()
-
-		if runErr != nil {
-			slog.Error("agent run failed", "err", runErr)
-			if ctx.Err() != nil {
-				return
-			}
-		}
-
-		if tag, drainErr := a.State.DrainPending(); tag != "" {
-			if drainErr != nil {
-				slog.Error("session swap failed", "tag", tag, "err", drainErr)
-			} else {
-				newSess := a.State.Session()
-				fe.Emit(newSess.ID, agent.Event{
-					Kind:      agent.EventSessionSwapped,
-					SessionID: newSess.ID,
-				})
-			}
-		}
-	}
-}
-
 func main() {
 	flag.Parse()
 
@@ -183,13 +83,27 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Structured logging (Task 12.4).
+	// Structured logging.
 	logFile, err := setupLogging(home)
 	if err != nil {
 		// Non-fatal: fall back to stderr and continue.
 		fmt.Fprintf(os.Stderr, "gohome: logging setup failed: %v (continuing without file log)\n", err)
 	}
 	slog.Info("gohome started", "cwd", cwd, "home", home, "yolo", *yolo, "resume", *resume)
+
+	sockPath := filepath.Join(home, "daemon.sock")
+
+	if *stopFlag {
+		stopDaemon(sockPath)
+		if logFile != nil {
+			_ = logFile.Close()
+		}
+		return
+	}
+
+	if *resume {
+		fmt.Fprintf(os.Stderr, "gohome: --resume is not yet supported in daemon mode (will be added in a future update)\n")
+	}
 
 	// Load config.
 	globalCfgPath, err := config.DefaultGlobalPath()
@@ -218,36 +132,115 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Check for existing daemon.
+	if !isDaemonRunning(sockPath) {
+		if err := startDaemon(sockPath, home, cwd, settings, mc, cfgName); err != nil {
+			fmt.Fprintf(os.Stderr, "gohome: daemon start failed: %v\n", err)
+			os.Exit(1)
+		}
+		waitForDaemon(sockPath, 5*time.Second)
+	}
+
+	// Run TUI client.
+	runClient(sockPath, settings, mc)
+
+	if logFile != nil {
+		slog.Info("gohome exiting")
+		_ = logFile.Close()
+	}
+}
+
+// isDaemonRunning probes the daemon socket with a health check.
+func isDaemonRunning(sockPath string) bool {
+	conn, err := net.DialTimeout("unix", sockPath, time.Second)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = conn.Close() }()
+
+	_ = conn.SetDeadline(time.Now().Add(time.Second))
+
+	c := rpc.NewConn(conn)
+	if err := c.WriteRequest(rpc.Request{
+		ID:     rpc.NewID(1),
+		Method: rpc.MethodDaemonHealth,
+		Params: json.RawMessage(`{}`),
+	}); err != nil {
+		return false
+	}
+
+	// Skip notifications (e.g. session.state sent on connect) until
+	// we receive the health response.
+	for {
+		msg, err := c.Read()
+		if err != nil {
+			return false
+		}
+		if msg.IsResponse() {
+			return msg.Error == nil
+		}
+	}
+}
+
+// waitForDaemon polls the socket until the daemon responds to a health check
+// or the timeout elapses.
+func waitForDaemon(sockPath string, timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if isDaemonRunning(sockPath) {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	fmt.Fprintf(os.Stderr, "gohome: daemon did not start within %s\n", timeout)
+	os.Exit(1)
+}
+
+// stopDaemon sends a daemon.stop RPC to the daemon and exits.
+func stopDaemon(sockPath string) {
+	conn, err := net.DialTimeout("unix", sockPath, time.Second)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gohome: no daemon running\n")
+		return
+	}
+	defer func() { _ = conn.Close() }()
+
+	c := rpc.NewConn(conn)
+	_ = c.WriteRequest(rpc.Request{
+		ID:     rpc.NewID(1),
+		Method: rpc.MethodDaemonStop,
+		Params: json.RawMessage(`{}`),
+	})
+	fmt.Println("gohome: daemon stopped")
+}
+
+// startDaemon builds all agent dependencies and starts the daemon server
+// in-process as a goroutine.
+func startDaemon(sockPath, home, cwd string, settings config.Settings, mc config.ModelConfig, cfgName string) error {
 	apiKey, err := config.ResolveAPIKey(mc)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "gohome: no API key for model config %q.\n", cfgName)
-		fmt.Fprintf(os.Stderr, "  Set apiKey in settings.json or the environment variable named by apiKeyEnv.\n")
-		os.Exit(1)
+		return fmt.Errorf("no API key for model config %q", cfgName)
 	}
 
-	// Build LLM client.
 	client, err := llm.New(mc, apiKey)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "gohome: cannot create LLM client: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("cannot create LLM client: %w", err)
 	}
 
-	// Build whitelist.
 	wl, err := guard.LoadWhitelist(
 		filepath.Join(home, "whitelist.json"),
 		filepath.Join(cwd, ".gohome", "whitelist.json"),
 	)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "gohome: whitelist error: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("whitelist error: %w", err)
 	}
 
-	// Build frontend and guard.
-	fe := tui.NewFrontend()
-	g := guard.NewGuard(wl, fe)
+	// Build guard with nil frontend. The daemon's RPCFrontend will be set
+	// when the first client connects (server.go sets agent.Frontend = fe,
+	// and the guard's frontend will be wired in a follow-up task).
+	g := guard.NewGuard(wl, nil)
 	g.SetYolo(*yolo)
 
-	// Build tools registry.
 	registry := tools.NewRegistry()
 	registry.Register(tools.ReadTool{})
 	registry.Register(tools.WriteTool{})
@@ -257,59 +250,78 @@ func main() {
 		MaxTimeoutMs:     settings.MaxBashTimeoutMs,
 	})
 
-	// Build or resume session.
-	// When --resume is set, load the most-recent session for this cwd.
-	// OpenWriter uses O_APPEND so resuming appends to the existing JSONL file.
-	var (
-		sess       *session.Session
-		writerPath string
-		isResumed  bool
-	)
-
-	if *resume {
-		loadedSess, _, resumePath, rerr := pickResume(home, cwd)
-		if rerr != nil {
-			slog.Warn("resume: failed to load sessions, starting fresh", "err", rerr)
-		} else if loadedSess == nil {
-			slog.Info("resume: no previous sessions found, starting fresh")
-		} else {
-			sess = loadedSess
-			writerPath = resumePath
-			isResumed = true
-			fmt.Fprintf(os.Stderr, "gohome: resuming session %s (%s)\n", sess.ID, resumePath)
-			slog.Info("resuming session", "id", sess.ID, "path", resumePath)
-		}
+	systemPrompt := `You are gohome, an AI coding assistant. You help users with software development tasks.
+You have access to tools for reading and writing files, running bash commands, and spawning subagents for parallel work.
+Be concise and precise. Ask for clarification when requirements are ambiguous.`
+	if settings.SystemPrompt != "" {
+		systemPrompt = settings.SystemPrompt
 	}
 
-	if sess == nil {
-		// Fresh session.
-		sess = session.NewSession(newSessionID(), cwd, mc.ModelName, cfgName)
-		writerPath = session.SessionPath(home, cwd, sess.ID, time.Now().UTC())
+	maxTokens := mc.MaxTokens
+	if maxTokens <= 0 {
+		maxTokens = config.DefaultMaxTokens
+	}
+	thinkingBudget := mc.ThinkingBudget
+	if thinkingBudget <= 0 {
+		thinkingBudget = config.DefaultThinkingBudget
 	}
 
-	writer, err := session.OpenWriter(writerPath)
+	sessionID := session.NewID()
+
+	srv, err := daemon.NewServer(sockPath, daemon.ServerConfig{
+		Version:        version,
+		LLMClient:      client,
+		Guard:          g,
+		Registry:       registry,
+		SystemPrompt:   systemPrompt,
+		MaxTokens:      maxTokens,
+		ThinkingBudget: thinkingBudget,
+		Home:           home,
+		CWD:            cwd,
+		SessionID:      sessionID,
+		Settings:       settings,
+		ModelConfig:    cfgName,
+		ModelName:      mc.ModelName,
+	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "gohome: cannot open session writer: %v\n", err)
+		return fmt.Errorf("cannot start daemon: %w", err)
+	}
+
+	go srv.Serve()
+	return nil
+}
+
+func pipeToProgram[T any](p *tea.Program, ch <-chan T) {
+	for msg := range ch {
+		p.Send(msg)
+	}
+}
+
+// runClient connects to the daemon and runs the TUI.
+func runClient(sockPath string, settings config.Settings, mc config.ModelConfig) {
+	conn, err := net.Dial("unix", sockPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gohome: cannot connect to daemon: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Emit session_start only for fresh sessions (resume appends to existing file).
-	if !isResumed {
-		writer.Emit(session.SessionStart{
-			ID:          sess.ID,
-			ParentID:    sess.ParentID,
-			CWD:         cwd,
-			Model:       mc.ModelName,
-			ModelConfig: cfgName,
-			Depth:       sess.Depth,
-			StartedAt:   sess.StartedAt,
-		})
-	}
+	c := rpc.NewConn(conn)
+	eventCh := make(chan tui.AgentEventMsg, 64)
+	cfe := tui.NewClientFrontend(c, eventCh)
+
+	go func() {
+		cfe.ReadLoop()
+		close(eventCh)
+	}()
 
 	// Build TUI model.
-	m := tui.New(fe, sess.ID)
-	m.SetYoloCallback(g.SetYolo)
+	m := tui.New("main")
+	m.SetClientFrontend(cfe)
+	m.SetYoloCallback(func(v bool) {
+		go func() { _ = cfe.SendYoloSet(v) }()
+	})
 	m.SetModelName(mc.ModelName)
+
 	contextWindow := mc.ContextWindow
 	if contextWindow <= 0 {
 		contextWindow = config.DefaultContextWindow
@@ -333,198 +345,44 @@ func main() {
 	m.SetRenderThrottleMs(settings.RenderThrottleMs)
 	m.SetSettings(settings)
 
-	// Build tea program and wire frontend.
-	p := tea.NewProgram(m, tea.WithAltScreen())
-	fe.SetProgram(p)
-
-	// Build agent.
-	systemPrompt := `You are gohome, an AI coding assistant. You help users with software development tasks.
-You have access to tools for reading and writing files, running bash commands, and spawning subagents for parallel work.
-Be concise and precise. Ask for clarification when requirements are ambiguous.`
-	if settings.SystemPrompt != "" {
-		systemPrompt = settings.SystemPrompt
-	}
-
-	maxTokens := mc.MaxTokens
-	if maxTokens <= 0 {
-		maxTokens = config.DefaultMaxTokens
-	}
-	thinkingBudget := mc.ThinkingBudget
-	if thinkingBudget <= 0 {
-		thinkingBudget = config.DefaultThinkingBudget
-	}
-
-	state := agent.NewSessionState(sess, writer, client)
-
-	a := &agent.Agent{
-		Tools:          registry,
-		Guard:          g,
-		Frontend:       fe,
-		State:          state,
-		System:         systemPrompt,
-		MaxTokens:      maxTokens,
-		ThinkingBudget: thinkingBudget,
-		Home:           home,
-	}
-	a.RegisterSubagentTool()
-
-	var (
-		turnMu     sync.Mutex
-		turnCancel context.CancelFunc
-	)
-
+	// Wire slash command callbacks to send RPC requests to the daemon.
 	m.SetSlashCallbacks(tui.SlashCallbacks{
 		ListSessions: func() ([]session.Listing, error) {
-			return session.List(home, cwd)
-		},
-		ResumeSession: func(id string) ([]common.Message, error) {
-			listings, err := session.List(home, cwd)
-			if err != nil {
-				return nil, err
-			}
-			var path string
-			for _, l := range listings {
-				if l.ID == id {
-					path = l.Path
-					break
-				}
-			}
-			if path == "" {
-				return nil, fmt.Errorf("session %q not found", id)
-			}
-			loaded, history, err := session.Load(path)
-			if err != nil {
-				return nil, err
-			}
-
-			queued, err := state.Swap("resume "+id, func(_ *session.Session, oldWriter *session.Writer) (*session.Session, *session.Writer, error) {
-				oldWriter.Emit(session.SessionEnd{Reason: "switch"})
-				_ = oldWriter.Close()
-
-				newWriter, err := session.OpenWriter(path)
-				if err != nil {
-					return nil, nil, fmt.Errorf("open writer: %w", err)
-				}
-				return loaded, newWriter, nil
-			})
-			if err != nil {
-				return nil, err
-			}
-			_ = queued
-			return history, nil
+			return cfe.SendSessionList()
 		},
 		NewSession: func() (string, error) {
-			id := newSessionID()
-			currentModel := state.Model()
-			currentCfg := state.ModelConfig()
-			newSess := session.NewSession(id, cwd, currentModel, currentCfg)
-			wrPath := session.SessionPath(home, cwd, id, time.Now().UTC())
-
-			queued, err := state.Swap("new "+id, func(_ *session.Session, oldWriter *session.Writer) (*session.Session, *session.Writer, error) {
-				oldWriter.Emit(session.SessionEnd{Reason: "switch"})
-				_ = oldWriter.Close()
-
-				newWriter, err := session.OpenWriter(wrPath)
-				if err != nil {
-					return nil, nil, fmt.Errorf("open writer: %w", err)
-				}
-				newWriter.Emit(session.SessionStart{
-					ID:          newSess.ID,
-					CWD:         cwd,
-					Model:       currentModel,
-					ModelConfig: currentCfg,
-					StartedAt:   newSess.StartedAt,
-				})
-				return newSess, newWriter, nil
-			})
-			if err != nil {
-				return "", err
-			}
-			_ = queued
-			return id, nil
+			return cfe.SendSessionNew()
 		},
-		SetModel: func(name string) (string, int, error) {
-			cfg, ok := settings.ModelConfig[name]
-			if !ok {
-				return "", 0, fmt.Errorf("model config %q not found", name)
-			}
-			apiKey, err := config.ResolveAPIKey(cfg)
-			if err != nil {
-				return "", 0, fmt.Errorf("no API key for model config %q", name)
-			}
-			newClient, err := llm.New(cfg, apiKey)
-			if err != nil {
-				return "", 0, fmt.Errorf("create client for %q: %w", name, err)
-			}
-			state.SetClient(newClient)
-			state.SetModel(cfg.ModelName)
-			state.SetModelConfig(name)
-			ctxWin := cfg.ContextWindow
-			if ctxWin <= 0 {
-				ctxWin = config.DefaultContextWindow
-			}
-			return cfg.ModelName, ctxWin, nil
+		ResumeSession: func(id string) (string, []common.Message, error) {
+			return cfe.SendSessionResume(id)
 		},
 		CancelSession: func(id string) {
-			turnMu.Lock()
-			defer turnMu.Unlock()
-			if turnCancel != nil {
-				turnCancel()
-				turnCancel = nil
-			}
-			state.ClearPending()
+			go func() { _ = cfe.SendCancel(id) }()
+		},
+		SetModel: func(name string) (string, int, error) {
+			return cfe.SendModelSet(name)
 		},
 	})
 
-	// Shutdown ordering (Task 12.5):
-	//   1. p.Run() returns when the user quits the TUI (Ctrl+C / /quit).
-	//      OR a SIGINT/SIGTERM arrives and calls cancel() + p.Quit().
-	//   2. cancel() unblocks AwaitUserInput and any in-flight a.Run call.
-	//   3. wg.Wait() ensures the agent goroutine has exited before we proceed.
-	//   4. session_end is emitted, writer is closed (flushes all queued JSONL),
-	//      then the log file is closed. Guaranteed to complete within ~1s.
-	ctx, cancel := context.WithCancel(context.Background())
+	p := tea.NewProgram(m, tea.WithAltScreen())
 
+	go pipeToProgram(p, eventCh)
+	go pipeToProgram(p, cfe.Approvals())
+	go pipeToProgram(p, cfe.StateSync())
+
+	// Handle signals.
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigCh
-		cancel()
+		_ = cfe.Close()
 		p.Quit()
 	}()
 
-	// Agent driver goroutine: REPL loop awaiting user input.
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		runLoop(ctx, a, fe, &turnMu, &turnCancel)
-	}()
-
-	// Run TUI in the main goroutine (blocks until user quits or signal).
 	if _, err := p.Run(); err != nil {
 		slog.Error("tui error", "err", err)
 	}
 
-	// Shutdown sequence: stop signal delivery so the goroutine can exit, cancel
-	// the context, then wait for the agent goroutine before flushing JSONL.
 	signal.Stop(sigCh)
-	cancel()
-	wg.Wait()
-
-	state.Writer().Emit(session.SessionEnd{Reason: "user_quit"})
-	if err := state.Writer().Close(); err != nil {
-		slog.Error("writer close error", "err", err)
-	}
-
-	if n, err := session.CleanBlank(home, cwd); err != nil {
-		slog.Warn("blank session cleanup failed", "err", err)
-	} else if n > 0 {
-		slog.Info("removed blank sessions", "count", n)
-	}
-
-	if logFile != nil {
-		slog.Info("gohome exiting")
-		_ = logFile.Close()
-	}
+	_ = cfe.Close()
 }

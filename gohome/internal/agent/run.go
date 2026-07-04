@@ -24,12 +24,12 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 	tctx := tools.WithSession(ctx, sess)
 
 	for {
-		stopReason, err := a.Turn(tctx, sess)
+		_, err := a.Turn(tctx, sess)
 		if err != nil {
 			if ctx.Err() != nil {
 				// Context was cancelled during Turn. Emit a frontend event but
 				// do NOT write session_end here — the writer's owner emits that.
-				a.Frontend.Emit(sess.ID, Event{
+				a.Frontend().Emit(sess.ID, Event{
 					Kind:       EventTurnDone,
 					SessionID:  sess.ID,
 					StopReason: "cancelled",
@@ -72,7 +72,7 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 			}
 
 			// Forward to Frontend.
-			a.Frontend.Emit(sess.ID, Event{
+			a.Frontend().Emit(sess.ID, Event{
 				Kind:       EventToolResult,
 				SessionID:  sess.ID,
 				ToolCallID: block.ToolUseID,
@@ -96,8 +96,6 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 			Role:    common.RoleTool,
 			Content: resultBlocks,
 		})
-
-		_ = stopReason // used implicitly: we continue the loop when toolUseBlocks non-empty
 	}
 }
 
@@ -143,7 +141,10 @@ func (a *Agent) dispatchTool(
 		return fmt.Sprintf("unknown tool: %s", block.ToolName), true
 	}
 
-	res, _ := safeExecute(tctx, tool, input, tools.NullSink{})
+	res, execErr := safeExecute(tctx, tool, input, tools.NullSink{})
+	if execErr != nil {
+		return fmt.Sprintf("tool execution error: %v", execErr), true
+	}
 	return res.Content, res.IsError
 }
 

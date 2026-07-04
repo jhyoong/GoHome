@@ -11,12 +11,11 @@ import (
 // handleApprovalReq processes an incoming approval request. If the request is
 // for the focused session and no approval is currently active, it becomes the
 // active prompt; otherwise it is queued in pendingApprovals.
-func (m *Model) handleApprovalReq(msg approvalReqMsg) {
+func (m *Model) handleApprovalReq(msg ApprovalReqMsg) {
 	if msg.Req.SessionID == m.focused && m.activeApproval == nil {
-		ap := newApprovalPrompt(msg.Req, msg.Reply)
-		m.activeApproval = ap
+		m.activeApproval = newApprovalPrompt(msg.Req, msg.Resolve)
 	} else {
-		m.pendingApprovals[msg.Req.SessionID] = newApprovalPrompt(msg.Req, msg.Reply)
+		m.pendingApprovals[msg.Req.SessionID] = newApprovalPrompt(msg.Req, msg.Resolve)
 	}
 }
 
@@ -117,16 +116,15 @@ func (m *Model) handleApprovalKey(msg tea.KeyMsg) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-// resolveApproval sends dec on the active approval's reply channel and clears
+// resolveApproval delivers the decision via the resolve callback and clears
 // the active approval. If another pending approval exists for the focused
 // session, it is promoted to active.
 func (m *Model) resolveApproval(dec guard.ApprovalDecision) {
 	if m.activeApproval == nil {
 		return
 	}
-	m.activeApproval.reply <- dec
+	m.activeApproval.resolve(dec)
 	m.activeApproval = nil
-	// Promote any pending approval for the now-focused session.
 	m.promoteApproval()
 }
 
@@ -149,7 +147,7 @@ func (m *Model) notificationLine() string {
 	// Pending approvals take priority.
 	for sid := range m.pendingApprovals {
 		if sid != m.focused {
-			return fmt.Sprintf("! [%s] needs approval -- Ctrl+] to focus", sid)
+			return fmt.Sprintf("! [%s] needs approval -- Ctrl+Right to focus", sid)
 		}
 	}
 	// Secondary: another session is in-flight while we are focused elsewhere.
@@ -160,7 +158,7 @@ func (m *Model) notificationLine() string {
 			}
 		}
 	}
-	// Context fullness warning for the focused session (Task 11.16).
+	// Context fullness warning for the focused session.
 	if m.contextNotice != "" {
 		return m.contextNotice
 	}

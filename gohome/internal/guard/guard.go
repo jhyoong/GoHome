@@ -14,18 +14,18 @@ const (
 
 // ApprovalRequest is sent to the Frontend when a tool call is not whitelisted.
 type ApprovalRequest struct {
-	SessionID        string
-	Tool             string
-	Input            json.RawMessage
-	Summary          string
-	SuggestedPattern string
+	SessionID        string          `json:"sessionID"`
+	Tool             string          `json:"tool"`
+	Input            json.RawMessage `json:"input"`
+	Summary          string          `json:"summary"`
+	SuggestedPattern string          `json:"suggestedPattern"`
 }
 
 // ApprovalDecision is the response from the Frontend for a pending tool call.
 type ApprovalDecision struct {
-	Outcome      ApprovalOutcome
-	SavedPattern string
-	SteerMessage string
+	Outcome      ApprovalOutcome `json:"outcome"`
+	SavedPattern string          `json:"savedPattern,omitempty"`
+	SteerMessage string          `json:"steerMessage,omitempty"`
 }
 
 // Decision is the final result of Guard.Check(), consumed by the agent.
