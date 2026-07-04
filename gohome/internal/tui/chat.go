@@ -11,9 +11,16 @@ import (
 const maxPreviewLines = 3
 
 var (
-	userPrefix     = lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
-	noticeStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
-	expandedBg     = lipgloss.NewStyle().Background(lipgloss.Color("236"))
+	userBlockStyle = lipgloss.NewStyle().
+			Background(lipgloss.Color("236")).
+			BorderStyle(lipgloss.ThickBorder()).
+			BorderLeft(true).
+			BorderRight(false).
+			BorderTop(false).
+			BorderBottom(false).
+			BorderForeground(lipgloss.Color("12"))
+	noticeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	expandedBg  = lipgloss.NewStyle().Background(lipgloss.Color("236"))
 	diffBoxDefault = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("8")).
@@ -153,7 +160,7 @@ func (c *ChatComponent) entryLineCount(e *TimelineEntry, maxWidth int) int {
 	}
 	switch e.Kind {
 	case KindUser:
-		return len(WrapText(e.Text, maxWidth-len("you: ")-2))
+		return len(WrapText(e.Text, maxWidth-3))
 	case KindAssistant:
 		lines := RenderMarkdown(e.Text, maxWidth-2)
 		if len(lines) == 0 {
@@ -230,7 +237,7 @@ func (c *ChatComponent) countLines(maxWidth int) int {
 		}
 		switch e.Kind {
 		case KindUser:
-			count += len(WrapText(e.Text, maxWidth-len("you: ")-2))
+			count += len(WrapText(e.Text, maxWidth-3))
 		case KindAssistant:
 			lines := RenderMarkdown(e.Text, maxWidth-2)
 			if len(lines) == 0 {
@@ -364,13 +371,13 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 
 	switch e.Kind {
 	case KindUser:
-		prefix := userPrefix.Render("you:")
-		text := WrapText(e.Text, maxWidth-len("you: ")-2)
-		for j, l := range text {
+		text := WrapText(e.Text, maxWidth-3)
+		styled := userBlockStyle.Width(maxWidth - 2).Render(strings.Join(text, "\n"))
+		for j, l := range strings.Split(styled, "\n") {
 			if j == 0 {
-				lines = append(lines, marker+prefix+" "+l)
+				lines = append(lines, marker+l)
 			} else {
-				lines = append(lines, "      "+l)
+				lines = append(lines, "  "+l)
 			}
 		}
 
