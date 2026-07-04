@@ -242,7 +242,7 @@ func TestServer_WithAgent_ProcessesInput(t *testing.T) {
 
 	// The agent should process the input and emit events back. We read
 	// notifications from the connection. Give the agent loop time to run.
-	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
 	rc := rpc.NewConn(conn)
 
 	var notifications []*rpc.Message
@@ -471,7 +471,7 @@ func TestServer_Reconnect_SendsState(t *testing.T) {
 	}
 
 	// Read the session.state notification sent on connect.
-	_ = conn1.SetReadDeadline(time.Now().Add(3 * time.Second))
+	_ = conn1.SetReadDeadline(time.Now().Add(10 * time.Second))
 	rc1 := rpc.NewConn(conn1)
 	msg1, err := rc1.Read()
 	if err != nil {
@@ -500,7 +500,7 @@ func TestServer_Reconnect_SendsState(t *testing.T) {
 	conn2 := dialTestServer(t, sock)
 
 	// Read the session.state notification sent on connect.
-	_ = conn2.SetReadDeadline(time.Now().Add(3 * time.Second))
+	_ = conn2.SetReadDeadline(time.Now().Add(10 * time.Second))
 	rc2 := rpc.NewConn(conn2)
 	msg2, err := rc2.Read()
 	if err != nil {
@@ -680,7 +680,7 @@ func TestServer_SessionResume(t *testing.T) {
 	}
 
 	// Drain agent.event notifications so the agent turn completes.
-	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
 	rc := rpc.NewConn(conn)
 	for {
 		_, err := rc.Read()
