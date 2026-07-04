@@ -24,8 +24,8 @@ func setupClientFrontend(t *testing.T) (cf *ClientFrontend, daemonConn *rpc.Conn
 	events = make(chan AgentEventMsg, 4)
 	cf = NewClientFrontend(tuiConn, events)
 	cleanup = func() {
-		daemonRaw.Close()
-		tuiRaw.Close()
+		_ = daemonRaw.Close()
+		_ = tuiRaw.Close()
 	}
 	return
 }
@@ -346,7 +346,7 @@ func TestClientFrontend_MalformedApprovalRequest_SendsErrorResponse(t *testing.T
 	eventCh := make(chan AgentEventMsg, 64)
 	cfe := NewClientFrontend(cc, eventCh)
 	go cfe.ReadLoop()
-	defer func() { cfe.Close(); sc.Close() }()
+	defer func() { _ = cfe.Close(); _ = sc.Close() }()
 
 	// Write a raw JSON-RPC request with params that are valid JSON but have
 	// wrong types so that Unmarshal into ApprovalRequestParams produces an
@@ -381,7 +381,7 @@ func TestClientFrontend_Close_ClosesChannels(t *testing.T) {
 	go cfe.ReadLoop()
 
 	_ = cfe.Close()
-	sc.Close()
+	_ = sc.Close()
 
 	// Approvals channel should be closed.
 	_, ok := <-cfe.Approvals()

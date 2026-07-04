@@ -12,9 +12,9 @@ import (
 // ID represents a JSON-RPC 2.0 request identifier. Per the spec an ID may be
 // an integer, a string, or null. A nil *ID indicates a notification (no id).
 type ID struct {
-	num    int64
-	str    string
-	isStr  bool
+	num   int64
+	str   string
+	isStr bool
 }
 
 // NewID creates a numeric ID.
@@ -73,9 +73,9 @@ func (id *ID) UnmarshalJSON(data []byte) error {
 
 // Error represents a JSON-RPC 2.0 error object.
 type Error struct {
-	Code    int              `json:"code"`
-	Message string           `json:"message"`
-	Data    json.RawMessage  `json:"data,omitempty"`
+	Code    int             `json:"code"`
+	Message string          `json:"message"`
+	Data    json.RawMessage `json:"data,omitempty"`
 }
 
 // Error implements the error interface.
@@ -88,9 +88,9 @@ func (e *Error) Error() string {
 // Request represents a JSON-RPC 2.0 request or notification. When ID is nil
 // the message is a notification (no response expected).
 type Request struct {
-	ID     *ID              `json:"-"`
-	Method string           `json:"-"`
-	Params json.RawMessage  `json:"-"`
+	ID     *ID             `json:"-"`
+	Method string          `json:"-"`
+	Params json.RawMessage `json:"-"`
 }
 
 // MarshalJSON implements json.Marshaler. It always includes "jsonrpc":"2.0"
@@ -116,9 +116,9 @@ func (r Request) MarshalJSON() ([]byte, error) {
 // Response represents a JSON-RPC 2.0 response. Exactly one of Result or Error
 // must be set per the specification.
 type Response struct {
-	ID     *ID              `json:"-"`
-	Result json.RawMessage  `json:"-"`
-	Error  *Error           `json:"-"`
+	ID     *ID             `json:"-"`
+	Result json.RawMessage `json:"-"`
+	Error  *Error          `json:"-"`
 }
 
 // MarshalJSON implements json.Marshaler. It always includes "jsonrpc":"2.0".
@@ -153,11 +153,11 @@ func (r Response) MarshalJSON() ([]byte, error) {
 // uses IsRequest, IsNotification, or IsResponse to determine which fields are
 // relevant.
 type Message struct {
-	ID     *ID              `json:"id,omitempty"`
-	Method string           `json:"method,omitempty"`
-	Params json.RawMessage  `json:"params,omitempty"`
-	Result json.RawMessage  `json:"result,omitempty"`
-	Error  *Error           `json:"error,omitempty"`
+	ID     *ID             `json:"id,omitempty"`
+	Method string          `json:"method,omitempty"`
+	Params json.RawMessage `json:"params,omitempty"`
+	Result json.RawMessage `json:"result,omitempty"`
+	Error  *Error          `json:"error,omitempty"`
 }
 
 // IsRequest returns true when the message has both a method and an id.
@@ -183,12 +183,12 @@ func (m *Message) IsResponse() bool {
 func Decode(data []byte) (*Message, error) {
 	// We use a temporary struct so we can handle the id field specially.
 	var raw struct {
-		JSONRPC string           `json:"jsonrpc"`
-		ID      json.RawMessage  `json:"id,omitempty"`
-		Method  string           `json:"method,omitempty"`
-		Params  json.RawMessage  `json:"params,omitempty"`
-		Result  json.RawMessage  `json:"result,omitempty"`
-		Error   *Error           `json:"error,omitempty"`
+		JSONRPC string          `json:"jsonrpc"`
+		ID      json.RawMessage `json:"id,omitempty"`
+		Method  string          `json:"method,omitempty"`
+		Params  json.RawMessage `json:"params,omitempty"`
+		Result  json.RawMessage `json:"result,omitempty"`
+		Error   *Error          `json:"error,omitempty"`
 	}
 
 	if err := json.Unmarshal(data, &raw); err != nil {

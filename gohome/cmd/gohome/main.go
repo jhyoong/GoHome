@@ -96,7 +96,7 @@ func main() {
 	if *stopFlag {
 		stopDaemon(sockPath)
 		if logFile != nil {
-			logFile.Close()
+			_ = logFile.Close()
 		}
 		return
 	}
@@ -156,9 +156,9 @@ func isDaemonRunning(sockPath string) bool {
 	if err != nil {
 		return false
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
-	conn.SetDeadline(time.Now().Add(time.Second))
+	_ = conn.SetDeadline(time.Now().Add(time.Second))
 
 	c := rpc.NewConn(conn)
 	if err := c.WriteRequest(rpc.Request{
@@ -203,7 +203,7 @@ func stopDaemon(sockPath string) {
 		fmt.Fprintf(os.Stderr, "gohome: no daemon running\n")
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	c := rpc.NewConn(conn)
 	_ = c.WriteRequest(rpc.Request{
@@ -312,7 +312,7 @@ func runClient(sockPath string, settings config.Settings, mc config.ModelConfig)
 	m := tui.New("main")
 	m.SetClientFrontend(cfe)
 	m.SetYoloCallback(func(v bool) {
-		go cfe.SendYoloSet(v)
+		go func() { _ = cfe.SendYoloSet(v) }()
 	})
 	m.SetModelName(mc.ModelName)
 
@@ -351,7 +351,7 @@ func runClient(sockPath string, settings config.Settings, mc config.ModelConfig)
 			return cfe.SendSessionResume(id)
 		},
 		CancelSession: func(id string) {
-			go cfe.SendCancel(id)
+			go func() { _ = cfe.SendCancel(id) }()
 		},
 		SetModel: func(name string) (string, int, error) {
 			return cfe.SendModelSet(name)
@@ -386,7 +386,7 @@ func runClient(sockPath string, settings config.Settings, mc config.ModelConfig)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigCh
-		cfe.Close()
+		_ = cfe.Close()
 		p.Quit()
 	}()
 

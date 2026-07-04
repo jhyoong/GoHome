@@ -11,8 +11,8 @@ func setupConnPair(t *testing.T) (conn1, conn2 *Conn, cleanup func()) {
 	t.Helper()
 	c1, c2 := net.Pipe()
 	cleanup = func() {
-		c1.Close()
-		c2.Close()
+		_ = c1.Close()
+		_ = c2.Close()
 	}
 	return NewConn(c1), NewConn(c2), cleanup
 }

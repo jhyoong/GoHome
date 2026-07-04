@@ -20,8 +20,8 @@ func setupTestFrontend(t *testing.T) (fe *frontend.RPCFrontend, tuiRPC *rpc.Conn
 	tuiRPC = rpc.NewConn(tuiConn)
 	fe = frontend.New(daemonRPC)
 	cleanup = func() {
-		daemonConn.Close()
-		tuiConn.Close()
+		_ = daemonConn.Close()
+		_ = tuiConn.Close()
 	}
 	return
 }

@@ -63,7 +63,7 @@ func newTestSocket(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("MkdirTemp: %v", err)
 	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	return filepath.Join(dir, "t.sock")
 }
 
@@ -98,7 +98,7 @@ func dialTestServer(t *testing.T, sockPath string) net.Conn {
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	t.Cleanup(func() { conn.Close() })
+	t.Cleanup(func() { _ = conn.Close() })
 	return conn
 }
 
@@ -233,7 +233,7 @@ func TestServer_WithAgent_ProcessesInput(t *testing.T) {
 
 	// The agent should process the input and emit events back. We read
 	// notifications from the connection. Give the agent loop time to run.
-	conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
 	rc := rpc.NewConn(conn)
 
 	var notifications []*rpc.Message
@@ -269,7 +269,7 @@ func TestServer_WithAgent_ProcessesInput(t *testing.T) {
 	// Verify session JSONL was written.
 	sessionsDir := filepath.Join(dir, "sessions")
 	var jsonlFiles []string
-	filepath.Walk(sessionsDir, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(sessionsDir, func(path string, info os.FileInfo, err error) error {
 		if err == nil && filepath.Ext(path) == ".jsonl" {
 			jsonlFiles = append(jsonlFiles, path)
 		}
@@ -284,7 +284,7 @@ func TestServer_WithAgent_ProcessesInput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open JSONL: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var events []map[string]json.RawMessage
 	scanner := bufio.NewScanner(f)
@@ -301,7 +301,7 @@ func TestServer_WithAgent_ProcessesInput(t *testing.T) {
 
 	// Check first event is session_start.
 	var firstType string
-	json.Unmarshal(events[0]["type"], &firstType)
+	_ = json.Unmarshal(events[0]["type"], &firstType)
 	if firstType != "session_start" {
 		t.Errorf("first JSONL event type = %q, want session_start", firstType)
 	}
@@ -450,7 +450,7 @@ func TestServer_SessionNew_SwapOrder(t *testing.T) {
 	// and the new session's JSONL file contains a session_start event.
 	sessionsDir := filepath.Join(dir, "sessions")
 	var jsonlFiles []string
-	filepath.Walk(sessionsDir, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(sessionsDir, func(path string, info os.FileInfo, err error) error {
 		if err == nil && filepath.Ext(path) == ".jsonl" {
 			jsonlFiles = append(jsonlFiles, path)
 		}
@@ -478,12 +478,12 @@ func TestServer_SessionNew_SwapOrder(t *testing.T) {
 		if lines.Scan() {
 			if err := json.Unmarshal(lines.Bytes(), &first); err == nil {
 				var evType string
-				json.Unmarshal(first["type"], &evType)
+				_ = json.Unmarshal(first["type"], &evType)
 				if evType == "session_start" {
 					var start map[string]json.RawMessage
-					json.Unmarshal(lines.Bytes(), &start)
+					_ = json.Unmarshal(lines.Bytes(), &start)
 					var sid string
-					json.Unmarshal(start["id"], &sid)
+					_ = json.Unmarshal(start["id"], &sid)
 					if sid == result.SessionID {
 						foundStart = true
 					}
@@ -527,7 +527,7 @@ func TestServer_Reconnect_SendsState(t *testing.T) {
 	}
 
 	// Read the session.state notification sent on connect.
-	conn1.SetReadDeadline(time.Now().Add(3 * time.Second))
+	_ = conn1.SetReadDeadline(time.Now().Add(3 * time.Second))
 	rc1 := rpc.NewConn(conn1)
 	msg1, err := rc1.Read()
 	if err != nil {
@@ -549,14 +549,14 @@ func TestServer_Reconnect_SendsState(t *testing.T) {
 	}
 
 	// Disconnect client 1.
-	conn1.Close()
+	_ = conn1.Close()
 	time.Sleep(100 * time.Millisecond) // let server notice disconnect
 
 	// Client 2 connects.
 	conn2 := dialTestServer(t, sock)
 
 	// Read the session.state notification sent on connect.
-	conn2.SetReadDeadline(time.Now().Add(3 * time.Second))
+	_ = conn2.SetReadDeadline(time.Now().Add(3 * time.Second))
 	rc2 := rpc.NewConn(conn2)
 	msg2, err := rc2.Read()
 	if err != nil {
@@ -601,7 +601,7 @@ func TestServer_GracePeriod_ExitsWhenIdle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	conn.Close()
+	_ = conn.Close()
 
 	select {
 	case <-done:
@@ -634,7 +634,7 @@ func TestServer_GracePeriod_CancelledByReconnect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial 1: %v", err)
 	}
-	conn1.Close()
+	_ = conn1.Close()
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -652,7 +652,7 @@ func TestServer_GracePeriod_CancelledByReconnect(t *testing.T) {
 	default:
 	}
 
-	conn2.Close()
+	_ = conn2.Close()
 	srv.Stop()
 
 	select {
@@ -768,7 +768,7 @@ func TestServer_SessionResume(t *testing.T) {
 	}
 
 	// Drain agent.event notifications so the agent turn completes.
-	conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
 	rc := rpc.NewConn(conn)
 	for {
 		_, err := rc.Read()
@@ -776,7 +776,7 @@ func TestServer_SessionResume(t *testing.T) {
 			break
 		}
 	}
-	conn.Close()
+	_ = conn.Close()
 
 	// 2. Reconnect and create a new session with session.new.
 	conn2 := dialTestServer(t, sock)

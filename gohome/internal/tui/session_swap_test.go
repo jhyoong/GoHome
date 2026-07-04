@@ -15,7 +15,7 @@ func TestEventSessionSwapped_PromotesApproval(t *testing.T) {
 
 	// Add a pending approval for sess-b.
 	m.handleApprovalReq(ApprovalReqMsg{
-		Req: guard.ApprovalRequest{SessionID: "sess-b", Tool: "bash"},
+		Req:     guard.ApprovalRequest{SessionID: "sess-b", Tool: "bash"},
 		Resolve: func(dec guard.ApprovalDecision) {},
 	})
 
@@ -27,7 +27,7 @@ func TestEventSessionSwapped_PromotesApproval(t *testing.T) {
 	// Simulate EventSessionSwapped to sess-b.
 	m.handleAgentEvent(AgentEventMsg{
 		SessionID: "sess-b",
-		Ev: agent.Event{Kind: agent.EventSessionSwapped, SessionID: "sess-b"},
+		Ev:        agent.Event{Kind: agent.EventSessionSwapped, SessionID: "sess-b"},
 	})
 
 	// Now sess-b is focused, its pending approval should be promoted to active.
@@ -45,7 +45,7 @@ func TestEventSessionSwapped_DemotesActiveApproval(t *testing.T) {
 
 	// Add an active approval for sess-a (focused session).
 	m.handleApprovalReq(ApprovalReqMsg{
-		Req: guard.ApprovalRequest{SessionID: "sess-a", Tool: "bash"},
+		Req:     guard.ApprovalRequest{SessionID: "sess-a", Tool: "bash"},
 		Resolve: func(dec guard.ApprovalDecision) {},
 	})
 
@@ -57,7 +57,7 @@ func TestEventSessionSwapped_DemotesActiveApproval(t *testing.T) {
 	// Simulate EventSessionSwapped to sess-b.
 	m.handleAgentEvent(AgentEventMsg{
 		SessionID: "sess-b",
-		Ev: agent.Event{Kind: agent.EventSessionSwapped, SessionID: "sess-b"},
+		Ev:        agent.Event{Kind: agent.EventSessionSwapped, SessionID: "sess-b"},
 	})
 
 	// The old active approval for sess-a should be demoted to pending.

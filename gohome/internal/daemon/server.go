@@ -100,7 +100,7 @@ func NewServer(sockPath string, cfg ServerConfig) (*Server, error) {
 
 	if cfg.LLMClient != nil {
 		if err := srv.initAgent(cfg); err != nil {
-			ln.Close()
+			_ = ln.Close()
 			return nil, err
 		}
 	}
@@ -145,10 +145,10 @@ func (s *Server) Stop() {
 	c := s.client
 	s.mu.Unlock()
 	if c != nil {
-		c.Close()
+		_ = c.Close()
 	}
 
-	s.listener.Close()
+	_ = s.listener.Close()
 }
 
 // handleClient creates an rpc.Conn and frontend.RPCFrontend for the given
@@ -189,7 +189,7 @@ func (s *Server) handleClient(conn net.Conn) {
 		s.fe = nil
 		s.mu.Unlock()
 		fe.Close()
-		c.Close()
+		_ = c.Close()
 	}()
 
 	for {
@@ -230,5 +230,5 @@ func (s *Server) cancelGraceTimer() {
 
 // cleanup removes the socket file.
 func (s *Server) cleanup() {
-	os.Remove(s.sockPath)
+	_ = os.Remove(s.sockPath)
 }

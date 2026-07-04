@@ -192,8 +192,8 @@ func TestDecodeMessage_Response(t *testing.T) {
 
 func TestIDMarshalUnmarshal(t *testing.T) {
 	tests := []struct {
-		name    string
-		id      *ID
+		name     string
+		id       *ID
 		wantJSON string
 	}{
 		{"integer", NewID(42), "42"},

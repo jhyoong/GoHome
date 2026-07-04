@@ -334,7 +334,7 @@ func (m *Model) sendInputCmd(text string) tea.Cmd {
 	cfe := m.cfe
 	sid := m.focused
 	return func() tea.Msg {
-		cfe.SendInput(sid, text)
+		_ = cfe.SendInput(sid, text)
 		return nil
 	}
 }

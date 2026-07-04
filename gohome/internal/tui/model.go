@@ -200,8 +200,8 @@ func (m *Model) SetSlashCallbacks(cb SlashCallbacks) {
 	m.slashCB = cb
 }
 
-func (m *Model) SetSettings(s config.Settings) { m.settings = s }
-func (m *Model) SetRenderThrottleMs(ms int)    { m.renderThrottleMs = ms }
+func (m *Model) SetSettings(s config.Settings)         { m.settings = s }
+func (m *Model) SetRenderThrottleMs(ms int)            { m.renderThrottleMs = ms }
 func (m *Model) SetClientFrontend(cfe *ClientFrontend) { m.cfe = cfe }
 
 // SetContextWindow sets the total context window size used in the token bar.
