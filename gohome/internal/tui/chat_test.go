@@ -419,11 +419,11 @@ func TestExtractToolArg(t *testing.T) {
 func TestExpandHintOnTruncatedOutput(t *testing.T) {
 	// 6-line result: preview shows last 3 lines + hint showing "3 earlier lines"
 	entries := []TimelineEntry{{
-		Kind:     KindTool,
-		ToolName: "bash",
-		Text:     `{"command":"find ."}`,
+		Kind:       KindTool,
+		ToolName:   "bash",
+		Text:       `{"command":"find ."}`,
 		ToolResult: "line1\nline2\nline3\nline4\nline5\nline6",
-		Status:   "success",
+		Status:     "success",
 	}}
 	c := NewChat(&entries, 20)
 	lines := c.Render(80)

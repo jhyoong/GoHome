@@ -19,8 +19,8 @@ var (
 			BorderTop(false).
 			BorderBottom(false).
 			BorderForeground(lipgloss.Color("12"))
-	noticeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
-	expandedBg  = lipgloss.NewStyle().Background(lipgloss.Color("236"))
+	noticeStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	expandedBg     = lipgloss.NewStyle().Background(lipgloss.Color("236"))
 	diffBoxDefault = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("8")).
