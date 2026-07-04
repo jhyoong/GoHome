@@ -30,6 +30,18 @@ func setupClientFrontend(t *testing.T) (cf *ClientFrontend, daemonConn *rpc.Conn
 	return
 }
 
+func waitFor[T any](t *testing.T, ch <-chan T) T {
+	t.Helper()
+	select {
+	case v := <-ch:
+		return v
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for value")
+		var zero T
+		return zero
+	}
+}
+
 func TestClientFrontend_ReceivesAgentEvent(t *testing.T) {
 	cf, daemonConn, events, cleanup := setupClientFrontend(t)
 	defer cleanup()
@@ -56,19 +68,15 @@ func TestClientFrontend_ReceivesAgentEvent(t *testing.T) {
 	}
 
 	// Wait for the event to appear in the events channel.
-	select {
-	case ev := <-events:
-		if ev.SessionID != "s1" {
-			t.Errorf("sessionID = %q, want %q", ev.SessionID, "s1")
-		}
-		if ev.Ev.Kind != agent.EventTokenDelta {
-			t.Errorf("event kind = %q, want %q", ev.Ev.Kind, agent.EventTokenDelta)
-		}
-		if ev.Ev.TextDelta != "hello world" {
-			t.Errorf("text delta = %q, want %q", ev.Ev.TextDelta, "hello world")
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for agent event")
+	ev := waitFor(t, events)
+	if ev.SessionID != "s1" {
+		t.Errorf("sessionID = %q, want %q", ev.SessionID, "s1")
+	}
+	if ev.Ev.Kind != agent.EventTokenDelta {
+		t.Errorf("event kind = %q, want %q", ev.Ev.Kind, agent.EventTokenDelta)
+	}
+	if ev.Ev.TextDelta != "hello world" {
+		t.Errorf("text delta = %q, want %q", ev.Ev.TextDelta, "hello world")
 	}
 }
 
@@ -101,30 +109,26 @@ func TestClientFrontend_SendInput(t *testing.T) {
 	}
 
 	// Verify the request the daemon received.
-	select {
-	case r := <-ch:
-		if r.err != nil {
-			t.Fatalf("daemon read: %v", r.err)
-		}
-		if !r.msg.IsRequest() {
-			t.Fatal("expected request, got notification/response")
-		}
-		if r.msg.Method != rpc.MethodSessionInput {
-			t.Errorf("method = %q, want %q", r.msg.Method, rpc.MethodSessionInput)
-		}
+	r := waitFor(t, ch)
+	if r.err != nil {
+		t.Fatalf("daemon read: %v", r.err)
+	}
+	if !r.msg.IsRequest() {
+		t.Fatal("expected request, got notification/response")
+	}
+	if r.msg.Method != rpc.MethodSessionInput {
+		t.Errorf("method = %q, want %q", r.msg.Method, rpc.MethodSessionInput)
+	}
 
-		var params rpc.SessionInputParams
-		if err := json.Unmarshal(r.msg.Params, &params); err != nil {
-			t.Fatalf("unmarshal params: %v", err)
-		}
-		if params.SessionID != "s1" {
-			t.Errorf("sessionID = %q, want %q", params.SessionID, "s1")
-		}
-		if params.Text != "hello" {
-			t.Errorf("text = %q, want %q", params.Text, "hello")
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for daemon to receive request")
+	var params rpc.SessionInputParams
+	if err := json.Unmarshal(r.msg.Params, &params); err != nil {
+		t.Fatalf("unmarshal params: %v", err)
+	}
+	if params.SessionID != "s1" {
+		t.Errorf("sessionID = %q, want %q", params.SessionID, "s1")
+	}
+	if params.Text != "hello" {
+		t.Errorf("text = %q, want %q", params.Text, "hello")
 	}
 }
 
@@ -152,24 +156,20 @@ func TestClientFrontend_SendCancel(t *testing.T) {
 		t.Fatalf("SendCancel: %v", err)
 	}
 
-	select {
-	case r := <-ch:
-		if r.err != nil {
-			t.Fatalf("daemon read: %v", r.err)
-		}
-		if r.msg.Method != rpc.MethodSessionCancel {
-			t.Errorf("method = %q, want %q", r.msg.Method, rpc.MethodSessionCancel)
-		}
+	r := waitFor(t, ch)
+	if r.err != nil {
+		t.Fatalf("daemon read: %v", r.err)
+	}
+	if r.msg.Method != rpc.MethodSessionCancel {
+		t.Errorf("method = %q, want %q", r.msg.Method, rpc.MethodSessionCancel)
+	}
 
-		var params rpc.SessionCancelParams
-		if err := json.Unmarshal(r.msg.Params, &params); err != nil {
-			t.Fatalf("unmarshal params: %v", err)
-		}
-		if params.SessionID != "s1" {
-			t.Errorf("sessionID = %q, want %q", params.SessionID, "s1")
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out")
+	var params rpc.SessionCancelParams
+	if err := json.Unmarshal(r.msg.Params, &params); err != nil {
+		t.Fatalf("unmarshal params: %v", err)
+	}
+	if params.SessionID != "s1" {
+		t.Errorf("sessionID = %q, want %q", params.SessionID, "s1")
 	}
 }
 
@@ -192,27 +192,23 @@ func TestClientFrontend_RespondApproval(t *testing.T) {
 		t.Fatalf("RespondApproval: %v", err)
 	}
 
-	select {
-	case r := <-ch:
-		if r.err != nil {
-			t.Fatalf("daemon read: %v", r.err)
-		}
-		if !r.msg.IsResponse() {
-			t.Fatal("expected response, got request/notification")
-		}
-		if r.msg.ID.Int64() != 42 {
-			t.Errorf("response id = %d, want 42", r.msg.ID.Int64())
-		}
+	r := waitFor(t, ch)
+	if r.err != nil {
+		t.Fatalf("daemon read: %v", r.err)
+	}
+	if !r.msg.IsResponse() {
+		t.Fatal("expected response, got request/notification")
+	}
+	if r.msg.ID.Int64() != 42 {
+		t.Errorf("response id = %d, want 42", r.msg.ID.Int64())
+	}
 
-		var result rpc.ApprovalResponseResult
-		if err := json.Unmarshal(r.msg.Result, &result); err != nil {
-			t.Fatalf("unmarshal result: %v", err)
-		}
-		if result.Decision.Outcome != guard.Deny {
-			t.Errorf("outcome = %q, want %q", result.Decision.Outcome, guard.Deny)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out")
+	var result rpc.ApprovalResponseResult
+	if err := json.Unmarshal(r.msg.Result, &result); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if result.Decision.Outcome != guard.Deny {
+		t.Errorf("outcome = %q, want %q", result.Decision.Outcome, guard.Deny)
 	}
 }
 
@@ -253,40 +249,32 @@ func TestClientFrontend_ReceivesApprovalRequest(t *testing.T) {
 	// approval requests too. We'll use a separate approvals channel.
 
 	// Wait for the approval to arrive.
-	select {
-	case req := <-cf.Approvals():
-		if req.Req.SessionID != "s1" {
-			t.Errorf("sessionID = %q, want %q", req.Req.SessionID, "s1")
+	req := waitFor(t, cf.Approvals())
+	if req.Req.SessionID != "s1" {
+		t.Errorf("sessionID = %q, want %q", req.Req.SessionID, "s1")
+	}
+	if req.Req.Tool != "bash" {
+		t.Errorf("tool = %q, want %q", req.Req.Tool, "bash")
+	}
+	if req.Resolve == nil {
+		t.Fatal("expected Resolve callback to be set, got nil")
+	}
+	// Invoke the resolve callback and verify the daemon receives the response.
+	respCh := make(chan *rpc.Message, 1)
+	go func() {
+		msg, err := daemonConn.Read()
+		if err != nil {
+			return
 		}
-		if req.Req.Tool != "bash" {
-			t.Errorf("tool = %q, want %q", req.Req.Tool, "bash")
-		}
-		if req.Resolve == nil {
-			t.Fatal("expected Resolve callback to be set, got nil")
-		}
-		// Invoke the resolve callback and verify the daemon receives the response.
-		respCh := make(chan *rpc.Message, 1)
-		go func() {
-			msg, err := daemonConn.Read()
-			if err != nil {
-				return
-			}
-			respCh <- msg
-		}()
-		req.Resolve(guard.ApprovalDecision{Outcome: guard.AllowOnce})
-		select {
-		case resp := <-respCh:
-			if !resp.IsResponse() {
-				t.Fatal("expected response from Resolve callback")
-			}
-			if resp.ID.Int64() != 99 {
-				t.Errorf("response id = %d, want 99", resp.ID.Int64())
-			}
-		case <-time.After(5 * time.Second):
-			t.Fatal("timed out waiting for Resolve response")
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for approval request")
+		respCh <- msg
+	}()
+	req.Resolve(guard.ApprovalDecision{Outcome: guard.AllowOnce})
+	resp := waitFor(t, respCh)
+	if !resp.IsResponse() {
+		t.Fatal("expected response from Resolve callback")
+	}
+	if resp.ID.Int64() != 99 {
+		t.Errorf("response id = %d, want 99", resp.ID.Int64())
 	}
 }
 
@@ -312,19 +300,15 @@ func TestClientFrontend_ReceivesSessionState(t *testing.T) {
 	}
 
 	// Wait for the state sync message.
-	select {
-	case ss := <-cf.StateSync():
-		if ss.SessionID != "sess-42" {
-			t.Errorf("sessionID = %q, want %q", ss.SessionID, "sess-42")
-		}
-		if ss.Model != "claude-opus-4-20250514" {
-			t.Errorf("model = %q, want %q", ss.Model, "claude-opus-4-20250514")
-		}
-		if !ss.Yolo {
-			t.Error("yolo = false, want true")
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for state sync message")
+	ss := waitFor(t, cf.StateSync())
+	if ss.SessionID != "sess-42" {
+		t.Errorf("sessionID = %q, want %q", ss.SessionID, "sess-42")
+	}
+	if ss.Model != "claude-opus-4-20250514" {
+		t.Errorf("model = %q, want %q", ss.Model, "claude-opus-4-20250514")
+	}
+	if !ss.Yolo {
+		t.Error("yolo = false, want true")
 	}
 }
 
