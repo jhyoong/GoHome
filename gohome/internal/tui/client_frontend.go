@@ -188,6 +188,23 @@ func (cf *ClientFrontend) sendRequest(method string, params any) (json.RawMessag
 	return cf.pending.Wait(cf.ctx, id)
 }
 
+// sendRPC is a generic helper that calls sendRequest, unmarshals the raw
+// response into a typed result struct, and returns it. It eliminates the
+// repetitive marshal-send-unmarshal boilerplate from the public Send* methods.
+func sendRPC[R any](cf *ClientFrontend, method string, params any) (R, error) {
+	raw, err := cf.sendRequest(method, params)
+	if err != nil {
+		var zero R
+		return zero, err
+	}
+	var result R
+	if err := json.Unmarshal(raw, &result); err != nil {
+		var zero R
+		return zero, err
+	}
+	return result, nil
+}
+
 // SendInput sends user text input to the daemon for the given session.
 func (cf *ClientFrontend) SendInput(sessionID, text string) error {
 	_, err := cf.sendRequest(rpc.MethodSessionInput, rpc.SessionInputParams{
@@ -222,63 +239,47 @@ func (cf *ClientFrontend) RespondApproval(id *rpc.ID, dec guard.ApprovalDecision
 
 // SendSessionList sends a session.list request and returns the listings.
 func (cf *ClientFrontend) SendSessionList() ([]session.Listing, error) {
-	raw, err := cf.sendRequest(rpc.MethodSessionList, json.RawMessage(`{}`))
+	r, err := sendRPC[rpc.SessionListResult](cf, rpc.MethodSessionList, json.RawMessage(`{}`))
 	if err != nil {
 		return nil, err
 	}
-	var result rpc.SessionListResult
-	if err := json.Unmarshal(raw, &result); err != nil {
-		return nil, err
-	}
-	return result.Sessions, nil
+	return r.Sessions, nil
 }
 
 // SendSessionNew sends a session.new request and returns the new session ID.
 func (cf *ClientFrontend) SendSessionNew() (string, error) {
-	raw, err := cf.sendRequest(rpc.MethodSessionNew, json.RawMessage(`{}`))
+	r, err := sendRPC[rpc.SessionNewResult](cf, rpc.MethodSessionNew, json.RawMessage(`{}`))
 	if err != nil {
 		return "", err
 	}
-	var result rpc.SessionNewResult
-	if err := json.Unmarshal(raw, &result); err != nil {
-		return "", err
-	}
-	return result.SessionID, nil
+	return r.SessionID, nil
 }
 
 // SendSessionResume sends a session.resume request and returns the session ID and history.
 func (cf *ClientFrontend) SendSessionResume(id string) (string, []common.Message, error) {
-	raw, err := cf.sendRequest(rpc.MethodSessionResume, rpc.SessionResumeParams{ID: id})
+	r, err := sendRPC[rpc.SessionResumeResult](cf, rpc.MethodSessionResume, rpc.SessionResumeParams{ID: id})
 	if err != nil {
 		return "", nil, err
 	}
-	var result rpc.SessionResumeResult
-	if err := json.Unmarshal(raw, &result); err != nil {
-		return "", nil, err
-	}
 	var history []common.Message
-	if err := json.Unmarshal(result.History, &history); err != nil {
-		return result.SessionID, nil, err
+	if err := json.Unmarshal(r.History, &history); err != nil {
+		return r.SessionID, nil, err
 	}
-	return result.SessionID, history, nil
+	return r.SessionID, history, nil
 }
 
 // SendModelSet sends a model.set request and returns the model name and context window.
 func (cf *ClientFrontend) SendModelSet(name string) (string, int, error) {
-	raw, err := cf.sendRequest(rpc.MethodModelSet, rpc.ModelSetParams{Name: name})
+	r, err := sendRPC[rpc.ModelSetResult](cf, rpc.MethodModelSet, rpc.ModelSetParams{Name: name})
 	if err != nil {
 		return "", 0, err
 	}
-	var result rpc.ModelSetResult
-	if err := json.Unmarshal(raw, &result); err != nil {
-		return "", 0, err
-	}
-	return result.ModelName, result.ContextWindow, nil
+	return r.ModelName, r.ContextWindow, nil
 }
 
 // SendYoloSet sends a yolo.set request to the daemon.
 func (cf *ClientFrontend) SendYoloSet(enabled bool) error {
-	_, err := cf.sendRequest(rpc.MethodYoloSet, rpc.YoloSetParams{Enabled: enabled})
+	_, err := sendRPC[struct{}](cf, rpc.MethodYoloSet, rpc.YoloSetParams{Enabled: enabled})
 	return err
 }
 
