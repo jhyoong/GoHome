@@ -73,6 +73,11 @@ Seam: Bubble Tea supports mouse events natively. Enabling
 `tea.WithMouseCellMotion()` and adding mouse message handlers in
 `tui.Update` is the full scope.
 
+**UI Revamp**
+Clean, minimal UI with a focus on readability
+Better use of highlights and background
+Remove auto-collapse logic
+
 **Image rendering**
 Display image outputs from tools (sixel / kitty graphics protocol).
 Seam: `common.Block` can carry a new `BlockImage` kind. The TUI timeline
