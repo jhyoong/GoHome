@@ -118,7 +118,7 @@ func TestSnapshots(t *testing.T) {
 			SessionID:     "sub-1",
 			ThinkingDelta: "Let me investigate...",
 		}})
-		// Thinking ends (collapses block).
+		// Thinking ends (no-op, content remains visible inline).
 		m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
 			Kind:      agent.EventThinkingDone,
 			SessionID: "sub-1",

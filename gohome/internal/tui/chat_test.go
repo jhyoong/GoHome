@@ -110,26 +110,31 @@ func TestToolStatusError(t *testing.T) {
 	}
 }
 
-func TestChatRenderThinkingCollapsed(t *testing.T) {
+func TestChatRenderThinkingAlwaysVisible(t *testing.T) {
 	entries := []TimelineEntry{{Kind: KindThinking, Text: "Let me reason\nabout this\nstep by step."}}
 	c := NewChat(&entries, 20)
 	lines := c.Render(80)
 	joined := StripAnsi(strings.Join(lines, "\n"))
-	if !strings.Contains(joined, "Thinking...") {
-		t.Errorf("collapsed thinking label missing: %q", joined)
+	// Content should always be visible inline (no collapsed label).
+	if !strings.Contains(joined, "Let me reason") {
+		t.Errorf("thinking content not visible: %q", joined)
 	}
-	if !strings.Contains(joined, "3 lines") {
-		t.Errorf("line count indicator missing: %q", joined)
+	if !strings.Contains(joined, "step by step") {
+		t.Errorf("thinking content not fully visible: %q", joined)
+	}
+	if strings.Contains(joined, "Thinking...") {
+		t.Errorf("should not contain collapsed label: %q", joined)
 	}
 }
 
-func TestChatRenderThinkingExpanded(t *testing.T) {
+func TestChatRenderThinkingAlwaysVisibleRegardlessOfExpanded(t *testing.T) {
+	// Expanded field is ignored for KindThinking; content always shown.
 	entries := []TimelineEntry{{Kind: KindThinking, Text: "Step 1: analyze\nStep 2: solve", Expanded: true}}
 	c := NewChat(&entries, 20)
 	lines := c.Render(80)
 	joined := StripAnsi(strings.Join(lines, "\n"))
 	if !strings.Contains(joined, "Step 1") {
-		t.Errorf("expanded thinking content missing: %q", joined)
+		t.Errorf("thinking content missing: %q", joined)
 	}
 }
 

@@ -6,12 +6,12 @@ import (
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
 )
 
-func TestHandleAgentEvent_ThinkingDoneCollapsesEntry(t *testing.T) {
+func TestHandleAgentEvent_ThinkingDoneIsNoOp(t *testing.T) {
 	m := New("sess-1")
 	m.winW = 80
 	m.winH = 40
 
-	// Simulate a thinking delta arriving (creates an expanded thinking entry).
+	// Simulate a thinking delta arriving (creates a thinking entry).
 	m.handleAgentEvent(AgentEventMsg{
 		SessionID: "sess-1",
 		Ev: agent.Event{
@@ -31,13 +31,13 @@ func TestHandleAgentEvent_ThinkingDoneCollapsesEntry(t *testing.T) {
 		t.Fatal("thinking entry should be expanded during streaming")
 	}
 
-	// Simulate thinking done.
+	// Simulate thinking done -- should be a no-op, entry stays expanded.
 	m.handleAgentEvent(AgentEventMsg{
 		SessionID: "sess-1",
 		Ev:        agent.Event{Kind: agent.EventThinkingDone},
 	})
 
-	if sv.Timeline[0].Expanded {
-		t.Error("thinking entry should be collapsed after EventThinkingDone")
+	if !sv.Timeline[0].Expanded {
+		t.Error("thinking entry should remain expanded after EventThinkingDone (no-op)")
 	}
 }

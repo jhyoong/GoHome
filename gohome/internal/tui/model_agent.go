@@ -33,13 +33,7 @@ func (m *Model) handleAgentEvent(msg AgentEventMsg) tea.Cmd {
 		}
 
 	case agent.EventThinkingDone:
-		n := len(sv.Timeline)
-		for i := n - 1; i >= 0; i-- {
-			if sv.Timeline[i].Kind == KindThinking {
-				sv.Timeline[i].Expanded = false
-				break
-			}
-		}
+		// No-op: thinking entries remain visible inline.
 
 	case agent.EventTokenDelta:
 		// Append to the last assistant entry if it is in-progress, else add new.

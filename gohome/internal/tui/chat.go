@@ -168,14 +168,7 @@ func (c *ChatComponent) entryLineCount(e *TimelineEntry, maxWidth int) int {
 		}
 		return len(lines)
 	case KindThinking:
-		if e.Expanded {
-			lines := RenderMarkdown(e.Text, maxWidth-4)
-			if len(lines) == 0 {
-				lines = WrapText(e.Text, maxWidth-4)
-			}
-			return 1 + len(lines)
-		}
-		return 1
+		return len(WrapText(e.Text, maxWidth-2))
 	case KindTool:
 		count := 1
 		if !e.Expanded {
@@ -245,15 +238,7 @@ func (c *ChatComponent) countLines(maxWidth int) int {
 			}
 			count += len(lines)
 		case KindThinking:
-			if e.Expanded {
-				lines := RenderMarkdown(e.Text, maxWidth-4)
-				if len(lines) == 0 {
-					lines = WrapText(e.Text, maxWidth-4)
-				}
-				count += 1 + len(lines)
-			} else {
-				count++
-			}
+			count += len(WrapText(e.Text, maxWidth-2))
 		case KindTool:
 			count++
 			if !e.Expanded {
@@ -395,21 +380,14 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 		}
 
 	case KindThinking:
-		if e.Expanded {
-			mdLines := RenderMarkdown(e.Text, maxWidth-4)
-			if len(mdLines) == 0 {
-				mdLines = WrapText(e.Text, maxWidth-4)
+		wrapped := WrapText(e.Text, maxWidth-2)
+		for j, l := range wrapped {
+			styled := ansiDim + ansiItalic + l + ansiReset
+			if j == 0 {
+				lines = append(lines, marker+styled)
+			} else {
+				lines = append(lines, "  "+styled)
 			}
-			lines = append(lines, marker+expandedBg.Render(ansiDim+ansiItalic+"Thinking..."+ansiReset))
-			for _, l := range mdLines {
-				lines = append(lines, expandedBg.Render("    "+ansiDim+ansiItalic+l+ansiReset))
-			}
-		} else {
-			label := "Thinking..."
-			if n := strings.Count(strings.TrimSpace(e.Text), "\n"); n > 0 {
-				label = fmt.Sprintf("Thinking... (%d lines)", n+1)
-			}
-			lines = append(lines, marker+ansiDim+ansiItalic+label+ansiReset)
 		}
 
 	case KindTool:
