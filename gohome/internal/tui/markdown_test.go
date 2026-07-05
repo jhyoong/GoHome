@@ -99,6 +99,22 @@ func TestRenderMarkdownHeadingsColored(t *testing.T) {
 	}
 }
 
+func TestRenderMarkdownLinkStyled(t *testing.T) {
+	md := "Visit [example](https://example.com) for more."
+	lines := RenderMarkdown(md, 80)
+	joined := strings.Join(lines, "\n")
+	if !strings.Contains(joined, "\x1b]8;;https://example.com\x1b\\") {
+		t.Error("OSC 8 hyperlink sequence not found")
+	}
+	if !strings.Contains(joined, ansiCyan) {
+		t.Error("link text should be cyan")
+	}
+	plain := StripAnsi(joined)
+	if !strings.Contains(plain, "example") {
+		t.Error("link text 'example' not found")
+	}
+}
+
 func TestRenderMarkdownNoTrailingBlanks(t *testing.T) {
 	md := "# Heading\n\nSome paragraph."
 	lines := RenderMarkdown(md, 80)

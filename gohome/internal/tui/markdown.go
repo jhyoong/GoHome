@@ -313,12 +313,20 @@ func extractInlineAppend(node ast.Node, src []byte, bold, italic bool, buf *stri
 			}
 
 		case *ast.Link:
-			// Render link text, ignore URL for terminal output
+			url := string(n.Destination)
+			buf.WriteString("\x1b]8;;" + url + "\x1b\\")
+			buf.WriteString(ansiCyan)
 			extractInlineAppend(n, src, bold, italic, buf)
+			buf.WriteString(ansiReset)
+			buf.WriteString("\x1b]8;;\x1b\\")
 
 		case *ast.AutoLink:
 			url := string(n.URL(src))
+			buf.WriteString("\x1b]8;;" + url + "\x1b\\")
+			buf.WriteString(ansiCyan)
 			applyInlineStyle(url, bold, italic, buf)
+			buf.WriteString(ansiReset)
+			buf.WriteString("\x1b]8;;\x1b\\")
 
 		case *ast.RawHTML:
 			// Skip raw HTML
