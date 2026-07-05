@@ -88,6 +88,9 @@ func (m *Model) handleAgentEvent(msg AgentEventMsg) tea.Cmd {
 				} else {
 					sv.Timeline[i].Status = "success"
 				}
+				if ev.Result != nil {
+					sv.Timeline[i].Duration = ev.Result.Duration
+				}
 				matchedChildID = sv.Timeline[i].ChildSessionID
 				set = true
 				break

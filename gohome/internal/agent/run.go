@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime/debug"
+	"time"
 
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 	"github.com/jhyoong/GoHome/gohome/internal/session"
@@ -60,7 +61,7 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 		// Dispatch each tool call and collect results.
 		var resultBlocks []common.Block
 		for _, block := range toolUseBlocks {
-			content, isError := a.dispatchTool(ctx, tctx, sess, block)
+			content, isError, elapsed := a.dispatchTool(ctx, tctx, sess, block)
 
 			// Persist the tool result event.
 			if w := a.State.Writer(); w != nil {
@@ -80,6 +81,7 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 					ToolUseID: block.ToolUseID,
 					Content:   content,
 					IsError:   isError,
+					Duration:  elapsed,
 				},
 			})
 
@@ -102,19 +104,19 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 // dispatchTool runs guard.Check, persists an Approval event, and either
 // executes the tool or synthesises a denial result.
 //
-// It returns (content, isError).
+// It returns (content, isError, elapsed).
 func (a *Agent) dispatchTool(
 	ctx context.Context,
 	tctx context.Context,
 	sess *session.Session,
 	block common.Block,
-) (content string, isError bool) {
+) (content string, isError bool, elapsed time.Duration) {
 	input := json.RawMessage(block.InputJSON)
 
 	// Guard check.
 	dec, err := a.Guard.Check(ctx, sess.ID, block.ToolName, input)
 	if err != nil {
-		return fmt.Sprintf("guard error: %v", err), true
+		return fmt.Sprintf("guard error: %v", err), true, 0
 	}
 
 	// Persist approval event.
@@ -130,22 +132,24 @@ func (a *Agent) dispatchTool(
 	if !dec.Allow {
 		// Denied. Use steer message if available.
 		if dec.SteerMessage != "" {
-			return dec.SteerMessage, true
+			return dec.SteerMessage, true, 0
 		}
-		return "Tool call denied by user.", true
+		return "Tool call denied by user.", true, 0
 	}
 
 	// Allowed: look up and execute.
 	tool, ok := a.Tools.Get(block.ToolName)
 	if !ok {
-		return fmt.Sprintf("unknown tool: %s", block.ToolName), true
+		return fmt.Sprintf("unknown tool: %s", block.ToolName), true, 0
 	}
 
+	start := time.Now()
 	res, execErr := safeExecute(tctx, tool, input, tools.NullSink{})
+	elapsed = time.Since(start)
 	if execErr != nil {
-		return fmt.Sprintf("tool execution error: %v", execErr), true
+		return fmt.Sprintf("tool execution error: %v", execErr), true, elapsed
 	}
-	return res.Content, res.IsError
+	return res.Content, res.IsError, elapsed
 }
 
 // safeExecute calls tool.Execute and recovers from any panic, returning an

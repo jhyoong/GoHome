@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"time"
 
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
@@ -26,9 +27,10 @@ const (
 
 // ToolResult carries the result of a single tool execution.
 type ToolResult struct {
-	ToolUseID string `json:"toolUseID"`
-	Content   string `json:"content"`
-	IsError   bool   `json:"isError"`
+	ToolUseID string        `json:"toolUseID"`
+	Content   string        `json:"content"`
+	IsError   bool          `json:"isError"`
+	Duration  time.Duration `json:"duration,omitempty"`
 }
 
 // Event is the unit the agent sends to its Frontend.

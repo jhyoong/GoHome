@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -370,6 +371,10 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 					}
 				}
 			}
+			if e.Duration > 0 && e.Status != "pending" {
+				durStr := formatDuration(e.Duration)
+				toolLines = append(toolLines, ansiDim+"Took "+durStr+ansiReset)
+			}
 			styled := toolBlockStyle(e.Status).Width(maxWidth - 6).Render(strings.Join(toolLines, "\n"))
 			for j, l := range strings.Split(styled, "\n") {
 				if j == 0 {
@@ -413,6 +418,10 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 						toolLines = append(toolLines, "    "+l)
 					}
 				}
+			}
+			if e.Duration > 0 && e.Status != "pending" {
+				durStr := formatDuration(e.Duration)
+				toolLines = append(toolLines, ansiDim+"Took "+durStr+ansiReset)
 			}
 			styled := toolBlockStyle(e.Status).Width(maxWidth - 4).Render(strings.Join(toolLines, "\n"))
 			for j, l := range strings.Split(styled, "\n") {
@@ -541,6 +550,15 @@ func expandTabs(s string, tabStop int) string {
 		i++
 	}
 	return b.String()
+}
+
+// formatDuration formats a duration for display: milliseconds if < 1s,
+// otherwise seconds with one decimal place.
+func formatDuration(d time.Duration) string {
+	if d < time.Second {
+		return fmt.Sprintf("%dms", d.Milliseconds())
+	}
+	return fmt.Sprintf("%.1fs", d.Seconds())
 }
 
 // extractToolArg parses the JSON input for a tool call and returns the most

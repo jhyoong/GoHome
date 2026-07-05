@@ -30,6 +30,8 @@ type TimelineEntry struct {
 	Status      string // "" | "pending" | "success" | "error" (tool entries only)
 	DiffPreview string // pre-formatted unified diff for edit tool calls
 
+	Duration time.Duration // tool execution wall-clock time
+
 	Shadow         bool   // true for shadow copies of child tool calls
 	ChildSessionID string // links subagent tool entry to child session
 

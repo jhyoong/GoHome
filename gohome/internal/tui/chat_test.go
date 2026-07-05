@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -566,5 +567,22 @@ func TestRenderThrottle_SkipsIntermediateRebuilds(t *testing.T) {
 	last := sv.Timeline[len(sv.Timeline)-1]
 	if last.Text != "Hello world" {
 		t.Errorf("text: got %q, want %q", last.Text, "Hello world")
+	}
+}
+
+func TestFormatDuration(t *testing.T) {
+	tests := []struct {
+		d    time.Duration
+		want string
+	}{
+		{500 * time.Millisecond, "500ms"},
+		{1500 * time.Millisecond, "1.5s"},
+		{30 * time.Second, "30.0s"},
+	}
+	for _, tt := range tests {
+		got := formatDuration(tt.d)
+		if got != tt.want {
+			t.Errorf("formatDuration(%v) = %q, want %q", tt.d, got, tt.want)
+		}
 	}
 }
