@@ -46,6 +46,11 @@ func RenderMarkdown(source string, width int) []string {
 
 	var lines []string
 	renderNode(doc, src, width, 0, false, false, &lines)
+
+	// Strip trailing blank lines to avoid double-spacing between timeline entries.
+	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+		lines = lines[:len(lines)-1]
+	}
 	return lines
 }
 

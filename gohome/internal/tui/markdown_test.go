@@ -82,3 +82,15 @@ func TestRenderMarkdownTableAlignment(t *testing.T) {
 		t.Errorf("table headers missing: %q", joined)
 	}
 }
+
+func TestRenderMarkdownNoTrailingBlanks(t *testing.T) {
+	md := "# Heading\n\nSome paragraph."
+	lines := RenderMarkdown(md, 80)
+	if len(lines) == 0 {
+		t.Fatal("expected output lines")
+	}
+	last := lines[len(lines)-1]
+	if strings.TrimSpace(last) == "" {
+		t.Errorf("trailing blank line found; last line = %q", last)
+	}
+}
