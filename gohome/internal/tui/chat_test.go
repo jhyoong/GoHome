@@ -668,6 +668,29 @@ func TestCountLinesIncludesSeparators(t *testing.T) {
 	}
 }
 
+func TestEnsureCursorVisibleAccountsForSeparators(t *testing.T) {
+	// 5 user entries, then 1 assistant entry at index 5.
+	// Without separators: cursorTop for entry 5 = 5 lines.
+	// With separator before entry 5 (user->assistant): cursorTop = 5 + 1 = 6.
+	var entries []TimelineEntry
+	for i := 0; i < 5; i++ {
+		entries = append(entries, TimelineEntry{Kind: KindUser, Text: "msg"})
+	}
+	entries = append(entries, TimelineEntry{Kind: KindAssistant, Text: "reply"})
+
+	c := NewChat(&entries, 4) // viewport = 4 lines
+	c.SetCursor(5)
+	c.autoScroll = false
+	c.scrollTop = 0
+	c.EnsureCursorVisible(80)
+
+	// The assistant entry is at line 6 (0-indexed), so scrollTop should
+	// position it within the 4-line viewport. scrollTop = 6 + 1 - 4 = 3.
+	if c.scrollTop != 3 {
+		t.Errorf("scrollTop = %d, want 3 (accounting for separator)", c.scrollTop)
+	}
+}
+
 func TestFormatDuration(t *testing.T) {
 	tests := []struct {
 		d    time.Duration

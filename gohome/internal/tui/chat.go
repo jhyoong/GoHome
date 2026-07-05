@@ -141,8 +141,21 @@ func (c *ChatComponent) EnsureCursorVisible(maxWidth int) {
 	}
 
 	cursorTop := 0
+	prevGroup := ""
 	for i := 0; i < c.cursor; i++ {
+		group := entryGroup((*c.timeline)[i].Kind)
+		if group != "" && prevGroup != "" && group != prevGroup {
+			cursorTop++ // separator
+		}
+		if group != "" {
+			prevGroup = group
+		}
 		cursorTop += c.entryLineCount(&(*c.timeline)[i], maxWidth)
+	}
+	// Check if cursor entry itself is preceded by a separator.
+	cursorGroup := entryGroup((*c.timeline)[c.cursor].Kind)
+	if cursorGroup != "" && prevGroup != "" && cursorGroup != prevGroup {
+		cursorTop++
 	}
 	cursorHeight := c.entryLineCount(&(*c.timeline)[c.cursor], maxWidth)
 
