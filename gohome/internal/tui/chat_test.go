@@ -730,6 +730,47 @@ func TestNoSeparatorAroundNotice(t *testing.T) {
 	}
 }
 
+func TestScrollbarGutterAppearsWhenOverflow(t *testing.T) {
+	var entries []TimelineEntry
+	for i := 0; i < 20; i++ {
+		entries = append(entries, TimelineEntry{Kind: KindUser, Text: "line"})
+	}
+	c := NewChat(&entries, 10)
+	lines := c.Render(80)
+	if len(lines) != 10 {
+		t.Fatalf("expected 10 visible lines, got %d", len(lines))
+	}
+	// At least one line should end with the thumb character.
+	hasThumb := false
+	for _, l := range lines {
+		plain := StripAnsi(l)
+		if strings.HasSuffix(plain, "┃") {
+			hasThumb = true
+			break
+		}
+	}
+	if !hasThumb {
+		t.Errorf("no scrollbar thumb found in output:\n%s", strings.Join(lines, "\n"))
+	}
+}
+
+func TestNoScrollbarWhenContentFits(t *testing.T) {
+	entries := []TimelineEntry{
+		{Kind: KindUser, Text: "hello"},
+		{Kind: KindAssistant, Text: "world"},
+	}
+	c := NewChat(&entries, 40)
+	lines := c.Render(80)
+	for _, l := range lines {
+		plain := StripAnsi(l)
+		// The scrollbar thumb appears as the very last character on the line.
+		// Ignore ┃ from lipgloss borders which appear at the left edge.
+		if strings.HasSuffix(plain, "┃") {
+			t.Errorf("scrollbar should not appear when content fits: %q", l)
+		}
+	}
+}
+
 func TestFormatDuration(t *testing.T) {
 	tests := []struct {
 		d    time.Duration

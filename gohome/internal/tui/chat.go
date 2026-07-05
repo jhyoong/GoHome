@@ -308,6 +308,18 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 		c.lastCursor = c.cursor
 	}
 
+	// Determine whether a scrollbar gutter is needed by checking if content
+	// at reduced width overflows the viewport.
+	renderWidth := maxWidth
+	needsGutter := false
+	if c.maxHeight > 0 {
+		totalAtReduced := c.countLines(maxWidth - 1)
+		if totalAtReduced > c.maxHeight {
+			renderWidth = maxWidth - 1
+			needsGutter = true
+		}
+	}
+
 	// Render all entries into lines, using cache when valid.
 	var all []string
 	prevGroup := ""
@@ -328,9 +340,9 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 			marker = "> "
 		}
 
-		if !e.cacheValid(maxWidth) {
-			e.cachedLines = c.renderEntry(e, maxWidth, marker)
-			e.cachedWidth = maxWidth
+		if !e.cacheValid(renderWidth) {
+			e.cachedLines = c.renderEntry(e, renderWidth, marker)
+			e.cachedWidth = renderWidth
 			e.cachedExpanded = e.Expanded
 			e.cachedText = e.Text
 			e.cachedResult = e.ToolResult
@@ -342,27 +354,49 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 
 	// Apply scroll and height constraints.
 	total := len(all)
+	var visible []string
 	if c.maxHeight <= 0 || total <= c.maxHeight {
-		return all
+		visible = all
+	} else if c.autoScroll {
+		visible = all[total-c.maxHeight:]
+	} else {
+		maxScroll := total - c.maxHeight
+		if c.scrollTop > maxScroll {
+			c.scrollTop = maxScroll
+		}
+		if c.scrollTop < 0 {
+			c.scrollTop = 0
+		}
+
+		end := c.scrollTop + c.maxHeight
+		if end > total {
+			end = total
+		}
+		visible = all[c.scrollTop:end]
 	}
 
-	if c.autoScroll {
-		return all[total-c.maxHeight:]
+	// Append scrollbar gutter characters to visible lines.
+	if needsGutter && len(visible) > 0 {
+		effectiveTop := c.scrollTop
+		if c.autoScroll {
+			effectiveTop = total - c.maxHeight
+		}
+		thumbSize := c.maxHeight * c.maxHeight / total
+		if thumbSize < 1 {
+			thumbSize = 1
+		}
+		thumbStart := effectiveTop * c.maxHeight / total
+
+		for i := range visible {
+			if i >= thumbStart && i < thumbStart+thumbSize {
+				visible[i] += ansiDim + "┃" + ansiReset
+			} else {
+				visible[i] += " "
+			}
+		}
 	}
 
-	maxScroll := total - c.maxHeight
-	if c.scrollTop > maxScroll {
-		c.scrollTop = maxScroll
-	}
-	if c.scrollTop < 0 {
-		c.scrollTop = 0
-	}
-
-	end := c.scrollTop + c.maxHeight
-	if end > total {
-		end = total
-	}
-	return all[c.scrollTop:end]
+	return visible
 }
 
 // renderEntry produces the display lines for a single timeline entry.
