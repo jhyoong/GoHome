@@ -18,11 +18,22 @@ const (
 	KindThinking  = "thinking"
 	KindTool      = "tool"
 	KindNotice    = "notice"
+	KindStats     = "stats"
 )
+
+// TurnStatsData holds per-turn performance metrics for display.
+type TurnStatsData struct {
+	TPS              float64
+	OutputTokens     int
+	InputTokens      int
+	CacheReadTokens  int
+	CacheWriteTokens int
+	Elapsed          time.Duration
+}
 
 // TimelineEntry is a single item in a session's conversation history.
 type TimelineEntry struct {
-	Kind        string // KindUser | KindAssistant | KindTool | KindNotice
+	Kind        string // KindUser | KindAssistant | KindTool | KindNotice | KindStats
 	Text        string
 	ToolName    string
 	ToolResult  string
@@ -30,7 +41,8 @@ type TimelineEntry struct {
 	Status      string // "" | "pending" | "success" | "error" (tool entries only)
 	DiffPreview string // pre-formatted unified diff for edit tool calls
 
-	Duration time.Duration // tool execution wall-clock time
+	Duration  time.Duration  // tool execution wall-clock time
+	TurnStats *TurnStatsData // per-turn stats (KindStats entries only)
 
 	Shadow         bool   // true for shadow copies of child tool calls
 	ChildSessionID string // links subagent tool entry to child session

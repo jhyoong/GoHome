@@ -33,6 +33,15 @@ type ToolResult struct {
 	Duration  time.Duration `json:"duration,omitempty"`
 }
 
+// TurnStats holds per-turn performance metrics.
+type TurnStats struct {
+	OutputTokens     int           `json:"outputTokens"`
+	InputTokens      int           `json:"inputTokens"`
+	CacheReadTokens  int           `json:"cacheReadTokens"`
+	CacheWriteTokens int           `json:"cacheWriteTokens"`
+	Elapsed          time.Duration `json:"elapsed"`
+}
+
 // Event is the unit the agent sends to its Frontend.
 type Event struct {
 	Kind          EventKind     `json:"kind"`
@@ -48,6 +57,7 @@ type Event struct {
 	Err           error         `json:"-"`
 	ErrMessage    string        `json:"errMessage,omitempty"`
 	ThinkingDelta string        `json:"thinkingDelta,omitempty"`
+	TurnStats     *TurnStats   `json:"turnStats,omitempty"`
 }
 
 // Frontend is implemented by the TUI (or any other consumer) and receives

@@ -570,6 +570,30 @@ func TestRenderThrottle_SkipsIntermediateRebuilds(t *testing.T) {
 	}
 }
 
+func TestFormatTurnStats(t *testing.T) {
+	s := &TurnStatsData{
+		TPS:              42.1,
+		OutputTokens:     1200,
+		InputTokens:      3400,
+		CacheReadTokens:  2100,
+		CacheWriteTokens: 0,
+		Elapsed:          8300 * time.Millisecond,
+	}
+	got := formatTurnStats(s)
+	if !strings.Contains(got, "42.1 TPS") {
+		t.Errorf("missing TPS: %q", got)
+	}
+	if !strings.Contains(got, "1.2k output") {
+		t.Errorf("missing output tokens: %q", got)
+	}
+	if !strings.Contains(got, "2.1k cached") {
+		t.Errorf("missing cache: %q", got)
+	}
+	if !strings.Contains(got, "8.3s") {
+		t.Errorf("missing elapsed: %q", got)
+	}
+}
+
 func TestFormatDuration(t *testing.T) {
 	tests := []struct {
 		d    time.Duration

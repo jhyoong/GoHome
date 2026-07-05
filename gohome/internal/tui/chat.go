@@ -198,6 +198,8 @@ func (c *ChatComponent) entryLineCount(e *TimelineEntry, maxWidth int) int {
 		return len(rendered)
 	case KindNotice:
 		return 1
+	case KindStats:
+		return 1
 	}
 	return 1
 }
@@ -230,6 +232,8 @@ func (c *ChatComponent) countLines(maxWidth int) int {
 			rendered := c.renderEntry(e, maxWidth, "  ")
 			count += len(rendered)
 		case KindNotice:
+			count++
+		case KindStats:
 			count++
 		}
 	}
@@ -441,6 +445,12 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 	case KindNotice:
 		line := noticeStyle.Render(fmt.Sprintf("[notice] %s", e.Text))
 		lines = append(lines, marker+line)
+
+	case KindStats:
+		if e.TurnStats != nil {
+			line := formatTurnStats(e.TurnStats)
+			lines = append(lines, marker+ansiDim+line+ansiReset)
+		}
 	}
 
 	return lines
@@ -559,6 +569,18 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%dms", d.Milliseconds())
 	}
 	return fmt.Sprintf("%.1fs", d.Seconds())
+}
+
+// formatTurnStats formats a TurnStatsData into a single-line summary showing
+// TPS, token counts, optional cache info, and elapsed time.
+func formatTurnStats(s *TurnStatsData) string {
+	tps := fmt.Sprintf("%.1f TPS", s.TPS)
+	tokens := fmt.Sprintf("%s output, %s input", formatTokens(s.OutputTokens), formatTokens(s.InputTokens))
+	if s.CacheReadTokens > 0 || s.CacheWriteTokens > 0 {
+		tokens += fmt.Sprintf(" (%s cached)", formatTokens(s.CacheReadTokens+s.CacheWriteTokens))
+	}
+	elapsed := formatDuration(s.Elapsed)
+	return tps + " | " + tokens + " | " + elapsed
 }
 
 // extractToolArg parses the JSON input for a tool call and returns the most

@@ -123,6 +123,20 @@ func (m *Model) handleAgentEvent(msg AgentEventMsg) tea.Cmd {
 		}
 
 	case agent.EventTurnDone:
+		if ev.TurnStats != nil && ev.TurnStats.Elapsed > 0 {
+			tps := float64(ev.TurnStats.OutputTokens) / ev.TurnStats.Elapsed.Seconds()
+			sv.Timeline = append(sv.Timeline, TimelineEntry{
+				Kind: KindStats,
+				TurnStats: &TurnStatsData{
+					TPS:              tps,
+					OutputTokens:     ev.TurnStats.OutputTokens,
+					InputTokens:      ev.TurnStats.InputTokens,
+					CacheReadTokens:  ev.TurnStats.CacheReadTokens,
+					CacheWriteTokens: ev.TurnStats.CacheWriteTokens,
+					Elapsed:          ev.TurnStats.Elapsed,
+				},
+			})
+		}
 		sv.InFlight = false
 		if msg.SessionID == m.focused && len(m.pendingMessages) > 0 {
 			text := m.pendingMessages[0]
