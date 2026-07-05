@@ -310,8 +310,19 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 
 	// Render all entries into lines, using cache when valid.
 	var all []string
+	prevGroup := ""
 	for i := range *c.timeline {
 		e := &(*c.timeline)[i]
+
+		// Insert separator blank line at role-group transitions.
+		group := entryGroup(e.Kind)
+		if group != "" && prevGroup != "" && group != prevGroup {
+			all = append(all, "")
+		}
+		if group != "" {
+			prevGroup = group
+		}
+
 		marker := "  "
 		if i == c.cursor {
 			marker = "> "

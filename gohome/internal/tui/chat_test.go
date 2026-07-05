@@ -691,6 +691,45 @@ func TestEnsureCursorVisibleAccountsForSeparators(t *testing.T) {
 	}
 }
 
+func TestRenderInsertsSeparatorBetweenTurns(t *testing.T) {
+	entries := []TimelineEntry{
+		{Kind: KindUser, Text: "hello"},
+		{Kind: KindAssistant, Text: "reply"},
+		{Kind: KindUser, Text: "follow-up"},
+	}
+	c := NewChat(&entries, 40)
+	lines := c.Render(80)
+	// 3 content lines + 2 separators = 5 total.
+	if len(lines) != 5 {
+		t.Fatalf("got %d lines, want 5 (3 content + 2 separators)", len(lines))
+	}
+	// Lines at index 1 and 3 should be blank separators.
+	plain := StripAnsi(lines[1])
+	if strings.TrimSpace(plain) != "" {
+		t.Errorf("line[1] should be blank separator, got %q", plain)
+	}
+	plain3 := StripAnsi(lines[3])
+	if strings.TrimSpace(plain3) != "" {
+		t.Errorf("line[3] should be blank separator, got %q", plain3)
+	}
+}
+
+func TestNoSeparatorAroundNotice(t *testing.T) {
+	entries := []TimelineEntry{
+		{Kind: KindUser, Text: "hello"},
+		{Kind: KindNotice, Text: "reconnected"},
+		{Kind: KindAssistant, Text: "reply"},
+	}
+	c := NewChat(&entries, 40)
+	lines := c.Render(80)
+	// user(1) + notice(1) + separator(1) + assistant(1) = 4
+	// Notice does NOT trigger a separator on either side.
+	// The separator is between user group and assistant group.
+	if len(lines) != 4 {
+		t.Errorf("got %d lines, want 4", len(lines))
+	}
+}
+
 func TestFormatDuration(t *testing.T) {
 	tests := []struct {
 		d    time.Duration
