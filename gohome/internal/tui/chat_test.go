@@ -5,7 +5,9 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
+	"github.com/muesli/termenv"
 )
 
 func TestChatRenderUserMessage(t *testing.T) {
@@ -499,6 +501,29 @@ func TestExpandHintLineCount(t *testing.T) {
 	// 1 (header) + 3 (preview lines) + 1 (hint) = 5
 	if len(lines) != 5 {
 		t.Errorf("expected 5 lines (header + 3 preview + hint), got %d: %v", len(lines), lines)
+	}
+}
+
+func TestToolBlockHasBackground(t *testing.T) {
+	// Enable ANSI256 color profile for this test so lipgloss emits
+	// background escape sequences. Restore the original profile afterward.
+	lipgloss.SetColorProfile(termenv.ANSI256)
+	defer lipgloss.SetColorProfile(termenv.Ascii)
+
+	entries := []TimelineEntry{{
+		Kind:       KindTool,
+		ToolName:   "bash",
+		Text:       `{"command":"ls"}`,
+		ToolResult: "file1.txt\nfile2.txt\nfile3.txt",
+		Status:     "success",
+	}}
+	c := NewChat(&entries, 20)
+	lines := c.Render(80)
+	joined := strings.Join(lines, "\n")
+	// The tool block should have a background color applied (color 235).
+	// lipgloss renders backgrounds as ANSI 48;5;N sequences.
+	if !strings.Contains(joined, "48;5;235") {
+		t.Errorf("tool block missing background tint; output:\n%s", joined)
 	}
 }
 
