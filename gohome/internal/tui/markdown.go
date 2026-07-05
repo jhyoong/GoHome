@@ -24,6 +24,7 @@ const (
 	ansiDim       = "\x1b[2m"
 	ansiReverse   = "\x1b[7m"
 	ansiReset     = "\x1b[0m"
+	ansiCyan      = "\x1b[36m"
 )
 
 var mdParser parser.Parser
@@ -66,12 +67,12 @@ func renderNode(node ast.Node, src []byte, width, listDepth int, bold, italic bo
 		text := extractInline(n, src, bold, italic)
 		switch n.Level {
 		case 1:
-			*out = append(*out, ansiBold+ansiUnderline+text+ansiReset)
+			*out = append(*out, ansiCyan+ansiBold+ansiUnderline+text+ansiReset)
 		case 2:
-			*out = append(*out, ansiBold+text+ansiReset)
+			*out = append(*out, ansiCyan+ansiBold+text+ansiReset)
 		default:
 			prefix := strings.Repeat("#", n.Level) + " "
-			*out = append(*out, ansiBold+prefix+text+ansiReset)
+			*out = append(*out, ansiCyan+ansiBold+prefix+text+ansiReset)
 		}
 		// blank line after heading
 		*out = append(*out, "")

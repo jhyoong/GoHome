@@ -83,6 +83,22 @@ func TestRenderMarkdownTableAlignment(t *testing.T) {
 	}
 }
 
+func TestRenderMarkdownHeadingsColored(t *testing.T) {
+	md := "# Title\n\n## Subtitle\n\n### Section"
+	lines := RenderMarkdown(md, 80)
+	if len(lines) == 0 {
+		t.Fatal("expected output lines")
+	}
+	for _, line := range lines {
+		plain := StripAnsi(line)
+		if strings.Contains(plain, "Title") || strings.Contains(plain, "Subtitle") || strings.Contains(plain, "Section") {
+			if !strings.Contains(line, "\x1b[36m") {
+				t.Errorf("heading line missing cyan color: %q", line)
+			}
+		}
+	}
+}
+
 func TestRenderMarkdownNoTrailingBlanks(t *testing.T) {
 	md := "# Heading\n\nSome paragraph."
 	lines := RenderMarkdown(md, 80)
