@@ -211,6 +211,20 @@ func (c *ChatComponent) entryLineCount(e *TimelineEntry, maxWidth int) int {
 	return 1
 }
 
+// entryGroup classifies a timeline entry kind into a role group for separator
+// logic. User entries map to "user", assistant-side entries (assistant,
+// thinking, tool, stats) map to "assistant", and neutral kinds return "".
+func entryGroup(kind string) string {
+	switch kind {
+	case KindUser:
+		return "user"
+	case KindAssistant, KindThinking, KindTool, KindStats:
+		return "assistant"
+	default:
+		return ""
+	}
+}
+
 // countLines returns the total number of rendered lines for all timeline entries
 // at the given maxWidth. Uses cached line counts when available.
 func (c *ChatComponent) countLines(maxWidth int) int {
@@ -218,8 +232,18 @@ func (c *ChatComponent) countLines(maxWidth int) int {
 		return 0
 	}
 	count := 0
+	prevGroup := ""
 	for i := range *c.timeline {
 		e := &(*c.timeline)[i]
+
+		group := entryGroup(e.Kind)
+		if group != "" && prevGroup != "" && group != prevGroup {
+			count++ // separator blank line
+		}
+		if group != "" {
+			prevGroup = group
+		}
+
 		if e.cacheValid(maxWidth) {
 			count += len(e.cachedLines)
 			continue

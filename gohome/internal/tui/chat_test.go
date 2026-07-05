@@ -652,6 +652,22 @@ func TestThinkingLeadingNewlinesStripped(t *testing.T) {
 	}
 }
 
+func TestCountLinesIncludesSeparators(t *testing.T) {
+	entries := []TimelineEntry{
+		{Kind: KindUser, Text: "hello"},
+		{Kind: KindAssistant, Text: "world"},
+		{Kind: KindUser, Text: "again"},
+	}
+	c := NewChat(&entries, 40)
+	// Each user/assistant entry = 1 content line.
+	// Two role-group transitions (user->assistant, assistant->user) = 2 separator lines.
+	// Total = 3 + 2 = 5.
+	got := c.countLines(80)
+	if got != 5 {
+		t.Errorf("countLines = %d, want 5 (3 entries + 2 separators)", got)
+	}
+}
+
 func TestFormatDuration(t *testing.T) {
 	tests := []struct {
 		d    time.Duration
