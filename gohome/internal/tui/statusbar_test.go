@@ -2,6 +2,7 @@ package tui_test
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 	"time"
 
@@ -86,4 +87,22 @@ func TestStatusBarModelUnknown(t *testing.T) {
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("?"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
+
+// TestStatusBarShowsGitContext verifies the status bar includes project dir
+// and git branch when SetGitContext has been called.
+func TestStatusBarShowsGitContext(t *testing.T) {
+	m := tui.New("")
+	m.SetGitContext("~/GoHome", "main")
+	m.SetModelName("claude-opus-4")
+	bar := m.StatusBarForTest()
+	if !strings.Contains(bar, "~/GoHome") {
+		t.Errorf("status bar missing project dir: %q", bar)
+	}
+	if !strings.Contains(bar, "(main)") {
+		t.Errorf("status bar missing git branch: %q", bar)
+	}
+	if !strings.Contains(bar, "claude-opus-4") {
+		t.Errorf("status bar missing model name: %q", bar)
+	}
 }

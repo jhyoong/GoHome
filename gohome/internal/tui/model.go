@@ -121,6 +121,10 @@ type Model struct {
 	contextWarnPct float64 // ratio at which to show 80% warning
 	contextCritPct float64 // ratio at which to show 95% critical warning
 
+	// Git context for the status bar.
+	gitBranch  string
+	projectDir string
+
 	// Approval overlay state.
 	// activeApproval is the prompt currently displayed in the input region.
 	// pendingApprovals maps sessionID -> prompt for non-focused sessions.
@@ -237,6 +241,16 @@ func (m *Model) SetContextThresholds(warn, crit float64) {
 	m.contextWarnPct = warn
 	m.contextCritPct = crit
 }
+
+// SetGitContext sets the project directory and git branch displayed in the
+// status bar.
+func (m *Model) SetGitContext(projectDir, branch string) {
+	m.projectDir = projectDir
+	m.gitBranch = branch
+}
+
+// StatusBarForTest returns the rendered status bar string. Exported for tests.
+func (m *Model) StatusBarForTest() string { return m.statusBar() }
 
 // Focused returns the ID of the currently focused session.
 // Exported for tests that need to inspect focus state.

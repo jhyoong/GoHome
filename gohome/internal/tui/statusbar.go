@@ -54,8 +54,16 @@ func (m *Model) statusBar() string {
 		}
 	}
 
+	project := m.projectDir
+	if project == "" {
+		project = m.focused
+	}
+	if m.gitBranch != "" {
+		project += " (" + m.gitBranch + ")"
+	}
+
 	line := fmt.Sprintf("%s · %s · %s %s/%s (%d%%)",
-		m.focused,
+		project,
 		modelName,
 		bar,
 		formatTokens(used),

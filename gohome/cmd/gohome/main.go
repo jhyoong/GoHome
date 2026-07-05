@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -297,6 +298,24 @@ func pipeToProgram[T any](p *tea.Program, ch <-chan T) {
 	}
 }
 
+// detectGitBranch reads .git/HEAD to determine the current branch name.
+// Returns the branch name on success, or an error if not in a git repo.
+func detectGitBranch() (string, error) {
+	data, err := os.ReadFile(".git/HEAD")
+	if err != nil {
+		return "", err
+	}
+	head := strings.TrimSpace(string(data))
+	if strings.HasPrefix(head, "ref: refs/heads/") {
+		return strings.TrimPrefix(head, "ref: refs/heads/"), nil
+	}
+	// Detached HEAD -- show short hash.
+	if len(head) >= 8 {
+		return head[:8], nil
+	}
+	return head, nil
+}
+
 // runClient connects to the daemon and runs the TUI.
 func runClient(sockPath string, settings config.Settings, mc config.ModelConfig) {
 	conn, err := net.Dial("unix", sockPath)
@@ -344,6 +363,20 @@ func runClient(sockPath string, settings config.Settings, mc config.ModelConfig)
 	m.SetContextThresholds(warnPct, critPct)
 	m.SetRenderThrottleMs(settings.RenderThrottleMs)
 	m.SetSettings(settings)
+
+	// Detect git context for the status bar.
+	if branch, err := detectGitBranch(); err == nil {
+		dir, _ := os.Getwd()
+		home, _ := os.UserHomeDir()
+		if home != "" && strings.HasPrefix(dir, home) {
+			dir = "~" + dir[len(home):]
+		}
+		// Use only the last path component for brevity.
+		if idx := strings.LastIndex(dir, "/"); idx >= 0 {
+			dir = "~/" + dir[idx+1:]
+		}
+		m.SetGitContext(dir, branch)
+	}
 
 	// Wire slash command callbacks to send RPC requests to the daemon.
 	m.SetSlashCallbacks(tui.SlashCallbacks{
