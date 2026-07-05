@@ -594,6 +594,64 @@ func TestFormatTurnStats(t *testing.T) {
 	}
 }
 
+func TestWhitespaceOnlyAssistantProducesNoLines(t *testing.T) {
+	cases := []struct {
+		name string
+		text string
+	}{
+		{"newlines", "\n\n\n"},
+		{"double_newline", "\n\n"},
+		{"spaces_and_newlines", "  \n  \n"},
+		{"spaces_only", "   "},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			entries := []TimelineEntry{{Kind: KindAssistant, Text: tc.text}}
+			c := NewChat(&entries, 20)
+			lines := c.Render(80)
+			if len(lines) != 0 {
+				t.Errorf("whitespace-only assistant text %q produced %d lines, want 0: %q",
+					tc.text, len(lines), lines)
+			}
+		})
+	}
+}
+
+func TestWhitespaceOnlyThinkingProducesNoLines(t *testing.T) {
+	cases := []struct {
+		name string
+		text string
+	}{
+		{"newlines", "\n\n\n"},
+		{"single_newline", "\n"},
+		{"spaces_only", "   "},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			entries := []TimelineEntry{{Kind: KindThinking, Text: tc.text}}
+			c := NewChat(&entries, 20)
+			lines := c.Render(80)
+			if len(lines) != 0 {
+				t.Errorf("whitespace-only thinking text %q produced %d lines, want 0: %q",
+					tc.text, len(lines), lines)
+			}
+		})
+	}
+}
+
+func TestThinkingLeadingNewlinesStripped(t *testing.T) {
+	entries := []TimelineEntry{{Kind: KindThinking, Text: "\n\nActual thinking content"}}
+	c := NewChat(&entries, 20)
+	lines := c.Render(80)
+	if len(lines) != 1 {
+		t.Errorf("expected 1 line, got %d: %q", len(lines), lines)
+	}
+	plain := StripAnsi(strings.Join(lines, "\n"))
+	if strings.HasPrefix(strings.TrimLeft(plain, "> "), "\n") {
+		t.Errorf("leading blank line not stripped: %q", lines)
+	}
+}
+
 func TestFormatDuration(t *testing.T) {
 	tests := []struct {
 		d    time.Duration

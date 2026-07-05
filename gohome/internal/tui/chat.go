@@ -188,11 +188,18 @@ func (c *ChatComponent) entryLineCount(e *TimelineEntry, maxWidth int) int {
 	case KindAssistant:
 		lines := RenderMarkdown(e.Text, maxWidth-2)
 		if len(lines) == 0 {
+			if strings.TrimSpace(e.Text) == "" {
+				return 0
+			}
 			lines = WrapText(e.Text, maxWidth-2)
 		}
 		return len(lines)
 	case KindThinking:
-		return len(WrapText(e.Text, maxWidth-2))
+		trimmed := strings.TrimSpace(e.Text)
+		if trimmed == "" {
+			return 0
+		}
+		return len(WrapText(trimmed, maxWidth-2))
 	case KindTool:
 		rendered := c.renderEntry(e, maxWidth, "  ")
 		return len(rendered)
@@ -223,11 +230,16 @@ func (c *ChatComponent) countLines(maxWidth int) int {
 		case KindAssistant:
 			lines := RenderMarkdown(e.Text, maxWidth-2)
 			if len(lines) == 0 {
-				lines = WrapText(e.Text, maxWidth-2)
+				if strings.TrimSpace(e.Text) != "" {
+					lines = WrapText(e.Text, maxWidth-2)
+				}
 			}
 			count += len(lines)
 		case KindThinking:
-			count += len(WrapText(e.Text, maxWidth-2))
+			trimmed := strings.TrimSpace(e.Text)
+			if trimmed != "" {
+				count += len(WrapText(trimmed, maxWidth-2))
+			}
 		case KindTool:
 			rendered := c.renderEntry(e, maxWidth, "  ")
 			count += len(rendered)
@@ -324,6 +336,9 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 	case KindAssistant:
 		mdLines := RenderMarkdown(e.Text, maxWidth-2)
 		if len(mdLines) == 0 {
+			if strings.TrimSpace(e.Text) == "" {
+				break
+			}
 			mdLines = WrapText(e.Text, maxWidth-2)
 		}
 		for j, l := range mdLines {
@@ -335,7 +350,11 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 		}
 
 	case KindThinking:
-		wrapped := WrapText(e.Text, maxWidth-2)
+		trimmed := strings.TrimSpace(e.Text)
+		if trimmed == "" {
+			break
+		}
+		wrapped := WrapText(trimmed, maxWidth-2)
 		for j, l := range wrapped {
 			styled := ansiDim + ansiItalic + l + ansiReset
 			if j == 0 {
