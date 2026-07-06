@@ -727,7 +727,7 @@ func TestNoSeparatorAroundNotice(t *testing.T) {
 	}
 }
 
-func TestSeparatorBetweenSameKindEntries(t *testing.T) {
+func TestNoSeparatorBetweenConsecutiveAssistantEntries(t *testing.T) {
 	entries := []TimelineEntry{
 		{Kind: KindAssistant, Text: "first"},
 		{Kind: KindAssistant, Text: "second"},
@@ -735,17 +735,43 @@ func TestSeparatorBetweenSameKindEntries(t *testing.T) {
 	}
 	c := NewChat(&entries, 40)
 	lines := c.Render(80)
-	// 3 content lines + 2 separators = 5 total.
-	if len(lines) != 5 {
-		t.Fatalf("got %d lines, want 5 (3 content + 2 separators)", len(lines))
+	// 3 content lines, no separators (consecutive assistant entries merge visually).
+	if len(lines) != 3 {
+		t.Fatalf("got %d lines, want 3 (no separators between same-kind assistant)", len(lines))
 	}
-	plain1 := StripAnsi(lines[1])
-	if strings.TrimSpace(plain1) != "" {
-		t.Errorf("line[1] should be blank separator, got %q", plain1)
+}
+
+func TestNoSeparatorBetweenAssistantEntriesSplitByEmptyThinking(t *testing.T) {
+	entries := []TimelineEntry{
+		{Kind: KindAssistant, Text: "first paragraph"},
+		{Kind: KindThinking, Text: "\n"},
+		{Kind: KindAssistant, Text: "second paragraph"},
 	}
-	plain3 := StripAnsi(lines[3])
-	if strings.TrimSpace(plain3) != "" {
-		t.Errorf("line[3] should be blank separator, got %q", plain3)
+	c := NewChat(&entries, 40)
+	lines := c.Render(80)
+	// 2 content lines, no separators (thinking is empty, assistant entries are consecutive visible).
+	if len(lines) != 2 {
+		t.Fatalf("got %d lines, want 2 (empty thinking should not split assistant)", len(lines))
+	}
+}
+
+func TestSeparatorBetweenSameKindToolEntries(t *testing.T) {
+	entries := []TimelineEntry{
+		{Kind: KindTool, ToolName: "bash", Text: `{"command":"ls"}`, Status: "success", ToolResult: "file1"},
+		{Kind: KindTool, ToolName: "bash", Text: `{"command":"pwd"}`, Status: "success", ToolResult: "/home"},
+	}
+	c := NewChat(&entries, 40)
+	lines := c.Render(80)
+	// Tool entries always get separators even when consecutive.
+	hasBlank := false
+	for _, l := range lines {
+		if strings.TrimSpace(StripAnsi(l)) == "" {
+			hasBlank = true
+			break
+		}
+	}
+	if !hasBlank {
+		t.Errorf("expected blank separator between consecutive tool entries")
 	}
 }
 

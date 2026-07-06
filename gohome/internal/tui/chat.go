@@ -141,18 +141,22 @@ func (c *ChatComponent) EnsureCursorVisible(maxWidth int) {
 
 	cursorTop := 0
 	hasOutput := false
+	lastVisibleKind := ""
 	for i := 0; i < c.cursor; i++ {
-		n := c.entryLineCount(&(*c.timeline)[i], maxWidth)
+		e := &(*c.timeline)[i]
+		n := c.entryLineCount(e, maxWidth)
 		if n > 0 {
-			if hasOutput {
+			if hasOutput && needsSeparator(e.Kind, lastVisibleKind) {
 				cursorTop++ // separator
 			}
 			hasOutput = true
+			lastVisibleKind = e.Kind
 		}
 		cursorTop += n
 	}
-	cursorHeight := c.entryLineCount(&(*c.timeline)[c.cursor], maxWidth)
-	if cursorHeight > 0 && hasOutput {
+	cursorEntry := &(*c.timeline)[c.cursor]
+	cursorHeight := c.entryLineCount(cursorEntry, maxWidth)
+	if cursorHeight > 0 && hasOutput && needsSeparator(cursorEntry.Kind, lastVisibleKind) {
 		cursorTop++ // separator before cursor entry
 	}
 
@@ -221,6 +225,10 @@ func (c *ChatComponent) entryLineCount(e *TimelineEntry, maxWidth int) int {
 	return 1
 }
 
+func needsSeparator(kind, lastVisibleKind string) bool {
+	return kind != KindAssistant || lastVisibleKind != KindAssistant
+}
+
 // countLines returns the total number of rendered lines for all timeline entries
 // at the given maxWidth. Uses cached line counts when available.
 func (c *ChatComponent) countLines(maxWidth int) int {
@@ -229,15 +237,17 @@ func (c *ChatComponent) countLines(maxWidth int) int {
 	}
 	count := 0
 	hasOutput := false
+	lastVisibleKind := ""
 	for i := range *c.timeline {
 		e := &(*c.timeline)[i]
 
 		n := c.entryLineCount(e, maxWidth)
 		if n > 0 {
-			if hasOutput {
+			if hasOutput && needsSeparator(e.Kind, lastVisibleKind) {
 				count++ // separator blank line
 			}
 			hasOutput = true
+			lastVisibleKind = e.Kind
 		}
 
 		if e.cacheValid(maxWidth) {
@@ -306,6 +316,7 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 	// Render all entries into lines, using cache when valid.
 	var all []string
 	hasOutput := false
+	lastVisibleKind := ""
 	for i := range *c.timeline {
 		e := &(*c.timeline)[i]
 
@@ -324,10 +335,11 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 		}
 
 		if len(e.cachedLines) > 0 {
-			if hasOutput {
+			if hasOutput && needsSeparator(e.Kind, lastVisibleKind) {
 				all = append(all, "")
 			}
 			hasOutput = true
+			lastVisibleKind = e.Kind
 		}
 
 		all = append(all, e.cachedLines...)
