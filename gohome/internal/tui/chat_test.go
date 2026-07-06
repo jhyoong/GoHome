@@ -771,6 +771,37 @@ func TestNoScrollbarWhenContentFits(t *testing.T) {
 	}
 }
 
+func TestScrollbarThumbPosition(t *testing.T) {
+	var entries []TimelineEntry
+	for i := 0; i < 40; i++ {
+		entries = append(entries, TimelineEntry{Kind: KindUser, Text: "line"})
+	}
+	c := NewChat(&entries, 10)
+
+	// Scroll to top.
+	c.autoScroll = false
+	c.scrollTop = 0
+	lines := c.Render(80)
+
+	// Thumb should be at/near the top.
+	// thumbStart = 0 * 10 / 40 = 0
+	// thumbSize = 10 * 10 / 40 = 2 (at least 1)
+	// Use HasSuffix on StripAnsi to check the scrollbar gutter (rightmost
+	// character), not the left-side lipgloss border which also uses ┃.
+	firstPlain := StripAnsi(lines[0])
+	if !strings.HasSuffix(firstPlain, "┃") {
+		t.Errorf("thumb should be at top when scrollTop=0, line[0]: %q", firstPlain)
+	}
+
+	// Scroll to bottom.
+	c.ScrollToBottom()
+	lines = c.Render(80)
+	lastPlain := StripAnsi(lines[len(lines)-1])
+	if !strings.HasSuffix(lastPlain, "┃") {
+		t.Errorf("thumb should be at bottom when auto-scroll, last line: %q", lastPlain)
+	}
+}
+
 func TestFormatDuration(t *testing.T) {
 	tests := []struct {
 		d    time.Duration
