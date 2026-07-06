@@ -57,7 +57,7 @@ type Event struct {
 	Err           error         `json:"-"`
 	ErrMessage    string        `json:"errMessage,omitempty"`
 	ThinkingDelta string        `json:"thinkingDelta,omitempty"`
-	TurnStats     *TurnStats   `json:"turnStats,omitempty"`
+	TurnStats     *TurnStats    `json:"turnStats,omitempty"`
 }
 
 // Frontend is implemented by the TUI (or any other consumer) and receives
