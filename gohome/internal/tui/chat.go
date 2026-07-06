@@ -140,23 +140,21 @@ func (c *ChatComponent) EnsureCursorVisible(maxWidth int) {
 	}
 
 	cursorTop := 0
-	prevGroup := ""
+	hasOutput := false
 	for i := 0; i < c.cursor; i++ {
-		group := entryGroup((*c.timeline)[i].Kind)
-		if group != "" && prevGroup != "" && group != prevGroup {
-			cursorTop++ // separator
+		n := c.entryLineCount(&(*c.timeline)[i], maxWidth)
+		if n > 0 {
+			if hasOutput {
+				cursorTop++ // separator
+			}
+			hasOutput = true
 		}
-		if group != "" {
-			prevGroup = group
-		}
-		cursorTop += c.entryLineCount(&(*c.timeline)[i], maxWidth)
-	}
-	// Check if cursor entry itself is preceded by a separator.
-	cursorGroup := entryGroup((*c.timeline)[c.cursor].Kind)
-	if cursorGroup != "" && prevGroup != "" && cursorGroup != prevGroup {
-		cursorTop++
+		cursorTop += n
 	}
 	cursorHeight := c.entryLineCount(&(*c.timeline)[c.cursor], maxWidth)
+	if cursorHeight > 0 && hasOutput {
+		cursorTop++ // separator before cursor entry
+	}
 
 	total := c.countLines(maxWidth)
 	if total <= c.maxHeight {
@@ -223,20 +221,6 @@ func (c *ChatComponent) entryLineCount(e *TimelineEntry, maxWidth int) int {
 	return 1
 }
 
-// entryGroup classifies a timeline entry kind into a role group for separator
-// logic. User entries map to "user", assistant-side entries (assistant,
-// thinking, tool, stats) map to "assistant", and neutral kinds return "".
-func entryGroup(kind string) string {
-	switch kind {
-	case KindUser:
-		return "user"
-	case KindAssistant, KindThinking, KindTool, KindStats:
-		return "assistant"
-	default:
-		return ""
-	}
-}
-
 // countLines returns the total number of rendered lines for all timeline entries
 // at the given maxWidth. Uses cached line counts when available.
 func (c *ChatComponent) countLines(maxWidth int) int {
@@ -244,16 +228,16 @@ func (c *ChatComponent) countLines(maxWidth int) int {
 		return 0
 	}
 	count := 0
-	prevGroup := ""
+	hasOutput := false
 	for i := range *c.timeline {
 		e := &(*c.timeline)[i]
 
-		group := entryGroup(e.Kind)
-		if group != "" && prevGroup != "" && group != prevGroup {
-			count++ // separator blank line
-		}
-		if group != "" {
-			prevGroup = group
+		n := c.entryLineCount(e, maxWidth)
+		if n > 0 {
+			if hasOutput {
+				count++ // separator blank line
+			}
+			hasOutput = true
 		}
 
 		if e.cacheValid(maxWidth) {
@@ -321,18 +305,9 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 
 	// Render all entries into lines, using cache when valid.
 	var all []string
-	prevGroup := ""
+	hasOutput := false
 	for i := range *c.timeline {
 		e := &(*c.timeline)[i]
-
-		// Insert separator blank line at role-group transitions.
-		group := entryGroup(e.Kind)
-		if group != "" && prevGroup != "" && group != prevGroup {
-			all = append(all, "")
-		}
-		if group != "" {
-			prevGroup = group
-		}
 
 		marker := "  "
 		if i == c.cursor {
@@ -346,6 +321,13 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 			e.cachedText = e.Text
 			e.cachedResult = e.ToolResult
 			e.cachedDiffStatus = e.Status
+		}
+
+		if len(e.cachedLines) > 0 {
+			if hasOutput {
+				all = append(all, "")
+			}
+			hasOutput = true
 		}
 
 		all = append(all, e.cachedLines...)

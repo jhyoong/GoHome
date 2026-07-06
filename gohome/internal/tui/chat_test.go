@@ -659,8 +659,8 @@ func TestCountLinesIncludesSeparators(t *testing.T) {
 		{Kind: KindUser, Text: "again"},
 	}
 	c := NewChat(&entries, 40)
-	// Each user/assistant entry = 1 content line.
-	// Two role-group transitions (user->assistant, assistant->user) = 2 separator lines.
+	// Each entry = 1 content line.
+	// 2 separators (before entries 1 and 2) = 2 blank lines.
 	// Total = 3 + 2 = 5.
 	got := c.countLines(80)
 	if got != 5 {
@@ -670,8 +670,8 @@ func TestCountLinesIncludesSeparators(t *testing.T) {
 
 func TestEnsureCursorVisibleAccountsForSeparators(t *testing.T) {
 	// 5 user entries, then 1 assistant entry at index 5.
-	// Without separators: cursorTop for entry 5 = 5 lines.
-	// With separator before entry 5 (user->assistant): cursorTop = 5 + 1 = 6.
+	// Each entry after the first gets a separator blank line.
+	// cursorTop for entry 5 = 5 content lines + 5 separators = 10.
 	var entries []TimelineEntry
 	for i := 0; i < 5; i++ {
 		entries = append(entries, TimelineEntry{Kind: KindUser, Text: "msg"})
@@ -684,14 +684,13 @@ func TestEnsureCursorVisibleAccountsForSeparators(t *testing.T) {
 	c.scrollTop = 0
 	c.EnsureCursorVisible(80)
 
-	// The assistant entry is at line 6 (0-indexed), so scrollTop should
-	// position it within the 4-line viewport. scrollTop = 6 + 1 - 4 = 3.
-	if c.scrollTop != 3 {
-		t.Errorf("scrollTop = %d, want 3 (accounting for separator)", c.scrollTop)
+	// scrollTop = 10 + 1 - 4 = 7.
+	if c.scrollTop != 7 {
+		t.Errorf("scrollTop = %d, want 7 (accounting for separators)", c.scrollTop)
 	}
 }
 
-func TestRenderInsertsSeparatorBetweenTurns(t *testing.T) {
+func TestRenderInsertsSeparatorBetweenEntries(t *testing.T) {
 	entries := []TimelineEntry{
 		{Kind: KindUser, Text: "hello"},
 		{Kind: KindAssistant, Text: "reply"},
@@ -722,11 +721,31 @@ func TestNoSeparatorAroundNotice(t *testing.T) {
 	}
 	c := NewChat(&entries, 40)
 	lines := c.Render(80)
-	// user(1) + notice(1) + separator(1) + assistant(1) = 4
-	// Notice does NOT trigger a separator on either side.
-	// The separator is between user group and assistant group.
-	if len(lines) != 4 {
-		t.Errorf("got %d lines, want 4", len(lines))
+	// 3 entries + 2 separators = 5 total.
+	if len(lines) != 5 {
+		t.Errorf("got %d lines, want 5", len(lines))
+	}
+}
+
+func TestSeparatorBetweenSameKindEntries(t *testing.T) {
+	entries := []TimelineEntry{
+		{Kind: KindAssistant, Text: "first"},
+		{Kind: KindAssistant, Text: "second"},
+		{Kind: KindAssistant, Text: "third"},
+	}
+	c := NewChat(&entries, 40)
+	lines := c.Render(80)
+	// 3 content lines + 2 separators = 5 total.
+	if len(lines) != 5 {
+		t.Fatalf("got %d lines, want 5 (3 content + 2 separators)", len(lines))
+	}
+	plain1 := StripAnsi(lines[1])
+	if strings.TrimSpace(plain1) != "" {
+		t.Errorf("line[1] should be blank separator, got %q", plain1)
+	}
+	plain3 := StripAnsi(lines[3])
+	if strings.TrimSpace(plain3) != "" {
+		t.Errorf("line[3] should be blank separator, got %q", plain3)
 	}
 }
 
