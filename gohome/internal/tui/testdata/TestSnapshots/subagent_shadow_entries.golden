@@ -1,7 +1,7 @@
 Session:  main done 
 > ┃subagent: {"task":"investigate"}                                            
-      ┃[2m$ ls -> file1.go[0m                                                          
-      ┃[2m{"path":"main.go"}[0m                                                        
+      ┃[2m$ ls -> file1.go[0m                                                         
+      ┃[2m{"path":"main.go"}[0m                                                       
 ────────────────────────────────────────────────────────────────────────────────
 [7m [0m
 

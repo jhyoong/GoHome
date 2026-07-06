@@ -263,7 +263,7 @@ func (c *ChatComponent) countLines(maxWidth int) int {
 		}
 		switch e.Kind {
 		case KindUser:
-			count += len(WrapText(e.Text, maxWidth-3))
+			count += len(WrapText(e.Text, maxWidth-4))
 		case KindAssistant:
 			lines := RenderMarkdown(e.Text, maxWidth-2)
 			if len(lines) == 0 {
@@ -410,8 +410,8 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 
 	switch e.Kind {
 	case KindUser:
-		text := WrapText(e.Text, maxWidth-3)
-		styled := userBlockStyle.Width(maxWidth - 2).Render(strings.Join(text, "\n"))
+		text := WrapText(e.Text, maxWidth-4)
+		styled := userBlockStyle.Width(maxWidth - 3).Render(strings.Join(text, "\n"))
 		for j, l := range strings.Split(styled, "\n") {
 			if j == 0 {
 				lines = append(lines, marker+l)
@@ -485,7 +485,7 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 				durStr := formatDuration(e.Duration)
 				toolLines = append(toolLines, ansiDim+"Took "+durStr+ansiReset)
 			}
-			styled := toolBlockStyle(e.Status).Width(maxWidth - 6).Render(strings.Join(toolLines, "\n"))
+			styled := toolBlockStyle(e.Status).Width(maxWidth - 7).Render(strings.Join(toolLines, "\n"))
 			for j, l := range strings.Split(styled, "\n") {
 				if j == 0 {
 					lines = append(lines, marker+"    "+l)
