@@ -387,6 +387,11 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 		}
 		thumbStart := effectiveTop * c.maxHeight / total
 
+		// Clamp thumb to reach the bottom when scrolled to the end.
+		if effectiveTop+c.maxHeight >= total {
+			thumbStart = c.maxHeight - thumbSize
+		}
+
 		for i := range visible {
 			if i >= thumbStart && i < thumbStart+thumbSize {
 				visible[i] += ansiDim + "┃" + ansiReset
