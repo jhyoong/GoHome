@@ -107,6 +107,30 @@ func (c *ChatComponent) ScrollToBottom() {
 // IsAutoScroll reports whether auto-scroll is active.
 func (c *ChatComponent) IsAutoScroll() bool { return c.autoScroll }
 
+// ScrollInfo returns the effective scroll offset and total line count at the
+// given width. Used by the status bar to display scroll position.
+func (c *ChatComponent) ScrollInfo(maxWidth int) (currentLine, totalLines int) {
+	if c.timeline == nil || len(*c.timeline) == 0 {
+		return 0, 0
+	}
+	totalLines = c.countLines(maxWidth)
+	if totalLines <= c.maxHeight {
+		return 0, totalLines
+	}
+	if c.autoScroll {
+		currentLine = totalLines - c.maxHeight
+	} else {
+		currentLine = c.scrollTop
+		if currentLine > totalLines-c.maxHeight {
+			currentLine = totalLines - c.maxHeight
+		}
+		if currentLine < 0 {
+			currentLine = 0
+		}
+	}
+	return currentLine, totalLines
+}
+
 // DisableAutoScroll turns off auto-scroll, anchoring scrollTop to the current
 // effective position so the viewport does not jump. maxWidth is the terminal
 // column width used to compute the pre-expansion line count.

@@ -775,6 +775,31 @@ func TestSeparatorBetweenSameKindToolEntries(t *testing.T) {
 	}
 }
 
+func TestScrollInfoReturnsPosition(t *testing.T) {
+	var entries []TimelineEntry
+	for i := 0; i < 20; i++ {
+		entries = append(entries, TimelineEntry{Kind: KindUser, Text: "line"})
+	}
+	c := NewChat(&entries, 10)
+
+	// Auto-scroll: position should be at the end.
+	currentLine, totalLines := c.ScrollInfo(80)
+	if totalLines <= 10 {
+		t.Fatalf("totalLines = %d, want > 10", totalLines)
+	}
+	if currentLine != totalLines-10 {
+		t.Errorf("currentLine = %d, want %d (auto-scroll at bottom)", currentLine, totalLines-10)
+	}
+
+	// Scroll to top.
+	c.autoScroll = false
+	c.scrollTop = 0
+	currentLine, totalLines = c.ScrollInfo(80)
+	if currentLine != 0 {
+		t.Errorf("currentLine = %d, want 0 (scrolled to top)", currentLine)
+	}
+}
+
 func TestFormatDuration(t *testing.T) {
 	tests := []struct {
 		d    time.Duration
