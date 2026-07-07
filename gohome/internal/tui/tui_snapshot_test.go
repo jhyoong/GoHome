@@ -29,12 +29,12 @@ const snapshotW = 80
 const snapshotH = 24
 
 // apply sends msg to m synchronously and returns the updated *Model.
-var editPathRe = regexp.MustCompile(`edit /[^\s]+`)
+var editPathRe = regexp.MustCompile(`"path":"/[^"]*\.\.\.`)
 
 // normEditPath replaces the edit tool path (which contains a
 // machine-specific temp path) with a fixed string for golden-file stability.
 func normEditPath(s string) string {
-	return editPathRe.ReplaceAllString(s, `edit /test/test.go`)
+	return editPathRe.ReplaceAllString(s, `"path":"/test/...`)
 }
 
 func apply(m *tui.Model, msg tea.Msg) *tui.Model {
