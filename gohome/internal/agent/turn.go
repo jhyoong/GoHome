@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 	"github.com/jhyoong/GoHome/gohome/internal/session"
@@ -31,6 +32,7 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, error)
 		ThinkingBudget: a.ThinkingBudget,
 	}
 
+	start := time.Now()
 	events, err := a.State.Client().Stream(ctx, req)
 	if err != nil {
 		return "", err
@@ -158,10 +160,21 @@ done:
 			Usage:     usage,
 		})
 	}
+	var stats *TurnStats
+	if usage != nil {
+		stats = &TurnStats{
+			OutputTokens:     usage.OutputTokens,
+			InputTokens:      usage.InputTokens,
+			CacheReadTokens:  usage.CacheReadTokens,
+			CacheWriteTokens: usage.CacheWriteTokens,
+			Elapsed:          time.Since(start),
+		}
+	}
 	a.Frontend().Emit(sess.ID, Event{
 		Kind:       EventTurnDone,
 		SessionID:  sess.ID,
 		StopReason: stopReason,
+		TurnStats:  stats,
 	})
 
 	return stopReason, nil

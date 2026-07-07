@@ -33,13 +33,7 @@ func (m *Model) handleAgentEvent(msg AgentEventMsg) tea.Cmd {
 		}
 
 	case agent.EventThinkingDone:
-		n := len(sv.Timeline)
-		for i := n - 1; i >= 0; i-- {
-			if sv.Timeline[i].Kind == KindThinking {
-				sv.Timeline[i].Expanded = false
-				break
-			}
-		}
+		// No-op: thinking entries remain visible inline.
 
 	case agent.EventTokenDelta:
 		// Append to the last assistant entry if it is in-progress, else add new.
@@ -94,6 +88,9 @@ func (m *Model) handleAgentEvent(msg AgentEventMsg) tea.Cmd {
 				} else {
 					sv.Timeline[i].Status = "success"
 				}
+				if ev.Result != nil {
+					sv.Timeline[i].Duration = ev.Result.Duration
+				}
 				matchedChildID = sv.Timeline[i].ChildSessionID
 				set = true
 				break
@@ -126,6 +123,20 @@ func (m *Model) handleAgentEvent(msg AgentEventMsg) tea.Cmd {
 		}
 
 	case agent.EventTurnDone:
+		if ev.TurnStats != nil && ev.TurnStats.Elapsed > 0 {
+			tps := float64(ev.TurnStats.OutputTokens) / ev.TurnStats.Elapsed.Seconds()
+			sv.Timeline = append(sv.Timeline, TimelineEntry{
+				Kind: KindStats,
+				TurnStats: &TurnStatsData{
+					TPS:              tps,
+					OutputTokens:     ev.TurnStats.OutputTokens,
+					InputTokens:      ev.TurnStats.InputTokens,
+					CacheReadTokens:  ev.TurnStats.CacheReadTokens,
+					CacheWriteTokens: ev.TurnStats.CacheWriteTokens,
+					Elapsed:          ev.TurnStats.Elapsed,
+				},
+			})
+		}
 		sv.InFlight = false
 		if msg.SessionID == m.focused && len(m.pendingMessages) > 0 {
 			text := m.pendingMessages[0]

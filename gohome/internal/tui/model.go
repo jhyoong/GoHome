@@ -18,17 +18,31 @@ const (
 	KindThinking  = "thinking"
 	KindTool      = "tool"
 	KindNotice    = "notice"
+	KindStats     = "stats"
 )
+
+// TurnStatsData holds per-turn performance metrics for display.
+type TurnStatsData struct {
+	TPS              float64
+	OutputTokens     int
+	InputTokens      int
+	CacheReadTokens  int
+	CacheWriteTokens int
+	Elapsed          time.Duration
+}
 
 // TimelineEntry is a single item in a session's conversation history.
 type TimelineEntry struct {
-	Kind        string // KindUser | KindAssistant | KindTool | KindNotice
+	Kind        string // KindUser | KindAssistant | KindTool | KindNotice | KindStats
 	Text        string
 	ToolName    string
 	ToolResult  string
 	Expanded    bool
 	Status      string // "" | "pending" | "success" | "error" (tool entries only)
 	DiffPreview string // pre-formatted unified diff for edit tool calls
+
+	Duration  time.Duration  // tool execution wall-clock time
+	TurnStats *TurnStatsData // per-turn stats (KindStats entries only)
 
 	Shadow         bool   // true for shadow copies of child tool calls
 	ChildSessionID string // links subagent tool entry to child session
@@ -106,6 +120,10 @@ type Model struct {
 	contextWindow  int     // context window size; defaults to 128000
 	contextWarnPct float64 // ratio at which to show 80% warning
 	contextCritPct float64 // ratio at which to show 95% critical warning
+
+	// Git context for the status bar.
+	gitBranch  string
+	projectDir string
 
 	// Approval overlay state.
 	// activeApproval is the prompt currently displayed in the input region.
@@ -223,6 +241,16 @@ func (m *Model) SetContextThresholds(warn, crit float64) {
 	m.contextWarnPct = warn
 	m.contextCritPct = crit
 }
+
+// SetGitContext sets the project directory and git branch displayed in the
+// status bar.
+func (m *Model) SetGitContext(projectDir, branch string) {
+	m.projectDir = projectDir
+	m.gitBranch = branch
+}
+
+// StatusBarForTest returns the rendered status bar string. Exported for tests.
+func (m *Model) StatusBarForTest() string { return m.statusBar() }
 
 // Focused returns the ID of the currently focused session.
 // Exported for tests that need to inspect focus state.

@@ -24,6 +24,7 @@ const (
 	ansiDim       = "\x1b[2m"
 	ansiReverse   = "\x1b[7m"
 	ansiReset     = "\x1b[0m"
+	ansiCyan      = "\x1b[36m"
 )
 
 var mdParser parser.Parser
@@ -46,6 +47,11 @@ func RenderMarkdown(source string, width int) []string {
 
 	var lines []string
 	renderNode(doc, src, width, 0, false, false, &lines)
+
+	// Strip trailing blank lines to avoid double-spacing between timeline entries.
+	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+		lines = lines[:len(lines)-1]
+	}
 	return lines
 }
 
@@ -61,12 +67,12 @@ func renderNode(node ast.Node, src []byte, width, listDepth int, bold, italic bo
 		text := extractInline(n, src, bold, italic)
 		switch n.Level {
 		case 1:
-			*out = append(*out, ansiBold+ansiUnderline+text+ansiReset)
+			*out = append(*out, ansiCyan+ansiBold+ansiUnderline+text+ansiReset)
 		case 2:
-			*out = append(*out, ansiBold+text+ansiReset)
+			*out = append(*out, ansiCyan+ansiBold+text+ansiReset)
 		default:
 			prefix := strings.Repeat("#", n.Level) + " "
-			*out = append(*out, ansiBold+prefix+text+ansiReset)
+			*out = append(*out, ansiCyan+ansiBold+prefix+text+ansiReset)
 		}
 		// blank line after heading
 		*out = append(*out, "")
@@ -307,12 +313,20 @@ func extractInlineAppend(node ast.Node, src []byte, bold, italic bool, buf *stri
 			}
 
 		case *ast.Link:
-			// Render link text, ignore URL for terminal output
+			url := string(n.Destination)
+			buf.WriteString("\x1b]8;;" + url + "\x1b\\")
+			buf.WriteString(ansiCyan)
 			extractInlineAppend(n, src, bold, italic, buf)
+			buf.WriteString(ansiReset)
+			buf.WriteString("\x1b]8;;\x1b\\")
 
 		case *ast.AutoLink:
 			url := string(n.URL(src))
+			buf.WriteString("\x1b]8;;" + url + "\x1b\\")
+			buf.WriteString(ansiCyan)
 			applyInlineStyle(url, bold, italic, buf)
+			buf.WriteString(ansiReset)
+			buf.WriteString("\x1b]8;;\x1b\\")
 
 		case *ast.RawHTML:
 			// Skip raw HTML

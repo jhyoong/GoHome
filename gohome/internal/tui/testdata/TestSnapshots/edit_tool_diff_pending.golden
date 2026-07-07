@@ -1,5 +1,5 @@
 Session:  main done 
-> [tool] edit {"path":"/test/test.go",...
+> ┃edit {"path":"TEST/...           
   ╭──────────────────────────────────────────────────────────────────────────╮
   │ [2m1    line1[0m                                                               │
   │ [2m2    line2[0m                                                               │

@@ -29,12 +29,12 @@ const snapshotW = 80
 const snapshotH = 24
 
 // apply sends msg to m synchronously and returns the updated *Model.
-var editPathRe = regexp.MustCompile(`\[tool\] edit \{[^}]*\.\.\.`)
+var editPathRe = regexp.MustCompile(`"path":"[^"]*\.\.\.`)
 
-// normEditPath replaces the truncated edit tool arg line (which contains a
+// normEditPath replaces the edit tool path (which contains a
 // machine-specific temp path) with a fixed string for golden-file stability.
 func normEditPath(s string) string {
-	return editPathRe.ReplaceAllString(s, `[tool] edit {"path":"/test/test.go",...`)
+	return editPathRe.ReplaceAllString(s, `"path":"TEST/...`)
 }
 
 func apply(m *tui.Model, msg tea.Msg) *tui.Model {
@@ -118,7 +118,7 @@ func TestSnapshots(t *testing.T) {
 			SessionID:     "sub-1",
 			ThinkingDelta: "Let me investigate...",
 		}})
-		// Thinking ends (collapses block).
+		// Thinking ends (no-op, content remains visible inline).
 		m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
 			Kind:      agent.EventThinkingDone,
 			SessionID: "sub-1",
@@ -766,7 +766,8 @@ func TestToggleExpansion_PreservesScrollPosition(t *testing.T) {
 	viewAfter := m.View()
 
 	// The tool entry should still be visible after expansion (not scrolled away).
-	if !strings.Contains(viewAfter, "bash") {
+	// With the contextual format, bash shows as "$ ls" instead of "[tool] bash".
+	if !strings.Contains(viewAfter, "$ ls") {
 		t.Errorf("tool entry should remain visible after expansion.\nBefore:\n%s\nAfter:\n%s", viewBefore, viewAfter)
 	}
 }

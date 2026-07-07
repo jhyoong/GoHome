@@ -1,8 +1,10 @@
 package tui
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -10,9 +12,15 @@ import (
 const maxPreviewLines = 3
 
 var (
-	userPrefix     = lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
+	userBlockStyle = lipgloss.NewStyle().
+			Background(lipgloss.Color("236")).
+			BorderStyle(lipgloss.ThickBorder()).
+			BorderLeft(true).
+			BorderRight(false).
+			BorderTop(false).
+			BorderBottom(false).
+			BorderForeground(lipgloss.Color("12"))
 	noticeStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
-	expandedBg     = lipgloss.NewStyle().Background(lipgloss.Color("236"))
 	diffBoxDefault = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("8")).
@@ -22,6 +30,29 @@ var (
 			BorderForeground(lipgloss.Color("1")).
 			Padding(0, 1)
 )
+
+// toolBlockStyle returns a lipgloss style for tool blocks based on status.
+// The block has a dark background and a left thick border whose color
+// reflects the tool execution status.
+func toolBlockStyle(status string) lipgloss.Style {
+	var borderColor lipgloss.Color
+	switch status {
+	case "error":
+		borderColor = lipgloss.Color("1") // red
+	case "success":
+		borderColor = lipgloss.Color("2") // green
+	default:
+		borderColor = lipgloss.Color("3") // yellow (pending)
+	}
+	return lipgloss.NewStyle().
+		Background(lipgloss.Color("235")).
+		BorderStyle(lipgloss.ThickBorder()).
+		BorderLeft(true).
+		BorderRight(false).
+		BorderTop(false).
+		BorderBottom(false).
+		BorderForeground(borderColor)
+}
 
 // ChatComponent renders a timeline of entries with markdown support and scrolling.
 type ChatComponent struct {
@@ -76,6 +107,30 @@ func (c *ChatComponent) ScrollToBottom() {
 // IsAutoScroll reports whether auto-scroll is active.
 func (c *ChatComponent) IsAutoScroll() bool { return c.autoScroll }
 
+// ScrollInfo returns the effective scroll offset and total line count at the
+// given width. Used by the status bar to display scroll position.
+func (c *ChatComponent) ScrollInfo(maxWidth int) (currentLine, totalLines int) {
+	if c.timeline == nil || len(*c.timeline) == 0 {
+		return 0, 0
+	}
+	totalLines = c.countLines(maxWidth)
+	if totalLines <= c.maxHeight {
+		return 0, totalLines
+	}
+	if c.autoScroll {
+		currentLine = totalLines - c.maxHeight
+	} else {
+		currentLine = c.scrollTop
+		if currentLine > totalLines-c.maxHeight {
+			currentLine = totalLines - c.maxHeight
+		}
+		if currentLine < 0 {
+			currentLine = 0
+		}
+	}
+	return currentLine, totalLines
+}
+
 // DisableAutoScroll turns off auto-scroll, anchoring scrollTop to the current
 // effective position so the viewport does not jump. maxWidth is the terminal
 // column width used to compute the pre-expansion line count.
@@ -109,10 +164,25 @@ func (c *ChatComponent) EnsureCursorVisible(maxWidth int) {
 	}
 
 	cursorTop := 0
+	hasOutput := false
+	lastVisibleKind := ""
 	for i := 0; i < c.cursor; i++ {
-		cursorTop += c.entryLineCount(&(*c.timeline)[i], maxWidth)
+		e := &(*c.timeline)[i]
+		n := c.entryLineCount(e, maxWidth)
+		if n > 0 {
+			if hasOutput && needsSeparator(e.Kind, lastVisibleKind) {
+				cursorTop++ // separator
+			}
+			hasOutput = true
+			lastVisibleKind = e.Kind
+		}
+		cursorTop += n
 	}
-	cursorHeight := c.entryLineCount(&(*c.timeline)[c.cursor], maxWidth)
+	cursorEntry := &(*c.timeline)[c.cursor]
+	cursorHeight := c.entryLineCount(cursorEntry, maxWidth)
+	if cursorHeight > 0 && hasOutput && needsSeparator(cursorEntry.Kind, lastVisibleKind) {
+		cursorTop++ // separator before cursor entry
+	}
 
 	total := c.countLines(maxWidth)
 	if total <= c.maxHeight {
@@ -152,66 +222,35 @@ func (c *ChatComponent) entryLineCount(e *TimelineEntry, maxWidth int) int {
 	}
 	switch e.Kind {
 	case KindUser:
-		return len(WrapText(e.Text, maxWidth-len("you: ")-2))
+		return len(WrapText(e.Text, maxWidth-3))
 	case KindAssistant:
 		lines := RenderMarkdown(e.Text, maxWidth-2)
 		if len(lines) == 0 {
+			if strings.TrimSpace(e.Text) == "" {
+				return 0
+			}
 			lines = WrapText(e.Text, maxWidth-2)
 		}
 		return len(lines)
 	case KindThinking:
-		if e.Expanded {
-			lines := RenderMarkdown(e.Text, maxWidth-4)
-			if len(lines) == 0 {
-				lines = WrapText(e.Text, maxWidth-4)
-			}
-			return 1 + len(lines)
+		trimmed := strings.TrimSpace(e.Text)
+		if trimmed == "" {
+			return 0
 		}
-		return 1
+		return len(WrapText(trimmed, maxWidth-2))
 	case KindTool:
-		count := 1
-		if !e.Expanded {
-			if pv := previewLines(e.ToolResult, maxPreviewLines); len(pv) > 0 {
-				indent := maxWidth - 9
-				if e.Shadow {
-					indent = maxWidth - 15
-				}
-				for _, pl := range pv {
-					count += len(WrapText(pl, indent))
-				}
-			}
-		} else {
-			if e.Shadow {
-				if e.Text != "" {
-					count += len(WrapText("args: "+e.Text, maxWidth-11))
-				}
-				if e.ToolResult != "" {
-					count++
-					count += len(WrapText(e.ToolResult, maxWidth-13))
-				}
-			} else {
-				if e.Text != "" {
-					count += len(WrapText("args: "+e.Text, maxWidth-7))
-				}
-				if e.ToolResult != "" {
-					count++
-					count += len(WrapText(e.ToolResult, maxWidth-9))
-				}
-			}
-		}
-		if e.DiffPreview != "" {
-			indent := 2
-			if e.Shadow {
-				indent = 6
-			}
-			diffLines := renderDiffBox(e.DiffPreview, e.Status, maxWidth, indent)
-			count += len(diffLines)
-		}
-		return count
+		rendered := c.renderEntry(e, maxWidth, "  ")
+		return len(rendered)
 	case KindNotice:
+		return 1
+	case KindStats:
 		return 1
 	}
 	return 1
+}
+
+func needsSeparator(kind, lastVisibleKind string) bool {
+	return kind != KindAssistant || lastVisibleKind != KindAssistant
 }
 
 // countLines returns the total number of rendered lines for all timeline entries
@@ -221,71 +260,46 @@ func (c *ChatComponent) countLines(maxWidth int) int {
 		return 0
 	}
 	count := 0
+	hasOutput := false
+	lastVisibleKind := ""
 	for i := range *c.timeline {
 		e := &(*c.timeline)[i]
+
+		n := c.entryLineCount(e, maxWidth)
+		if n > 0 {
+			if hasOutput && needsSeparator(e.Kind, lastVisibleKind) {
+				count++ // separator blank line
+			}
+			hasOutput = true
+			lastVisibleKind = e.Kind
+		}
+
 		if e.cacheValid(maxWidth) {
 			count += len(e.cachedLines)
 			continue
 		}
 		switch e.Kind {
 		case KindUser:
-			count += len(WrapText(e.Text, maxWidth-len("you: ")-2))
+			count += len(WrapText(e.Text, maxWidth-4))
 		case KindAssistant:
 			lines := RenderMarkdown(e.Text, maxWidth-2)
 			if len(lines) == 0 {
-				lines = WrapText(e.Text, maxWidth-2)
+				if strings.TrimSpace(e.Text) != "" {
+					lines = WrapText(e.Text, maxWidth-2)
+				}
 			}
 			count += len(lines)
 		case KindThinking:
-			if e.Expanded {
-				lines := RenderMarkdown(e.Text, maxWidth-4)
-				if len(lines) == 0 {
-					lines = WrapText(e.Text, maxWidth-4)
-				}
-				count += 1 + len(lines)
-			} else {
-				count++
+			trimmed := strings.TrimSpace(e.Text)
+			if trimmed != "" {
+				count += len(WrapText(trimmed, maxWidth-2))
 			}
 		case KindTool:
-			count++
-			if !e.Expanded {
-				if pv := previewLines(e.ToolResult, maxPreviewLines); len(pv) > 0 {
-					indent := maxWidth - 9
-					if e.Shadow {
-						indent = maxWidth - 15
-					}
-					for _, pl := range pv {
-						count += len(WrapText(pl, indent))
-					}
-				}
-			} else {
-				if e.Shadow {
-					if e.Text != "" {
-						count += len(WrapText("args: "+e.Text, maxWidth-11))
-					}
-					if e.ToolResult != "" {
-						count++
-						count += len(WrapText(e.ToolResult, maxWidth-13))
-					}
-				} else {
-					if e.Text != "" {
-						count += len(WrapText("args: "+e.Text, maxWidth-7))
-					}
-					if e.ToolResult != "" {
-						count++
-						count += len(WrapText(e.ToolResult, maxWidth-9))
-					}
-				}
-			}
-			if e.DiffPreview != "" {
-				indent := 2
-				if e.Shadow {
-					indent = 6
-				}
-				diffLines := renderDiffBox(e.DiffPreview, e.Status, maxWidth, indent)
-				count += len(diffLines)
-			}
+			rendered := c.renderEntry(e, maxWidth, "  ")
+			count += len(rendered)
 		case KindNotice:
+			count++
+		case KindStats:
 			count++
 		}
 	}
@@ -313,8 +327,11 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 
 	// Render all entries into lines, using cache when valid.
 	var all []string
+	hasOutput := false
+	lastVisibleKind := ""
 	for i := range *c.timeline {
 		e := &(*c.timeline)[i]
+
 		marker := "  "
 		if i == c.cursor {
 			marker = "> "
@@ -329,32 +346,56 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 			e.cachedDiffStatus = e.Status
 		}
 
+		if len(e.cachedLines) > 0 {
+			if hasOutput && needsSeparator(e.Kind, lastVisibleKind) {
+				all = append(all, "")
+			}
+			hasOutput = true
+			lastVisibleKind = e.Kind
+		}
+
 		all = append(all, e.cachedLines...)
 	}
 
 	// Apply scroll and height constraints.
 	total := len(all)
+	var visible []string
 	if c.maxHeight <= 0 || total <= c.maxHeight {
-		return all
+		visible = all
+	} else if c.autoScroll {
+		visible = all[total-c.maxHeight:]
+	} else {
+		maxScroll := total - c.maxHeight
+		if c.scrollTop > maxScroll {
+			c.scrollTop = maxScroll
+		}
+		if c.scrollTop < 0 {
+			c.scrollTop = 0
+		}
+
+		end := c.scrollTop + c.maxHeight
+		if end > total {
+			end = total
+		}
+		visible = all[c.scrollTop:end]
 	}
 
-	if c.autoScroll {
-		return all[total-c.maxHeight:]
+	// Apply gradient fade to boundary lines when content overflows.
+	if total > c.maxHeight && len(visible) > 0 {
+		effectiveTop := c.scrollTop
+		if c.autoScroll {
+			effectiveTop = total - c.maxHeight
+		}
+		if effectiveTop > 0 {
+			visible[0] = ansiDim + visible[0] + ansiReset
+		}
+		if effectiveTop+c.maxHeight < total {
+			last := len(visible) - 1
+			visible[last] = ansiDim + visible[last] + ansiReset
+		}
 	}
 
-	maxScroll := total - c.maxHeight
-	if c.scrollTop > maxScroll {
-		c.scrollTop = maxScroll
-	}
-	if c.scrollTop < 0 {
-		c.scrollTop = 0
-	}
-
-	end := c.scrollTop + c.maxHeight
-	if end > total {
-		end = total
-	}
-	return all[c.scrollTop:end]
+	return visible
 }
 
 // renderEntry produces the display lines for a single timeline entry.
@@ -363,19 +404,22 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 
 	switch e.Kind {
 	case KindUser:
-		prefix := userPrefix.Render("you:")
-		text := WrapText(e.Text, maxWidth-len("you: ")-2)
-		for j, l := range text {
+		text := WrapText(e.Text, maxWidth-4)
+		styled := userBlockStyle.Width(maxWidth - 3).Render(strings.Join(text, "\n"))
+		for j, l := range strings.Split(styled, "\n") {
 			if j == 0 {
-				lines = append(lines, marker+prefix+" "+l)
+				lines = append(lines, marker+l)
 			} else {
-				lines = append(lines, "      "+l)
+				lines = append(lines, "  "+l)
 			}
 		}
 
 	case KindAssistant:
 		mdLines := RenderMarkdown(e.Text, maxWidth-2)
 		if len(mdLines) == 0 {
+			if strings.TrimSpace(e.Text) == "" {
+				break
+			}
 			mdLines = WrapText(e.Text, maxWidth-2)
 		}
 		for j, l := range mdLines {
@@ -387,46 +431,60 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 		}
 
 	case KindThinking:
-		if e.Expanded {
-			mdLines := RenderMarkdown(e.Text, maxWidth-4)
-			if len(mdLines) == 0 {
-				mdLines = WrapText(e.Text, maxWidth-4)
+		trimmed := strings.TrimSpace(e.Text)
+		if trimmed == "" {
+			break
+		}
+		wrapped := WrapText(trimmed, maxWidth-2)
+		for j, l := range wrapped {
+			styled := ansiDim + ansiItalic + l + ansiReset
+			if j == 0 {
+				lines = append(lines, marker+styled)
+			} else {
+				lines = append(lines, "  "+styled)
 			}
-			lines = append(lines, marker+expandedBg.Render(ansiDim+ansiItalic+"Thinking..."+ansiReset))
-			for _, l := range mdLines {
-				lines = append(lines, expandedBg.Render("    "+ansiDim+ansiItalic+l+ansiReset))
-			}
-		} else {
-			label := "Thinking..."
-			if n := strings.Count(strings.TrimSpace(e.Text), "\n"); n > 0 {
-				label = fmt.Sprintf("Thinking... (%d lines)", n+1)
-			}
-			lines = append(lines, marker+ansiDim+ansiItalic+label+ansiReset)
 		}
 
 	case KindTool:
 		if e.Shadow {
-			line := renderToolLine(*e, maxWidth-6)
-			lines = append(lines, marker+"    "+ansiDim+line+ansiReset)
+			var toolLines []string
+			line := renderToolSummary(*e, maxWidth-8)
+			toolLines = append(toolLines, ansiDim+line+ansiReset)
 			if !e.Expanded {
 				if pv := previewLines(e.ToolResult, maxPreviewLines); len(pv) > 0 {
 					for _, pl := range pv {
 						for _, wl := range WrapText(pl, maxWidth-15) {
-							lines = append(lines, "             "+ansiDim+wl+ansiReset)
+							toolLines = append(toolLines, "  "+ansiDim+wl+ansiReset)
 						}
+					}
+					if total := len(strings.Split(strings.TrimSpace(e.ToolResult), "\n")); total > maxPreviewLines {
+						hint := fmt.Sprintf("... (%d earlier lines, enter to expand)", total-maxPreviewLines)
+						toolLines = append(toolLines, "  "+ansiDim+hint+ansiReset)
 					}
 				}
 			} else {
 				if e.Text != "" {
 					for _, l := range WrapText("args: "+e.Text, maxWidth-11) {
-						lines = append(lines, expandedBg.Render("           "+ansiDim+l+ansiReset))
+						toolLines = append(toolLines, "  "+ansiDim+l+ansiReset)
 					}
 				}
 				if e.ToolResult != "" {
-					lines = append(lines, expandedBg.Render("           "+ansiDim+"result:"+ansiReset))
+					toolLines = append(toolLines, "  "+ansiDim+"result:"+ansiReset)
 					for _, l := range WrapText(e.ToolResult, maxWidth-13) {
-						lines = append(lines, expandedBg.Render("             "+ansiDim+l+ansiReset))
+						toolLines = append(toolLines, "    "+ansiDim+l+ansiReset)
 					}
+				}
+			}
+			if e.Duration > 0 && e.Status != "pending" {
+				durStr := formatDuration(e.Duration)
+				toolLines = append(toolLines, ansiDim+"Took "+durStr+ansiReset)
+			}
+			styled := toolBlockStyle(e.Status).Width(maxWidth - 7).Render(strings.Join(toolLines, "\n"))
+			for j, l := range strings.Split(styled, "\n") {
+				if j == 0 {
+					lines = append(lines, marker+"    "+l)
+				} else {
+					lines = append(lines, "      "+l)
 				}
 			}
 			if e.DiffPreview != "" {
@@ -437,27 +495,44 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 				lines = append(lines, diffLines...)
 			}
 		} else {
-			line := renderToolLine(*e, maxWidth-2)
-			lines = append(lines, marker+line)
+			var toolLines []string
+			line := renderToolSummary(*e, maxWidth-4)
+			toolLines = append(toolLines, line)
 			if !e.Expanded {
 				if pv := previewLines(e.ToolResult, maxPreviewLines); len(pv) > 0 {
 					for _, pl := range pv {
 						for _, wl := range WrapText(pl, maxWidth-9) {
-							lines = append(lines, "       "+ansiDim+wl+ansiReset)
+							toolLines = append(toolLines, "  "+ansiDim+wl+ansiReset)
 						}
+					}
+					if total := len(strings.Split(strings.TrimSpace(e.ToolResult), "\n")); total > maxPreviewLines {
+						hint := fmt.Sprintf("... (%d earlier lines, enter to expand)", total-maxPreviewLines)
+						toolLines = append(toolLines, "  "+ansiDim+hint+ansiReset)
 					}
 				}
 			} else {
 				if e.Text != "" {
 					for _, l := range WrapText("args: "+e.Text, maxWidth-7) {
-						lines = append(lines, expandedBg.Render("       "+l))
+						toolLines = append(toolLines, "  "+l)
 					}
 				}
 				if e.ToolResult != "" {
-					lines = append(lines, expandedBg.Render("       result:"))
+					toolLines = append(toolLines, "  result:")
 					for _, l := range WrapText(e.ToolResult, maxWidth-9) {
-						lines = append(lines, expandedBg.Render("         "+l))
+						toolLines = append(toolLines, "    "+l)
 					}
+				}
+			}
+			if e.Duration > 0 && e.Status != "pending" {
+				durStr := formatDuration(e.Duration)
+				toolLines = append(toolLines, ansiDim+"Took "+durStr+ansiReset)
+			}
+			styled := toolBlockStyle(e.Status).Width(maxWidth - 4).Render(strings.Join(toolLines, "\n"))
+			for j, l := range strings.Split(styled, "\n") {
+				if j == 0 {
+					lines = append(lines, marker+l)
+				} else {
+					lines = append(lines, "  "+l)
 				}
 			}
 			// Diff box for edit tools (always visible).
@@ -470,6 +545,12 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 	case KindNotice:
 		line := noticeStyle.Render(fmt.Sprintf("[notice] %s", e.Text))
 		lines = append(lines, marker+line)
+
+	case KindStats:
+		if e.TurnStats != nil {
+			line := formatTurnStats(e.TurnStats)
+			lines = append(lines, marker+ansiDim+line+ansiReset)
+		}
 	}
 
 	return lines
@@ -581,9 +662,71 @@ func expandTabs(s string, tabStop int) string {
 	return b.String()
 }
 
-// renderToolLine builds the collapsed single-line representation of a tool entry.
-func renderToolLine(e TimelineEntry, maxWidth int) string {
-	arg := shortSummary(strings.TrimSpace(e.Text))
+// formatDuration formats a duration for display: milliseconds if < 1s,
+// otherwise seconds with one decimal place.
+func formatDuration(d time.Duration) string {
+	if d < time.Second {
+		return fmt.Sprintf("%dms", d.Milliseconds())
+	}
+	return fmt.Sprintf("%.1fs", d.Seconds())
+}
+
+// formatTurnStats formats a TurnStatsData into a single-line summary showing
+// TPS, token counts, optional cache info, and elapsed time.
+func formatTurnStats(s *TurnStatsData) string {
+	tps := fmt.Sprintf("%.1f TPS", s.TPS)
+	tokens := fmt.Sprintf("%s output, %s input", formatTokens(s.OutputTokens), formatTokens(s.InputTokens))
+	if s.CacheReadTokens > 0 || s.CacheWriteTokens > 0 {
+		tokens += fmt.Sprintf(" (%s cached)", formatTokens(s.CacheReadTokens+s.CacheWriteTokens))
+	}
+	elapsed := formatDuration(s.Elapsed)
+	return tps + " | " + tokens + " | " + elapsed
+}
+
+// extractToolArg parses the JSON input for a tool call and returns the most
+// relevant argument for display. Known fields: "command" (bash), "file_path"
+// (read/write/edit), "prompt" (subagent). Falls back to shortSummary on parse
+// failure or unknown tools.
+func extractToolArg(toolName, inputJSON string) string {
+	inputJSON = strings.TrimSpace(inputJSON)
+	if inputJSON == "" {
+		return ""
+	}
+
+	var key string
+	switch toolName {
+	case "bash":
+		key = "command"
+	case "read":
+		key = "file_path"
+	case "write":
+		key = "file_path"
+	case "edit":
+		key = "file_path"
+	case "subagent":
+		key = "prompt"
+	}
+
+	if key != "" {
+		var m map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(inputJSON), &m); err == nil {
+			if raw, ok := m[key]; ok {
+				var val string
+				if err2 := json.Unmarshal(raw, &val); err2 == nil {
+					return val
+				}
+			}
+		}
+	}
+
+	// Fallback for unknown tools or parse failures.
+	return shortSummary(inputJSON)
+}
+
+// renderToolSummary builds the collapsed single-line representation of a tool entry
+// using contextual display (e.g. "$ cmd" for bash, file paths for read/edit/write).
+func renderToolSummary(e TimelineEntry, maxWidth int) string {
+	arg := extractToolArg(e.ToolName, e.Text)
 	result := shortSummary(e.ToolResult)
 
 	var st lipgloss.Style
@@ -596,14 +739,32 @@ func renderToolLine(e TimelineEntry, maxWidth int) string {
 		st = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Italic(true)
 	}
 
-	line := st.Render(fmt.Sprintf("[tool] %s", e.ToolName))
-	if arg != "" {
-		line += " " + arg
+	// Build the contextual prefix based on tool type.
+	var prefix string
+	switch e.ToolName {
+	case "bash":
+		prefix = "$ " + arg
+	case "read":
+		prefix = arg
+	case "write":
+		prefix = "write " + arg
+	case "edit":
+		prefix = "edit " + arg
+	case "subagent":
+		prefix = "subagent: " + arg
+	default:
+		if arg != "" {
+			prefix = e.ToolName + ": " + arg
+		} else {
+			prefix = e.ToolName
+		}
 	}
+
+	line := st.Render(prefix)
 	if e.Status == "error" && result != "" {
-		line += "  ->  ERROR: " + result
+		line += " -> ERROR: " + result
 	} else if result != "" {
-		line += "  ->  " + result
+		line += " -> " + result
 	}
 	if VisualWidth(StripAnsi(line)) > maxWidth {
 		line = TruncateText(line, maxWidth)

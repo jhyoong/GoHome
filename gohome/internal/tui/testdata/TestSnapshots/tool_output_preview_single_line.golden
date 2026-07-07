@@ -1,5 +1,5 @@
 Session:  main done 
-> [tool] bash {"command":"echo hello"}  ->  hello
+> ┃$ echo hello -> hello                                                       
 ────────────────────────────────────────────────────────────────────────────────
 [7m [0m
 

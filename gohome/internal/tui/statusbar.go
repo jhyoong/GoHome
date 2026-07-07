@@ -54,8 +54,16 @@ func (m *Model) statusBar() string {
 		}
 	}
 
+	project := m.projectDir
+	if project == "" {
+		project = m.focused
+	}
+	if m.gitBranch != "" {
+		project += " (" + m.gitBranch + ")"
+	}
+
 	line := fmt.Sprintf("%s · %s · %s %s/%s (%d%%)",
-		m.focused,
+		project,
 		modelName,
 		bar,
 		formatTokens(used),
@@ -65,6 +73,26 @@ func (m *Model) statusBar() string {
 
 	if m.yolo {
 		line += " · " + yoloStyle.Render("[YOLO]")
+	}
+
+	var right string
+	if !m.chat.IsAutoScroll() {
+		currentLine, totalLines := m.chat.ScrollInfo(m.winW)
+		scrollPct := 0
+		if totalLines > 0 {
+			scrollPct = int(float64(currentLine) / float64(totalLines) * 100)
+		}
+		right = fmt.Sprintf("Ln %d/%d (%d%%)", currentLine+1, totalLines, scrollPct)
+	}
+
+	if right != "" {
+		leftW := VisualWidth(StripAnsi(line))
+		rightW := len(right)
+		gap := m.winW - leftW - rightW
+		if gap < 1 {
+			gap = 1
+		}
+		line += fmt.Sprintf("%*s%s", gap, "", right)
 	}
 
 	return m.theme.StatusBar.Render(line)

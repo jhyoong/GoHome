@@ -84,12 +84,14 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if scrollAmt < 1 {
 			scrollAmt = 1
 		}
+		m.chat.DisableAutoScroll(m.winW)
 		m.chat.ScrollUp(scrollAmt)
 	case tea.KeyPgDown:
 		scrollAmt := m.chat.maxHeight / 2
 		if scrollAmt < 1 {
 			scrollAmt = 1
 		}
+		m.chat.DisableAutoScroll(m.winW)
 		m.chat.ScrollDown(scrollAmt)
 	case tea.KeyTab:
 		if m.completeSlash() {
@@ -186,20 +188,30 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if msg.Type == tea.KeyUp {
 				if m.cursor > 0 {
 					m.cursor--
+					m.rebuildViewport(true)
+					m.syncChatHeight()
+					m.chat.EnsureCursorVisible(m.winW)
+				} else if m.cursor == 0 {
+					sv, ok := m.sessions[m.focused]
+					if ok && m.chat.entryLineCount(&sv.Timeline[0], m.winW) > m.chat.maxHeight {
+						m.chat.ScrollUp(1)
+					}
 				}
-				m.rebuildViewport(true)
-				m.syncChatHeight()
-				m.chat.EnsureCursorVisible(m.winW)
 				return m, nil
 			}
 			if msg.Type == tea.KeyDown {
 				sv, ok := m.sessions[m.focused]
 				if ok && m.cursor < len(sv.Timeline)-1 {
 					m.cursor++
+					m.rebuildViewport(true)
+					m.syncChatHeight()
+					m.chat.EnsureCursorVisible(m.winW)
+				} else if ok && m.cursor >= 0 && m.cursor < len(sv.Timeline) {
+					if m.chat.entryLineCount(&sv.Timeline[m.cursor], m.winW) > m.chat.maxHeight {
+						m.chat.DisableAutoScroll(m.winW)
+						m.chat.ScrollDown(1)
+					}
 				}
-				m.rebuildViewport(true)
-				m.syncChatHeight()
-				m.chat.EnsureCursorVisible(m.winW)
 				return m, nil
 			}
 		}
