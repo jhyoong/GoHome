@@ -69,10 +69,10 @@ type toolState struct {
 //
 // Usage + turn done:
 //
-//	finish_reason from a choice sets the stop reason. A usage chunk
-//	(choices empty, usage non-nil) captures token counts. On [DONE],
-//	EventTurnDone is emitted with StopReason and non-nil Usage only when
-//	a usage chunk was received.
+//	finish_reason from a choice sets the stop reason. Usage is captured
+//	from any chunk that includes it (whether dedicated or alongside
+//	content). On [DONE], EventTurnDone is emitted with StopReason and
+//	non-nil Usage only when a usage chunk was received.
 func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.StreamEvent {
 	ch := make(chan common.StreamEvent, 16)
 
@@ -178,12 +178,17 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 				return
 			}
 
-			// Usage chunk: choices is empty, usage is non-nil.
-			if len(c.Choices) == 0 && c.Usage != nil {
+			// Capture usage from any chunk that includes it. Standard OpenAI
+			// sends usage in a dedicated final chunk (empty choices), but many
+			// compatible providers attach it to the last content chunk instead.
+			if c.Usage != nil {
 				usage = &common.Usage{
 					InputTokens:  c.Usage.PromptTokens,
 					OutputTokens: c.Usage.CompletionTokens,
 				}
+			}
+
+			if len(c.Choices) == 0 {
 				continue
 			}
 

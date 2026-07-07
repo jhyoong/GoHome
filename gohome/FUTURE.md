@@ -98,6 +98,57 @@ making them natural fuzzing targets. Benchmark entry points can be added to
 existing `_test.go` files with no structural changes.
 
 
-## Additional findings
-- ~~Tool calls to show last 3 rows of output~~ -- DELIVERED in v0.2.5
-- ~~Edit tool to show the changes made (git diff style)~~ -- DELIVERED in v0.2.5
+## Cleanup backlog
+
+Items from the v0.2 code review (FABLE_REVIEW.md, removed in v0.3.0) that remain
+unresolved. All are opportunistic -- safe to fix when touching the surrounding code.
+
+**Dead editor submit/history path** (was M3)
+`Model.Update` intercepts Enter and Ctrl+E before `editor.HandleInput`, so
+`EditorComponent.Submit`, `SetSubmitHandler`, `onSubmit`, and the input history
+are dead code. Fix: route Enter through `editor.Submit()` to restore history,
+drop dead handlers, resolve Ctrl+E shadow.
+
+**`retryBackoffMs` config parsed but unused** (was M4)
+`Settings.RetryBackoffMs` is loaded and merged but never threaded into `llm.New`.
+`config.DefaultRetryBackoff` duplicates `common.DefaultBackoff`. Fix: wire it in
+or delete the field.
+
+**Vestigial tool-API surface** (was M5)
+`ProgressSink` is always `NullSink{}`, `Result.Details` has no readers, and
+`Tool.Execute`'s error return is discarded by `safeExecute`. Fix: wire a real
+sink for live bash streaming, or strip the unused parts from the interface.
+
+**Subagent session ID collisions** (was M6, partially resolved)
+`session.NewID()` was extracted in v0.3.0, but subagent IDs (`sub-<N>`) still
+use a per-process counter that resets on restart. Two runs on the same day can
+produce interleaved JSONL. Fix: derive child IDs from the parent or use random IDs.
+
+**Silent error drops in session writer** (was M8, partially resolved)
+`guard/check.go` now logs whitelist persist errors (fixed in v0.3.0), but
+`session/writer.go` still silently skips unencodable events. Fix: add `slog.Warn`.
+
+**Dead code** (was L1, partially resolved)
+`tui/paste.go` + test: only referenced by its own test. `filesearch.go` `cancel`
+field is checked but never assigned. Fix: delete paste.go, remove the dead field.
+
+**`style.Theme` mostly bypassed** (was L2)
+`chat.go` defines ad-hoc styles that duplicate `style.Theme` fields. Only
+`StatusBar` and `Notification` are used from the theme. Fix: consolidate into
+`Theme` or delete the unused fields.
+
+**`containsStr` instead of `slices.Contains`** (was L3, partially resolved)
+`dirOf` was replaced with `filepath.Dir` in v0.3.0, but `containsStr` in
+`guard/persist.go` still reimplements `slices.Contains`.
+
+**Duplicated tool-result merge logic** (was L4)
+The "attach result to last pending tool entry" loop exists in both live events
+and session replay. Fix: extract a shared helper on `[]TimelineEntry`.
+
+**Timing-based TUI tests** (was L5)
+Nine TUI test files use `teatest` with 2-second `WaitFor` polling. The snapshot
+suite proves synchronous `Model.Update` works. Convert incrementally when
+touching test files.
+
+**Tool reject steering** -- The deny+steer message may be interpreted by the LLM
+as tool output rather than a steering instruction. Needs investigation.
