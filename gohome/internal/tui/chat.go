@@ -301,18 +301,6 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 		c.lastCursor = c.cursor
 	}
 
-	// Determine whether a scrollbar gutter is needed by checking if content
-	// at reduced width overflows the viewport.
-	renderWidth := maxWidth
-	needsGutter := false
-	if c.maxHeight > 0 {
-		totalAtReduced := c.countLines(maxWidth - 1)
-		if totalAtReduced > c.maxHeight {
-			renderWidth = maxWidth - 1
-			needsGutter = true
-		}
-	}
-
 	// Render all entries into lines, using cache when valid.
 	var all []string
 	hasOutput := false
@@ -325,9 +313,9 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 			marker = "> "
 		}
 
-		if !e.cacheValid(renderWidth) {
-			e.cachedLines = c.renderEntry(e, renderWidth, marker)
-			e.cachedWidth = renderWidth
+		if !e.cacheValid(maxWidth) {
+			e.cachedLines = c.renderEntry(e, maxWidth, marker)
+			e.cachedWidth = maxWidth
 			e.cachedExpanded = e.Expanded
 			e.cachedText = e.Text
 			e.cachedResult = e.ToolResult
@@ -366,32 +354,6 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 			end = total
 		}
 		visible = all[c.scrollTop:end]
-	}
-
-	// Append scrollbar gutter characters to visible lines.
-	if needsGutter && len(visible) > 0 {
-		effectiveTop := c.scrollTop
-		if c.autoScroll {
-			effectiveTop = total - c.maxHeight
-		}
-		thumbSize := c.maxHeight * c.maxHeight / total
-		if thumbSize < 1 {
-			thumbSize = 1
-		}
-		thumbStart := effectiveTop * c.maxHeight / total
-
-		// Clamp thumb to reach the bottom when scrolled to the end.
-		if effectiveTop+c.maxHeight >= total {
-			thumbStart = c.maxHeight - thumbSize
-		}
-
-		for i := range visible {
-			if i >= thumbStart && i < thumbStart+thumbSize {
-				visible[i] += ansiDim + "┃" + ansiReset
-			} else {
-				visible[i] += " "
-			}
-		}
 	}
 
 	return visible
