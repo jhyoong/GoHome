@@ -794,7 +794,7 @@ func TestScrollInfoReturnsPosition(t *testing.T) {
 	// Scroll to top.
 	c.autoScroll = false
 	c.scrollTop = 0
-	currentLine, totalLines = c.ScrollInfo(80)
+	currentLine, _ = c.ScrollInfo(80)
 	if currentLine != 0 {
 		t.Errorf("currentLine = %d, want 0 (scrolled to top)", currentLine)
 	}
