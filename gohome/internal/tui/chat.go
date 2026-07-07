@@ -380,6 +380,21 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 		visible = all[c.scrollTop:end]
 	}
 
+	// Apply gradient fade to boundary lines when content overflows.
+	if total > c.maxHeight && len(visible) > 0 {
+		effectiveTop := c.scrollTop
+		if c.autoScroll {
+			effectiveTop = total - c.maxHeight
+		}
+		if effectiveTop > 0 {
+			visible[0] = ansiDim + visible[0] + ansiReset
+		}
+		if effectiveTop+c.maxHeight < total {
+			last := len(visible) - 1
+			visible[last] = ansiDim + visible[last] + ansiReset
+		}
+	}
+
 	return visible
 }
 

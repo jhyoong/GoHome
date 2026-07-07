@@ -837,6 +837,63 @@ func TestStatusBarHidesScrollPositionAtBottom(t *testing.T) {
 	}
 }
 
+func TestGradientFadeAtTop(t *testing.T) {
+	var entries []TimelineEntry
+	for i := 0; i < 20; i++ {
+		entries = append(entries, TimelineEntry{Kind: KindUser, Text: "line"})
+	}
+	c := NewChat(&entries, 10)
+	c.autoScroll = false
+	c.scrollTop = 5
+	lines := c.Render(80)
+	if len(lines) == 0 {
+		t.Fatal("expected non-empty render")
+	}
+	// First line should have dim ANSI prefix when there is content above.
+	if !strings.HasPrefix(lines[0], ansiDim) {
+		t.Errorf("first line should be dimmed when content above, got: %q", lines[0])
+	}
+	// Last line should also be dimmed since content extends below.
+	if !strings.HasPrefix(lines[len(lines)-1], ansiDim) {
+		t.Errorf("last line should be dimmed when content below, got: %q", lines[len(lines)-1])
+	}
+}
+
+func TestGradientFadeAtBottom(t *testing.T) {
+	var entries []TimelineEntry
+	for i := 0; i < 20; i++ {
+		entries = append(entries, TimelineEntry{Kind: KindUser, Text: "line"})
+	}
+	c := NewChat(&entries, 10)
+	// Auto-scroll = at the bottom. Content above exists, content below does not.
+	lines := c.Render(80)
+	if len(lines) == 0 {
+		t.Fatal("expected non-empty render")
+	}
+	// First line dimmed (content above).
+	if !strings.HasPrefix(lines[0], ansiDim) {
+		t.Errorf("first line should be dimmed when content above, got: %q", lines[0])
+	}
+	// Last line NOT dimmed (at bottom, no content below).
+	if strings.HasPrefix(lines[len(lines)-1], ansiDim) {
+		t.Errorf("last line should NOT be dimmed at bottom, got: %q", lines[len(lines)-1])
+	}
+}
+
+func TestNoGradientFadeWhenContentFits(t *testing.T) {
+	entries := []TimelineEntry{
+		{Kind: KindUser, Text: "hello"},
+		{Kind: KindAssistant, Text: "world"},
+	}
+	c := NewChat(&entries, 40)
+	lines := c.Render(80)
+	for i, l := range lines {
+		if strings.HasPrefix(l, ansiDim) {
+			t.Errorf("line[%d] should NOT be dimmed when all content fits, got: %q", i, l)
+		}
+	}
+}
+
 func TestFormatDuration(t *testing.T) {
 	tests := []struct {
 		d    time.Duration
