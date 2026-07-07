@@ -75,5 +75,14 @@ func (m *Model) statusBar() string {
 		line += " · " + yoloStyle.Render("[YOLO]")
 	}
 
+	if !m.chat.IsAutoScroll() {
+		currentLine, totalLines := m.chat.ScrollInfo(m.winW)
+		scrollPct := 0
+		if totalLines > 0 {
+			scrollPct = int(float64(currentLine) / float64(totalLines) * 100)
+		}
+		line += fmt.Sprintf(" · Ln %d/%d (%d%%)", currentLine+1, totalLines, scrollPct)
+	}
+
 	return m.theme.StatusBar.Render(line)
 }

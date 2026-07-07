@@ -800,6 +800,43 @@ func TestScrollInfoReturnsPosition(t *testing.T) {
 	}
 }
 
+func TestStatusBarShowsScrollPosition(t *testing.T) {
+	m := New("main")
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	sv := m.Sessions()["main"]
+	for i := 0; i < 50; i++ {
+		sv.Timeline = append(sv.Timeline, TimelineEntry{Kind: KindUser, Text: "message"})
+	}
+
+	// Scroll up to disable auto-scroll.
+	m.Sessions()["main"] = sv
+	m.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+
+	bar := m.StatusBarForTest()
+	plain := StripAnsi(bar)
+	if !strings.Contains(plain, "Ln ") {
+		t.Errorf("status bar should show scroll position when scrolled up, got: %q", plain)
+	}
+}
+
+func TestStatusBarHidesScrollPositionAtBottom(t *testing.T) {
+	m := New("main")
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	sv := m.Sessions()["main"]
+	for i := 0; i < 50; i++ {
+		sv.Timeline = append(sv.Timeline, TimelineEntry{Kind: KindUser, Text: "message"})
+	}
+	m.Sessions()["main"] = sv
+
+	bar := m.StatusBarForTest()
+	plain := StripAnsi(bar)
+	if strings.Contains(plain, "Ln ") {
+		t.Errorf("status bar should NOT show scroll position at bottom, got: %q", plain)
+	}
+}
+
 func TestFormatDuration(t *testing.T) {
 	tests := []struct {
 		d    time.Duration
