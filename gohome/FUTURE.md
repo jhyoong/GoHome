@@ -101,3 +101,4 @@ existing `_test.go` files with no structural changes.
 ## Additional findings
 - ~~Tool calls to show last 3 rows of output~~ -- DELIVERED in v0.2.5
 - ~~Edit tool to show the changes made (git diff style)~~ -- DELIVERED in v0.2.5
+- Tool reject and steering - What's the exact message sent back to the LLM? in one instance, the LLM took the steering response as the tool output
