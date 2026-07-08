@@ -14,7 +14,7 @@ import (
 type wizardStep int
 
 const (
-	wizardStepWire       wizardStep = iota
+	wizardStepWire wizardStep = iota
 	wizardStepBaseURL
 	wizardStepKeySource
 	wizardStepKeyValue
@@ -133,15 +133,15 @@ func (w *ConfigWizard) rebuildConfirmStep() {
 func (w *ConfigWizard) summaryText() string {
 	var sb strings.Builder
 	sb.WriteString("Setup summary:\n")
-	sb.WriteString(fmt.Sprintf("  Config name:  %s\n", w.configName))
-	sb.WriteString(fmt.Sprintf("  Wire format:  %s\n", w.wire))
-	sb.WriteString(fmt.Sprintf("  Base URL:     %s\n", w.baseURL))
+	fmt.Fprintf(&sb, "  Config name:  %s\n", w.configName)
+	fmt.Fprintf(&sb, "  Wire format:  %s\n", w.wire)
+	fmt.Fprintf(&sb, "  Base URL:     %s\n", w.baseURL)
 	if w.keySource == "env" {
-		sb.WriteString(fmt.Sprintf("  API key env:  %s\n", w.keyValue))
+		fmt.Fprintf(&sb, "  API key env:  %s\n", w.keyValue)
 	} else {
-		sb.WriteString(fmt.Sprintf("  API key:      %s\n", w.keyValue))
+		fmt.Fprintf(&sb, "  API key:      %s\n", w.keyValue)
 	}
-	sb.WriteString(fmt.Sprintf("  Model name:   %s\n", w.modelName))
+	fmt.Fprintf(&sb, "  Model name:   %s\n", w.modelName)
 	return sb.String()
 }
 

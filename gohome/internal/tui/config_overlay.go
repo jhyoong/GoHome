@@ -16,7 +16,6 @@ type ConfigOverlay struct {
 	onClose func()
 	onEdit  func(scope string)
 	actions *SelectListComponent
-	scroll  int
 	maxH    int
 }
 
@@ -69,10 +68,10 @@ func (co *ConfigOverlay) Render(width int) []string {
 			if src == "" {
 				src = config.SourceDefault
 			}
-			sb.WriteString(fmt.Sprintf("  %s [%s]\n", name, src))
-			sb.WriteString(fmt.Sprintf("    wire: %s  model: %s\n", mc.Wire, mc.ModelName))
+			fmt.Fprintf(&sb, "  %s [%s]\n", name, src)
+			fmt.Fprintf(&sb, "    wire: %s  model: %s\n", mc.Wire, mc.ModelName)
 			if mc.BaseURL != "" {
-				sb.WriteString(fmt.Sprintf("    baseURL: %s\n", mc.BaseURL))
+				fmt.Fprintf(&sb, "    baseURL: %s\n", mc.BaseURL)
 			}
 		}
 	}
@@ -83,7 +82,7 @@ func (co *ConfigOverlay) Render(width int) []string {
 		if src == "" {
 			src = config.SourceDefault
 		}
-		sb.WriteString(fmt.Sprintf("  %-20s %-12v [%s]\n", name, value, src))
+		fmt.Fprintf(&sb, "  %-20s %-12v [%s]\n", name, value, src)
 	}
 
 	writeField("defaultModel", co.ann.DefaultModel)

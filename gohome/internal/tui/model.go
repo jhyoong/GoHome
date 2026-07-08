@@ -355,16 +355,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.configEditScope != "" {
 			scope := m.configEditScope
 			m.configEditScope = ""
-			var path string
-			if scope == "global" {
-				path = m.configGlobalPath
-			} else if scope == "project" {
-				path = m.configProjectPath
-			}
-			if path != "" {
-				return mdl, openConfigEditor(path, scope)
-			}
-			if scope == "wizard" {
+			switch scope {
+			case "global":
+				return mdl, openConfigEditor(m.configGlobalPath, scope)
+			case "project":
+				return mdl, openConfigEditor(m.configProjectPath, scope)
+			case "wizard":
 				globalPath, _ := config.DefaultGlobalPath()
 				w := NewConfigWizard(
 					func() { m.activeModal = nil },
