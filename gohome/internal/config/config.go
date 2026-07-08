@@ -21,15 +21,16 @@ const (
 
 // ModelConfig holds connection details for a single LLM model config.
 type ModelConfig struct {
-	Wire           Wire              `json:"wire"`
-	BaseURL        string            `json:"baseURL"`
-	APIKey         string            `json:"apiKey,omitempty"`
-	APIKeyEnv      string            `json:"apiKeyEnv,omitempty"`
-	ModelName      string            `json:"modelName"`
-	ContextWindow  int               `json:"contextWindow,omitempty"`
-	MaxTokens      int               `json:"maxTokens,omitempty"`
-	ThinkingBudget int               `json:"thinkingBudget,omitempty"`
-	Headers        map[string]string `json:"headers,omitempty"`
+	Wire            Wire              `json:"wire"`
+	BaseURL         string            `json:"baseURL"`
+	APIKey          string            `json:"apiKey,omitempty"`
+	APIKeyEnv       string            `json:"apiKeyEnv,omitempty"`
+	ModelName       string            `json:"modelName"`
+	ContextWindow   int               `json:"contextWindow,omitempty"`
+	MaxTokens       int               `json:"maxTokens,omitempty"`
+	ThinkingBudget  int               `json:"thinkingBudget,omitempty"`
+	ReasoningEffort string            `json:"reasoningEffort,omitempty"`
+	Headers         map[string]string `json:"headers,omitempty"`
 }
 
 // Settings is the top-level configuration structure.
