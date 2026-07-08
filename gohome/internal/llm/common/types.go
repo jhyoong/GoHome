@@ -82,7 +82,8 @@ type Request struct {
 	Messages       []Message
 	Tools          []ToolDef
 	MaxTokens      int
-	ThinkingBudget int // if > 0, enable extended thinking with this token budget
+	ThinkingBudget  int    // if > 0, enable extended thinking with this token budget
+	ReasoningEffort string // if non-empty, sent as reasoning_effort on OpenAI wire
 }
 
 type Client interface {
