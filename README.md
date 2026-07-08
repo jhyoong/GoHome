@@ -59,7 +59,7 @@ go build -ldflags "-X main.version=v0.3.0" -o bin/gohome ./gohome/cmd/gohome
       "modelName": "gpt-4o",
       "contextWindow": 128000,
       "maxTokens": 16384,
-      "thinkingBudget": 10240
+      "reasoningEffort": "high"
     }
   },
   "defaultModel": "local-anthropic",
@@ -85,6 +85,7 @@ Both `"anthropic"` and `"openai"` wires are supported. Set `apiKey` for a litera
 | `contextWindow` | — | Context window size in tokens (used for usage display) |
 | `maxTokens` | `16384` | Max output tokens per LLM turn |
 | `thinkingBudget` | `10240` | Extended thinking token budget (Anthropic wire only; ignored by OpenAI) |
+| `reasoningEffort` | — | Reasoning effort level sent as `reasoning_effort` on the OpenAI wire (e.g. `"low"`, `"medium"`, `"high"`). Ignored by Anthropic wire. Free-form string passed through to the API as-is |
 
 **Top-level fields:**
 
