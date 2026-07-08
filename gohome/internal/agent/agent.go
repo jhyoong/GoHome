@@ -15,8 +15,9 @@ type Agent struct {
 	Guard          *guard.Guard
 	State          *SessionState
 	System         string
-	MaxTokens      int // if > 0, overrides the default 4096 per-turn token limit
-	ThinkingBudget int // if > 0, enable extended thinking with this token budget
+	MaxTokens       int    // if > 0, overrides the default 4096 per-turn token limit
+	ThinkingBudget  int    // if > 0, enable extended thinking with this token budget
+	ReasoningEffort string // if non-empty, sent as reasoning_effort on OpenAI wire
 
 	// Home is the gohome home directory used to compute subagent JSONL paths.
 	Home string
