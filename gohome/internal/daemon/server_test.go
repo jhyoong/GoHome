@@ -848,6 +848,58 @@ func TestServer_ModelSet_Success(t *testing.T) {
 	}
 }
 
+func TestServer_ModelSet_UpdatesAgentParams(t *testing.T) {
+	sock := newTestSocket(t)
+
+	t.Setenv("TEST_GOHOME_PARAM_KEY", "test-key")
+
+	srv := newTestAgentServer(t, sock, func(cfg *ServerConfig) {
+		cfg.SessionID = "param-test-1"
+		cfg.MaxTokens = 1024
+		cfg.ThinkingBudget = 500
+		cfg.ReasoningEffort = "low"
+		cfg.Settings = config.Settings{
+			ModelConfig: map[string]config.ModelConfig{
+				"big-model": {
+					Wire:            config.WireOpenAI,
+					BaseURL:         "http://localhost:0/v1",
+					APIKeyEnv:       "TEST_GOHOME_PARAM_KEY",
+					ModelName:       "big-model-name",
+					ContextWindow:   256000,
+					MaxTokens:       32000,
+					ThinkingBudget:  10240,
+					ReasoningEffort: "high",
+				},
+			},
+		}
+	})
+
+	serveBackground(t, srv)
+
+	// Verify initial values.
+	if srv.agent.MaxTokens != 1024 {
+		t.Fatalf("initial MaxTokens = %d, want 1024", srv.agent.MaxTokens)
+	}
+
+	conn := dialTestServer(t, sock)
+
+	params, _ := json.Marshal(rpc.ModelSetParams{Name: "big-model"})
+	msg := sendRequest(t, conn, 1, rpc.MethodModelSet, params)
+	if msg.Error != nil {
+		t.Fatalf("model.set error: %v", msg.Error)
+	}
+
+	if srv.agent.MaxTokens != 32000 {
+		t.Errorf("MaxTokens = %d, want 32000", srv.agent.MaxTokens)
+	}
+	if srv.agent.ThinkingBudget != 10240 {
+		t.Errorf("ThinkingBudget = %d, want 10240", srv.agent.ThinkingBudget)
+	}
+	if srv.agent.ReasoningEffort != "high" {
+		t.Errorf("ReasoningEffort = %q, want %q", srv.agent.ReasoningEffort, "high")
+	}
+}
+
 // noopApprover satisfies guard.Frontend for test purposes.
 type noopApprover struct{}
 

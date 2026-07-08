@@ -174,6 +174,10 @@ func (s *Server) handleModelSet(c *rpc.Conn, msg *rpc.Message) {
 	s.agent.State.SetModel(cfg.ModelName)
 	s.agent.State.SetModelConfig(params.Name)
 
+	s.agent.MaxTokens = cfg.MaxTokens
+	s.agent.ThinkingBudget = cfg.ThinkingBudget
+	s.agent.ReasoningEffort = cfg.ReasoningEffort
+
 	ctxWin := cfg.ContextWindow
 	if ctxWin <= 0 {
 		ctxWin = config.DefaultContextWindow
