@@ -1,0 +1,26 @@
+Session:  main done 
+Configuration
+----------------------------------------
+
+Model Configs:
+  claude [global]
+    wire: anthropic  model: claude-sonnet-4-20250514
+    baseURL: https://api.anthropic.com
+
+Settings:
+  defaultModel         claude       [global]
+  bashTimeoutMs        120000       [global]
+  maxBashTimeoutMs     0            [default]
+  contextWarnPct       0            [default]
+  contextCritPct       0            [default]
+  renderThrottleMs     0            [default]
+  systemPrompt         (not set)    [default]
+  retryBackoffMs       []           [default]
+
+Actions:
+
+> [7m [0m
+-> Edit global config                                    ~/.gohome/settings.json
+   Edit project config                                   ./.gohome/settings.json
+   Run setup wizard                                      guided first-time setup
+main · ? · ░░░░░░░░░░ 0/128.0k (0%)
