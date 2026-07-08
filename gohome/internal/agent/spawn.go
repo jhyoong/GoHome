@@ -78,13 +78,14 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 
 	// Build the child Agent (shares Guard / Frontend with parent).
 	childAgent := &Agent{
-		Tools:          a.Tools.Without("subagent"),
-		Guard:          a.Guard,
-		State:          NewSessionState(child, cw, a.State.Client()),
-		System:         sys,
-		MaxTokens:      a.MaxTokens,
-		ThinkingBudget: a.ThinkingBudget,
-		Home:           a.Home,
+		Tools:           a.Tools.Without("subagent"),
+		Guard:           a.Guard,
+		State:           NewSessionState(child, cw, a.State.Client()),
+		System:          sys,
+		MaxTokens:       a.MaxTokens,
+		ThinkingBudget:  a.ThinkingBudget,
+		ReasoningEffort: a.ReasoningEffort,
+		Home:            a.Home,
 	}
 	childAgent.SetFrontend(a.Frontend())
 

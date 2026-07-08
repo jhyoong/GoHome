@@ -20,6 +20,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/golden"
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
+	"github.com/jhyoong/GoHome/gohome/internal/config"
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 	"github.com/jhyoong/GoHome/gohome/internal/tui"
@@ -316,6 +317,55 @@ func TestSnapshots(t *testing.T) {
 			Result:    &agent.ToolResult{Content: "denied", IsError: true},
 		}})
 		golden.RequireEqual(t, []byte(normEditPath(m.View())))
+	})
+
+	t.Run("config_overlay_populated", func(t *testing.T) {
+		m := newSized()
+		ann := config.AnnotatedSettings{
+			Settings: config.Settings{
+				DefaultModel:  "claude",
+				BashTimeoutMs: 120000,
+				ModelConfig: map[string]config.ModelConfig{
+					"claude": {
+						Wire:      config.WireAnthropic,
+						BaseURL:   "https://api.anthropic.com",
+						ModelName: "claude-sonnet-4-20250514",
+					},
+				},
+			},
+			GlobalPath:  "~/.gohome/settings.json",
+			ProjectPath: "./.gohome/settings.json",
+			Sources: map[string]config.Source{
+				"defaultModel":     config.SourceGlobal,
+				"bashTimeoutMs":    config.SourceGlobal,
+				"maxBashTimeoutMs": config.SourceDefault,
+				"contextWarnPct":   config.SourceDefault,
+				"contextCritPct":   config.SourceDefault,
+				"systemPrompt":     config.SourceDefault,
+				"retryBackoffMs":   config.SourceDefault,
+				"renderThrottleMs": config.SourceDefault,
+			},
+			ModelSources: map[string]config.Source{
+				"claude": config.SourceGlobal,
+			},
+		}
+		m.OpenConfigOverlay(ann)
+		golden.RequireEqual(t, []byte(m.View()))
+	})
+
+	t.Run("config_overlay_empty", func(t *testing.T) {
+		m := newSized()
+		ann := config.AnnotatedSettings{
+			Settings: config.Settings{
+				ModelConfig: map[string]config.ModelConfig{},
+			},
+			GlobalPath:   "~/.gohome/settings.json",
+			ProjectPath:  "./.gohome/settings.json",
+			Sources:      map[string]config.Source{},
+			ModelSources: map[string]config.Source{},
+		}
+		m.OpenConfigOverlay(ann)
+		golden.RequireEqual(t, []byte(m.View()))
 	})
 
 	t.Run("subagent_shadow_entries", func(t *testing.T) {

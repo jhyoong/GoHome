@@ -210,14 +210,14 @@ func TestTabCompletesFirstMatchFromSlash(t *testing.T) {
 		return bytes.Contains(out, []byte("─"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
-	// "/" matches all commands; first in list is "/help"
+	// "/" matches all commands; first in list is "/config"
 	tm.Type("/")
 	tm.Send(tea.KeyMsg{Type: tea.KeyTab})
 	tm.Type("x")
 
-	// If Tab completed, editor is "/help x". If not, editor is "/x".
+	// If Tab completed, editor is "/config x". If not, editor is "/x".
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("/help x"))
+		return bytes.Contains(out, []byte("/config x"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
 

@@ -14,7 +14,7 @@ import (
 
 // slashCommands is the static list of available slash commands.
 var slashCommands = []string{
-	"/help", "/new", "/resume", "/yolo", "/model", "/cancel", "/tokens", "/quit",
+	"/config", "/help", "/new", "/resume", "/yolo", "/model", "/cancel", "/tokens", "/quit",
 }
 
 // slashComplete returns all commands in slashCommands that have prefix as a prefix.
@@ -175,6 +175,18 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 			m.activeModal = nil
 		})
 		m.activeModal = ms
+	case "/config":
+		if m.slashCB.OpenConfig == nil {
+			m.statusMsg = "/config: not configured"
+			break
+		}
+		ann, err := m.slashCB.OpenConfig()
+		if err != nil {
+			m.statusMsg = fmt.Sprintf("/config: %v", err)
+			break
+		}
+		m.openConfigOverlayWith(ann)
+		m.statusMsg = ""
 	default:
 		m.statusMsg = cmd + ": unknown command"
 	}

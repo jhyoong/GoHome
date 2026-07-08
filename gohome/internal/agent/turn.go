@@ -24,12 +24,13 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, error)
 		maxTokens = a.MaxTokens
 	}
 	req := common.Request{
-		Model:          sess.Model,
-		System:         a.System,
-		Messages:       sess.History,
-		Tools:          a.Tools.Schemas(),
-		MaxTokens:      maxTokens,
-		ThinkingBudget: a.ThinkingBudget,
+		Model:           sess.Model,
+		System:          a.System,
+		Messages:        sess.History,
+		Tools:           a.Tools.Schemas(),
+		MaxTokens:       maxTokens,
+		ThinkingBudget:  a.ThinkingBudget,
+		ReasoningEffort: a.ReasoningEffort,
 	}
 
 	start := time.Now()

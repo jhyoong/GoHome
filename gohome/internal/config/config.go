@@ -21,15 +21,16 @@ const (
 
 // ModelConfig holds connection details for a single LLM model config.
 type ModelConfig struct {
-	Wire           Wire              `json:"wire"`
-	BaseURL        string            `json:"baseURL"`
-	APIKey         string            `json:"apiKey,omitempty"`
-	APIKeyEnv      string            `json:"apiKeyEnv,omitempty"`
-	ModelName      string            `json:"modelName"`
-	ContextWindow  int               `json:"contextWindow,omitempty"`
-	MaxTokens      int               `json:"maxTokens,omitempty"`
-	ThinkingBudget int               `json:"thinkingBudget,omitempty"`
-	Headers        map[string]string `json:"headers,omitempty"`
+	Wire            Wire              `json:"wire"`
+	BaseURL         string            `json:"baseURL"`
+	APIKey          string            `json:"apiKey,omitempty"`
+	APIKeyEnv       string            `json:"apiKeyEnv,omitempty"`
+	ModelName       string            `json:"modelName"`
+	ContextWindow   int               `json:"contextWindow,omitempty"`
+	MaxTokens       int               `json:"maxTokens,omitempty"`
+	ThinkingBudget  int               `json:"thinkingBudget,omitempty"`
+	ReasoningEffort string            `json:"reasoningEffort,omitempty"`
+	Headers         map[string]string `json:"headers,omitempty"`
 }
 
 // Settings is the top-level configuration structure.
@@ -149,4 +150,118 @@ func DefaultGlobalPath() (string, error) {
 // <cwd>/.gohome/settings.json
 func DefaultProjectPath(cwd string) string {
 	return filepath.Join(cwd, ".gohome", "settings.json")
+}
+
+// Source indicates where a setting value came from.
+type Source string
+
+const (
+	SourceGlobal  Source = "global"
+	SourceProject Source = "project"
+	SourceDefault Source = "default"
+)
+
+// AnnotatedSettings wraps merged Settings with provenance metadata
+// so callers can display where each value originated.
+type AnnotatedSettings struct {
+	Settings
+	GlobalPath   string
+	ProjectPath  string
+	Sources      map[string]Source
+	ModelSources map[string]Source
+}
+
+// LoadAnnotated loads and merges settings like Load, but also records
+// which layer (default / global / project) each scalar field came from.
+func LoadAnnotated(globalPath, projectPath string) (AnnotatedSettings, error) {
+	global := load(globalPath)
+	project := load(projectPath)
+
+	merged, err := Load(globalPath, projectPath)
+	if err != nil {
+		return AnnotatedSettings{}, err
+	}
+
+	sources := map[string]Source{
+		"defaultModel":     SourceDefault,
+		"systemPrompt":     SourceDefault,
+		"bashTimeoutMs":    SourceDefault,
+		"maxBashTimeoutMs": SourceDefault,
+		"contextWarnPct":   SourceDefault,
+		"contextCritPct":   SourceDefault,
+		"retryBackoffMs":   SourceDefault,
+		"renderThrottleMs": SourceDefault,
+	}
+
+	if global.DefaultModel != "" {
+		sources["defaultModel"] = SourceGlobal
+	}
+	if project.DefaultModel != "" {
+		sources["defaultModel"] = SourceProject
+	}
+
+	if global.SystemPrompt != "" {
+		sources["systemPrompt"] = SourceGlobal
+	}
+	if project.SystemPrompt != "" {
+		sources["systemPrompt"] = SourceProject
+	}
+
+	if global.BashTimeoutMs != 0 {
+		sources["bashTimeoutMs"] = SourceGlobal
+	}
+	if project.BashTimeoutMs != 0 {
+		sources["bashTimeoutMs"] = SourceProject
+	}
+
+	if global.MaxBashTimeoutMs != 0 {
+		sources["maxBashTimeoutMs"] = SourceGlobal
+	}
+	if project.MaxBashTimeoutMs != 0 {
+		sources["maxBashTimeoutMs"] = SourceProject
+	}
+
+	if global.ContextWarnPct != 0 {
+		sources["contextWarnPct"] = SourceGlobal
+	}
+	if project.ContextWarnPct != 0 {
+		sources["contextWarnPct"] = SourceProject
+	}
+
+	if global.ContextCritPct != 0 {
+		sources["contextCritPct"] = SourceGlobal
+	}
+	if project.ContextCritPct != 0 {
+		sources["contextCritPct"] = SourceProject
+	}
+
+	if len(global.RetryBackoffMs) > 0 {
+		sources["retryBackoffMs"] = SourceGlobal
+	}
+	if len(project.RetryBackoffMs) > 0 {
+		sources["retryBackoffMs"] = SourceProject
+	}
+
+	if global.RenderThrottleMs != 0 {
+		sources["renderThrottleMs"] = SourceGlobal
+	}
+	if project.RenderThrottleMs != 0 {
+		sources["renderThrottleMs"] = SourceProject
+	}
+
+	modelSources := make(map[string]Source)
+	for k := range global.ModelConfig {
+		modelSources[k] = SourceGlobal
+	}
+	for k := range project.ModelConfig {
+		modelSources[k] = SourceProject
+	}
+
+	return AnnotatedSettings{
+		Settings:     merged,
+		GlobalPath:   globalPath,
+		ProjectPath:  projectPath,
+		Sources:      sources,
+		ModelSources: modelSources,
+	}, nil
 }

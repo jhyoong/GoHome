@@ -151,6 +151,11 @@ type Model struct {
 	// /model, /cancel). Set via SetSlashCallbacks.
 	slashCB SlashCallbacks
 
+	configOnlyMode    bool
+	configEditScope   string
+	configGlobalPath  string
+	configProjectPath string
+
 	renderThrottleMs int
 	lastRenderTime   time.Time
 	renderPending    bool
@@ -346,7 +351,30 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.handleApprovalReq(msg)
 
 	case tea.KeyMsg:
-		return m.handleKeyMsg(msg)
+		mdl, cmd := m.handleKeyMsg(msg)
+		if m.configEditScope != "" {
+			scope := m.configEditScope
+			m.configEditScope = ""
+			switch scope {
+			case "global":
+				return mdl, openConfigEditor(m.configGlobalPath, scope)
+			case "project":
+				return mdl, openConfigEditor(m.configProjectPath, scope)
+			case "wizard":
+				globalPath, _ := config.DefaultGlobalPath()
+				w := NewConfigWizard(
+					func() { m.activeModal = nil },
+					func(path string) {
+						m.activeModal = nil
+						m.statusMsg = "Config saved to " + path + ". Restart gohome to apply."
+					},
+				)
+				w.outputPath = globalPath
+				m.activeModal = w
+				return mdl, nil
+			}
+		}
+		return mdl, cmd
 
 	case FileSearchResultMsg:
 		if m.fileSearching {
@@ -385,6 +413,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ExternalEditorMsg:
 		m.handleExternalEditorResult(msg)
+
+	case ConfigEditMsg:
+		if msg.Err != nil {
+			m.statusMsg = fmt.Sprintf("editor: %v", msg.Err)
+		} else {
+			m.statusMsg = "Config saved. Restart gohome to apply changes."
+		}
+	}
+
+	if m.configOnlyMode && m.activeModal == nil {
+		return m, tea.Quit
 	}
 
 	return m, nil
@@ -593,6 +632,38 @@ func (m *Model) OpenTokensOverlay() {
 func (m *Model) ShowHelp() bool {
 	_, ok := m.activeModal.(*HelpOverlay)
 	return ok
+}
+
+// ShowConfig returns whether the config overlay is displayed (exported for tests).
+func (m *Model) ShowConfig() bool {
+	_, ok := m.activeModal.(*ConfigOverlay)
+	return ok
+}
+
+// OpenConfigOverlay opens the config overlay. Used in tests to set this state
+// synchronously without going through the slash command path.
+func (m *Model) OpenConfigOverlay(ann config.AnnotatedSettings) {
+	m.openConfigOverlayWith(ann)
+}
+
+// OpenConfigWizard opens the setup wizard modal targeting the given output
+// path. Used by the --config CLI flag when no global settings file exists.
+func (m *Model) OpenConfigWizard(outputPath string) {
+	w := NewConfigWizard(
+		func() { m.activeModal = nil },
+		func(path string) {
+			m.activeModal = nil
+			m.statusMsg = "Config saved to " + path
+		},
+	)
+	w.outputPath = outputPath
+	m.activeModal = w
+}
+
+// SetConfigOnlyMode marks the model as running in standalone config mode.
+// When true, the program quits as soon as the active modal is dismissed.
+func (m *Model) SetConfigOnlyMode(v bool) {
+	m.configOnlyMode = v
 }
 
 // OpenHelpOverlay opens the help overlay. Used in tests to set this state

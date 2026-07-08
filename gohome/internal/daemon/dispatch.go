@@ -87,13 +87,14 @@ func (s *Server) initAgent(cfg ServerConfig) error {
 	state := agent.NewSessionState(sess, writer, cfg.LLMClient)
 
 	s.agent = &agent.Agent{
-		Tools:          cfg.Registry,
-		Guard:          cfg.Guard,
-		State:          state,
-		System:         cfg.SystemPrompt,
-		MaxTokens:      cfg.MaxTokens,
-		ThinkingBudget: cfg.ThinkingBudget,
-		Home:           cfg.Home,
+		Tools:           cfg.Registry,
+		Guard:           cfg.Guard,
+		State:           state,
+		System:          cfg.SystemPrompt,
+		MaxTokens:       cfg.MaxTokens,
+		ThinkingBudget:  cfg.ThinkingBudget,
+		ReasoningEffort: cfg.ReasoningEffort,
+		Home:            cfg.Home,
 	}
 	s.agent.RegisterSubagentTool()
 	return nil
