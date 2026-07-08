@@ -152,7 +152,7 @@ func main() {
 	}
 
 	// Run TUI client.
-	runClient(sockPath, settings, mc)
+	runClient(sockPath, settings, mc, cfgName)
 
 	if logFile != nil {
 		slog.Info("gohome exiting")
@@ -364,7 +364,7 @@ func detectGitBranch() (string, error) {
 }
 
 // runClient connects to the daemon and runs the TUI.
-func runClient(sockPath string, settings config.Settings, mc config.ModelConfig) {
+func runClient(sockPath string, settings config.Settings, mc config.ModelConfig, cfgName string) {
 	conn, err := net.Dial("unix", sockPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "gohome: cannot connect to daemon: %v\n", err)
@@ -387,6 +387,7 @@ func runClient(sockPath string, settings config.Settings, mc config.ModelConfig)
 		go func() { _ = cfe.SendYoloSet(v) }()
 	})
 	m.SetModelName(mc.ModelName)
+	m.SetConfigName(cfgName)
 
 	contextWindow := mc.ContextWindow
 	if contextWindow <= 0 {
