@@ -33,9 +33,10 @@ type ServerConfig struct {
 	Guard          *guard.Guard
 	Registry       *tools.Registry
 	SystemPrompt   string
-	MaxTokens      int
-	ThinkingBudget int
-	Home           string
+	MaxTokens       int
+	ThinkingBudget  int
+	ReasoningEffort string
+	Home            string
 	CWD            string
 	SessionID      string
 

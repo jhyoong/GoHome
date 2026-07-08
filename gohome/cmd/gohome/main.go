@@ -311,22 +311,25 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		thinkingBudget = config.DefaultThinkingBudget
 	}
 
+	reasoningEffort := mc.ReasoningEffort
+
 	sessionID := session.NewID()
 
 	srv, err := daemon.NewServer(sockPath, daemon.ServerConfig{
-		Version:        version,
-		LLMClient:      client,
-		Guard:          g,
-		Registry:       registry,
-		SystemPrompt:   systemPrompt,
-		MaxTokens:      maxTokens,
-		ThinkingBudget: thinkingBudget,
-		Home:           home,
-		CWD:            cwd,
-		SessionID:      sessionID,
-		Settings:       settings,
-		ModelConfig:    cfgName,
-		ModelName:      mc.ModelName,
+		Version:         version,
+		LLMClient:       client,
+		Guard:           g,
+		Registry:        registry,
+		SystemPrompt:    systemPrompt,
+		MaxTokens:       maxTokens,
+		ThinkingBudget:  thinkingBudget,
+		ReasoningEffort: reasoningEffort,
+		Home:            home,
+		CWD:             cwd,
+		SessionID:       sessionID,
+		Settings:        settings,
+		ModelConfig:     cfgName,
+		ModelName:       mc.ModelName,
 	})
 	if err != nil {
 		return fmt.Errorf("cannot start daemon: %w", err)
