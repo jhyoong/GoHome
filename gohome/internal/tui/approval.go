@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -55,55 +54,38 @@ func newApprovalPrompt(req guard.ApprovalRequest, resolve func(guard.ApprovalDec
 	}
 }
 
-// bashCommand extracts the "command" field from a bash tool input JSON.
-// Returns "" when the tool is not bash or when the field is absent.
-func bashCommand(ap *approvalPrompt) string {
-	if ap.req.Tool != "bash" {
-		return ""
-	}
-	var v map[string]json.RawMessage
-	if err := json.Unmarshal(ap.req.Input, &v); err != nil {
-		return ""
-	}
-	raw, ok := v["command"]
-	if !ok {
-		return ""
-	}
-	var cmd string
-	if err := json.Unmarshal(raw, &cmd); err != nil {
-		return ""
-	}
-	return cmd
-}
 
 var approvalBoxStyle = lipgloss.NewStyle().
 	Border(lipgloss.RoundedBorder()).
 	Padding(0, 1).
 	BorderForeground(lipgloss.Color("3"))
 
+// approvalSummaryLine builds a single contextual line describing the tool call
+// (e.g. "bash: git status", "read: path/to/file").
+func approvalSummaryLine(ap *approvalPrompt) string {
+	arg := extractToolArg(ap.req.Tool, string(ap.req.Input))
+	if arg != "" {
+		return fmt.Sprintf("%s: %s", ap.req.Tool, arg)
+	}
+	return ap.req.Tool
+}
+
 // renderApprovalOverlay renders the approval prompt box for the given prompt.
 func renderApprovalOverlay(ap *approvalPrompt, width int) string {
 	var sb strings.Builder
 
-	fmt.Fprintf(&sb, "Approve tool call -- %s\n", ap.req.SessionID)
-	fmt.Fprintf(&sb, "Tool: %s\n", ap.req.Tool)
-	if ap.req.Summary != "" {
-		fmt.Fprintf(&sb, "Summary: %s\n", ap.req.Summary)
-	}
-
-	if cmd := bashCommand(ap); cmd != "" {
-		fmt.Fprintf(&sb, "Command: %s\n", cmd)
-	}
+	sb.WriteString(approvalSummaryLine(ap))
+	sb.WriteString("\n")
 
 	if ap.steering {
 		sb.WriteString("\nSteer message (Enter to send, Esc to cancel):\n")
 		sb.WriteString(ap.steerInput.View())
 	} else if ap.editing {
 		sb.WriteString("\n  [1] Allow once\n")
-		fmt.Fprintf(&sb, "  [2] Allow always   pattern: %s\n", ap.patternInput.View())
+		fmt.Fprintf(&sb, "  [2] Allow always  %s\n", ap.patternInput.View())
 		sb.WriteString("  [3] Deny\n")
 		sb.WriteString("  [4] Deny + steer\n")
-		sb.WriteString("(Enter to confirm pattern, Esc to cancel edit)")
+		sb.WriteString("(Enter to confirm, Esc to cancel)")
 	} else {
 		marker := func(i int) string {
 			if ap.selected == i {
@@ -112,7 +94,11 @@ func renderApprovalOverlay(ap *approvalPrompt, width int) string {
 			return "  "
 		}
 		fmt.Fprintf(&sb, "\n%s[1] Allow once\n", marker(0))
-		fmt.Fprintf(&sb, "%s[2] Allow always   pattern: %s  (e to edit)\n", marker(1), ap.pattern)
+		if ap.pattern != "" {
+			fmt.Fprintf(&sb, "%s[2] Allow always  %s  (e edit)\n", marker(1), ap.pattern)
+		} else {
+			fmt.Fprintf(&sb, "%s[2] Allow always\n", marker(1))
+		}
 		fmt.Fprintf(&sb, "%s[3] Deny\n", marker(2))
 		fmt.Fprintf(&sb, "%s[4] Deny + steer\n", marker(3))
 		sb.WriteString("Esc: deny | arrows to navigate")
