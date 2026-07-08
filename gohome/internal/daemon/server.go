@@ -29,16 +29,16 @@ type ServerConfig struct {
 	// server builds an agent on startup and runs the agent loop when the first
 	// client connects. When LLMClient is nil the server runs without an agent
 	// (useful for tests and headless health-check mode).
-	LLMClient      common.Client
-	Guard          *guard.Guard
-	Registry       *tools.Registry
-	SystemPrompt   string
+	LLMClient       common.Client
+	Guard           *guard.Guard
+	Registry        *tools.Registry
+	SystemPrompt    string
 	MaxTokens       int
 	ThinkingBudget  int
 	ReasoningEffort string
 	Home            string
-	CWD            string
-	SessionID      string
+	CWD             string
+	SessionID       string
 
 	// Settings, ModelConfig, and ModelName are needed for model.set to look up
 	// model configs, resolve API keys, and create new LLM clients.
