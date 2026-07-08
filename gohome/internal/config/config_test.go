@@ -282,17 +282,18 @@ func TestLoad_ZeroValuesPreserveGlobal(t *testing.T) {
 	}
 }
 
-func TestLoad_ModelConfigMaxTokensAndThinkingBudget(t *testing.T) {
+func TestLoad_ModelConfigMaxTokensThinkingBudgetReasoningEffort(t *testing.T) {
 	dir := t.TempDir()
 
 	global := Settings{
 		ModelConfig: map[string]ModelConfig{
 			"main": {
-				Wire:           WireAnthropic,
-				BaseURL:        "http://x",
-				ModelName:      "m",
-				MaxTokens:      8192,
-				ThinkingBudget: 4096,
+				Wire:            WireAnthropic,
+				BaseURL:         "http://x",
+				ModelName:       "m",
+				MaxTokens:       8192,
+				ThinkingBudget:  4096,
+				ReasoningEffort: "high",
 			},
 		},
 		DefaultModel: "main",
@@ -314,6 +315,9 @@ func TestLoad_ModelConfigMaxTokensAndThinkingBudget(t *testing.T) {
 	}
 	if ep.ThinkingBudget != 4096 {
 		t.Errorf("ThinkingBudget: got %d, want 4096", ep.ThinkingBudget)
+	}
+	if ep.ReasoningEffort != "high" {
+		t.Errorf("ReasoningEffort: got %q, want %q", ep.ReasoningEffort, "high")
 	}
 }
 

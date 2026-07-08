@@ -21,6 +21,7 @@ func SkeletonJSON() []byte {
       "contextWindow": 0,
       "maxTokens": 0,
       "thinkingBudget": 0,
+      "reasoningEffort": "string",
       "headers": {}
     }
   },

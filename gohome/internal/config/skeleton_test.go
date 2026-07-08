@@ -54,7 +54,7 @@ func TestSkeletonJSON_ContainsModelConfigFields(t *testing.T) {
 	required := []string{
 		"wire", "baseURL", "apiKey", "apiKeyEnv",
 		"modelName", "contextWindow", "maxTokens",
-		"thinkingBudget", "headers",
+		"thinkingBudget", "reasoningEffort", "headers",
 	}
 	for _, key := range required {
 		if _, ok := example[key]; !ok {
