@@ -352,3 +352,58 @@ func TestLoad_RenderThrottleMsZeroPreservesGlobal(t *testing.T) {
 		t.Errorf("RenderThrottleMs: got %d, want 50 (should preserve global)", merged.RenderThrottleMs)
 	}
 }
+
+func TestLoadAnnotated_SourceTracking(t *testing.T) {
+	dir := t.TempDir()
+
+	global := Settings{
+		DefaultModel:  "g-default",
+		BashTimeoutMs: 60000,
+		ModelConfig: map[string]ModelConfig{
+			"shared": {Wire: WireAnthropic, ModelName: "g"},
+		},
+	}
+	project := Settings{
+		BashTimeoutMs: 90000,
+		ModelConfig: map[string]ModelConfig{
+			"local": {Wire: WireOpenAI, ModelName: "p"},
+		},
+	}
+
+	gPath := writeJSON(t, dir, "global.json", global)
+	pPath := writeJSON(t, dir, "project.json", project)
+
+	ann, err := LoadAnnotated(gPath, pPath)
+	if err != nil {
+		t.Fatalf("LoadAnnotated: %v", err)
+	}
+
+	if ann.Sources["defaultModel"] != SourceGlobal {
+		t.Errorf("defaultModel source: got %q, want %q", ann.Sources["defaultModel"], SourceGlobal)
+	}
+	if ann.Sources["bashTimeoutMs"] != SourceProject {
+		t.Errorf("bashTimeoutMs source: got %q, want %q", ann.Sources["bashTimeoutMs"], SourceProject)
+	}
+	if ann.Sources["contextWarnPct"] != SourceDefault {
+		t.Errorf("contextWarnPct source: got %q, want %q", ann.Sources["contextWarnPct"], SourceDefault)
+	}
+	if ann.ModelSources["shared"] != SourceGlobal {
+		t.Errorf("model shared source: got %q, want %q", ann.ModelSources["shared"], SourceGlobal)
+	}
+	if ann.ModelSources["local"] != SourceProject {
+		t.Errorf("model local source: got %q, want %q", ann.ModelSources["local"], SourceProject)
+	}
+}
+
+func TestLoadAnnotated_AllDefaultsWhenNoFiles(t *testing.T) {
+	dir := t.TempDir()
+	ann, err := LoadAnnotated(dir+"/nope.json", dir+"/nope2.json")
+	if err != nil {
+		t.Fatalf("LoadAnnotated: %v", err)
+	}
+	for key, src := range ann.Sources {
+		if src != SourceDefault {
+			t.Errorf("%s source: got %q, want %q", key, src, SourceDefault)
+		}
+	}
+}
