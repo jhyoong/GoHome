@@ -151,6 +151,8 @@ type Model struct {
 	// /model, /cancel). Set via SetSlashCallbacks.
 	slashCB SlashCallbacks
 
+	configEditScope string
+
 	renderThrottleMs int
 	lastRenderTime   time.Time
 	renderPending    bool
@@ -593,6 +595,20 @@ func (m *Model) OpenTokensOverlay() {
 func (m *Model) ShowHelp() bool {
 	_, ok := m.activeModal.(*HelpOverlay)
 	return ok
+}
+
+// ShowConfig returns whether the config overlay is displayed (exported for tests).
+func (m *Model) ShowConfig() bool {
+	_, ok := m.activeModal.(*ConfigOverlay)
+	return ok
+}
+
+// OpenConfigOverlay opens the config overlay. Used in tests to set this state
+// synchronously without going through the slash command path.
+func (m *Model) OpenConfigOverlay(ann config.AnnotatedSettings) {
+	m.activeModal = NewConfigOverlay(ann, func() { m.activeModal = nil }, func(scope string) {
+		m.configEditScope = scope
+	})
 }
 
 // OpenHelpOverlay opens the help overlay. Used in tests to set this state

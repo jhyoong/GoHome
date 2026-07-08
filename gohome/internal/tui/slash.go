@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/jhyoong/GoHome/gohome/internal/config"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 	"github.com/jhyoong/GoHome/gohome/internal/session"
 )
@@ -13,4 +14,5 @@ type SlashCallbacks struct {
 	CancelSession func(id string)
 	SetModel      func(name string) (model string, contextWindow int, err error)
 	ListSessions  func() ([]session.Listing, error)
+	OpenConfig    func() (config.AnnotatedSettings, error)
 }

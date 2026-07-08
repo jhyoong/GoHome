@@ -108,6 +108,25 @@ func TestConfigOverlay_EnterSelectsAction(t *testing.T) {
 	}
 }
 
+func TestSlashConfig_OpensOverlay(t *testing.T) {
+	m := New("")
+	m.SetSettings(config.Settings{
+		ModelConfig: map[string]config.ModelConfig{
+			"test": {Wire: config.WireAnthropic, ModelName: "m"},
+		},
+		DefaultModel: "test",
+	})
+	m.SetSlashCallbacks(SlashCallbacks{
+		OpenConfig: func() (config.AnnotatedSettings, error) {
+			return sampleAnnotated(), nil
+		},
+	})
+	m.handleSlashCommand("/config")
+	if !m.ShowConfig() {
+		t.Fatal("expected config overlay to be open after /config")
+	}
+}
+
 func TestConfigOverlay_Render_EmptyConfig(t *testing.T) {
 	empty := config.AnnotatedSettings{
 		Settings: config.Settings{
