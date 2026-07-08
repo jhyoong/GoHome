@@ -68,12 +68,13 @@ type openaiStreamOptions struct {
 
 // openaiBody is the OpenAI wire shape for a chat completions request body.
 type openaiBody struct {
-	Model         string              `json:"model"`
-	Messages      []any               `json:"messages"`
-	Tools         []openaiTool        `json:"tools,omitempty"`
-	MaxTokens     int                 `json:"max_tokens"`
-	Stream        bool                `json:"stream"`
-	StreamOptions openaiStreamOptions `json:"stream_options"`
+	Model           string              `json:"model"`
+	Messages        []any               `json:"messages"`
+	Tools           []openaiTool        `json:"tools,omitempty"`
+	MaxTokens       int                 `json:"max_tokens"`
+	Stream          bool                `json:"stream"`
+	StreamOptions   openaiStreamOptions `json:"stream_options"`
+	ReasoningEffort string              `json:"reasoning_effort,omitempty"`
 }
 
 // buildOpenAIBody translates a common.Request to OpenAI chat completions wire-format JSON.
@@ -117,6 +118,7 @@ func buildOpenAIBody(req common.Request) ([]byte, error) {
 		StreamOptions: openaiStreamOptions{
 			IncludeUsage: true,
 		},
+		ReasoningEffort: req.ReasoningEffort,
 	}
 	if len(tools) > 0 {
 		body.Tools = tools
