@@ -185,9 +185,7 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 			m.statusMsg = fmt.Sprintf("/config: %v", err)
 			break
 		}
-		m.activeModal = NewConfigOverlay(ann, func() { m.activeModal = nil }, func(scope string) {
-			m.configEditScope = scope
-		})
+		m.openConfigOverlayWith(ann)
 		m.statusMsg = ""
 	default:
 		m.statusMsg = cmd + ": unknown command"

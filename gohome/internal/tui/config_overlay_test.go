@@ -127,6 +127,13 @@ func TestSlashConfig_OpensOverlay(t *testing.T) {
 	}
 }
 
+func TestConfigEditMsg_Type(t *testing.T) {
+	msg := ConfigEditMsg{Scope: "global", Err: nil}
+	if msg.Scope != "global" {
+		t.Errorf("got scope %q, want global", msg.Scope)
+	}
+}
+
 func TestConfigOverlay_Render_EmptyConfig(t *testing.T) {
 	empty := config.AnnotatedSettings{
 		Settings: config.Settings{

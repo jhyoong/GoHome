@@ -118,3 +118,14 @@ func (co *ConfigOverlay) Render(width int) []string {
 func (co *ConfigOverlay) HandleInput(msg tea.KeyMsg) tea.Cmd {
 	return co.actions.HandleInput(msg)
 }
+
+// openConfigOverlayWith creates and displays a ConfigOverlay, storing the
+// paths so the editor launch can look them up later.
+func (m *Model) openConfigOverlayWith(ann config.AnnotatedSettings) {
+	m.configGlobalPath = ann.GlobalPath
+	m.configProjectPath = ann.ProjectPath
+	m.activeModal = NewConfigOverlay(ann, func() { m.activeModal = nil }, func(scope string) {
+		m.configEditScope = scope
+		m.activeModal = nil
+	})
+}

@@ -151,7 +151,9 @@ type Model struct {
 	// /model, /cancel). Set via SetSlashCallbacks.
 	slashCB SlashCallbacks
 
-	configEditScope string
+	configEditScope   string
+	configGlobalPath  string
+	configProjectPath string
 
 	renderThrottleMs int
 	lastRenderTime   time.Time
@@ -348,7 +350,21 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.handleApprovalReq(msg)
 
 	case tea.KeyMsg:
-		return m.handleKeyMsg(msg)
+		mdl, cmd := m.handleKeyMsg(msg)
+		if m.configEditScope != "" {
+			scope := m.configEditScope
+			m.configEditScope = ""
+			var path string
+			if scope == "global" {
+				path = m.configGlobalPath
+			} else if scope == "project" {
+				path = m.configProjectPath
+			}
+			if path != "" {
+				return mdl, openConfigEditor(path, scope)
+			}
+		}
+		return mdl, cmd
 
 	case FileSearchResultMsg:
 		if m.fileSearching {
@@ -387,6 +403,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ExternalEditorMsg:
 		m.handleExternalEditorResult(msg)
+
+	case ConfigEditMsg:
+		if msg.Err != nil {
+			m.statusMsg = fmt.Sprintf("editor: %v", msg.Err)
+		} else {
+			m.statusMsg = "Config saved. Restart gohome to apply changes."
+		}
 	}
 
 	return m, nil
@@ -606,9 +629,7 @@ func (m *Model) ShowConfig() bool {
 // OpenConfigOverlay opens the config overlay. Used in tests to set this state
 // synchronously without going through the slash command path.
 func (m *Model) OpenConfigOverlay(ann config.AnnotatedSettings) {
-	m.activeModal = NewConfigOverlay(ann, func() { m.activeModal = nil }, func(scope string) {
-		m.configEditScope = scope
-	})
+	m.openConfigOverlayWith(ann)
 }
 
 // OpenHelpOverlay opens the help overlay. Used in tests to set this state
