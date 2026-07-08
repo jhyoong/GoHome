@@ -20,6 +20,7 @@ const (
 	MethodSessionCancel   = "session.cancel"
 	MethodModelSet        = "model.set"
 	MethodYoloSet         = "yolo.set"
+	MethodSessionConnect  = "session.connect"
 	MethodDaemonHealth    = "daemon.health"
 	MethodDaemonStop      = "daemon.stop"
 	MethodApprovalRequest = "approval.request"
@@ -70,6 +71,11 @@ type ModelSetParams struct {
 // YoloSetParams carries the desired yolo mode state.
 type YoloSetParams struct {
 	Enabled bool `json:"enabled"`
+}
+
+// SessionConnectParams carries the TUI client's working directory.
+type SessionConnectParams struct {
+	CWD string `json:"cwd"`
 }
 
 // ModelSetResult carries the result of a model switch.

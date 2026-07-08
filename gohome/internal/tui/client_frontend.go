@@ -285,6 +285,12 @@ func (cf *ClientFrontend) SendYoloSet(enabled bool) error {
 	return err
 }
 
+// SendConnect sends a session.connect request to reload daemon config from the given cwd.
+func (cf *ClientFrontend) SendConnect(cwd string) error {
+	_, err := sendRPC[struct{}](cf, rpc.MethodSessionConnect, rpc.SessionConnectParams{CWD: cwd})
+	return err
+}
+
 // Close cancels in-flight requests and closes the underlying connection.
 func (cf *ClientFrontend) Close() error {
 	cf.cancel()

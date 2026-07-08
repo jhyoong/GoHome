@@ -930,6 +930,89 @@ func TestServer_StateSync_IncludesConfigName(t *testing.T) {
 	}
 }
 
+func TestServer_SessionConnect_ReloadsConfig(t *testing.T) {
+	sock := newTestSocket(t)
+
+	// Create a project dir with a settings file containing a project-only model config.
+	projectDir := t.TempDir()
+	projectSettingsDir := filepath.Join(projectDir, ".gohome")
+	if err := os.MkdirAll(projectSettingsDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	projectSettings := `{
+		"modelConfig": {
+			"proj-model": {
+				"wire": "openai",
+				"baseURL": "http://localhost:0/v1",
+				"apiKey": "sk-test",
+				"modelName": "proj-model-name"
+			}
+		}
+	}`
+	if err := os.WriteFile(filepath.Join(projectSettingsDir, "settings.json"), []byte(projectSettings), 0o644); err != nil {
+		t.Fatalf("write project settings: %v", err)
+	}
+
+	// Create a global settings file with a global-only model config.
+	globalDir := t.TempDir()
+	globalSettings := `{
+		"modelConfig": {
+			"global-model": {
+				"wire": "openai",
+				"baseURL": "http://localhost:0/v1",
+				"apiKey": "sk-global",
+				"modelName": "global-model-name"
+			}
+		},
+		"defaultModel": "global-model"
+	}`
+	if err := os.WriteFile(filepath.Join(globalDir, "settings.json"), []byte(globalSettings), 0o644); err != nil {
+		t.Fatalf("write global settings: %v", err)
+	}
+	globalPath := filepath.Join(globalDir, "settings.json")
+
+	t.Setenv("TEST_CONNECT_KEY", "test-key")
+
+	srv := newTestAgentServer(t, sock, func(cfg *ServerConfig) {
+		cfg.SessionID = "connect-test-1"
+		cfg.Settings = config.Settings{
+			ModelConfig: map[string]config.ModelConfig{
+				"global-model": {
+					Wire:      config.WireOpenAI,
+					BaseURL:   "http://localhost:0/v1",
+					APIKeyEnv: "TEST_CONNECT_KEY",
+					ModelName: "global-model-name",
+				},
+			},
+			DefaultModel: "global-model",
+		}
+		cfg.GlobalPath = globalPath
+	})
+
+	serveBackground(t, srv)
+
+	// Before connect, only "global-model" exists.
+	if _, ok := srv.config.Settings.ModelConfig["proj-model"]; ok {
+		t.Fatal("proj-model should not exist before session.connect")
+	}
+
+	conn := dialTestServer(t, sock)
+
+	connectParams, _ := json.Marshal(rpc.SessionConnectParams{CWD: projectDir})
+	msg := sendRequest(t, conn, 1, rpc.MethodSessionConnect, connectParams)
+	if msg.Error != nil {
+		t.Fatalf("session.connect error: %v", msg.Error)
+	}
+
+	// After connect, both models should exist.
+	if _, ok := srv.config.Settings.ModelConfig["global-model"]; !ok {
+		t.Error("global-model should still exist after session.connect")
+	}
+	if _, ok := srv.config.Settings.ModelConfig["proj-model"]; !ok {
+		t.Error("proj-model should exist after session.connect")
+	}
+}
+
 // noopApprover satisfies guard.Frontend for test purposes.
 type noopApprover struct{}
 

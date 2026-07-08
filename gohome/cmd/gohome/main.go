@@ -144,7 +144,7 @@ func main() {
 
 	// Check for existing daemon.
 	if !isDaemonRunning(sockPath) {
-		if err := startDaemon(sockPath, home, cwd, settings, mc, cfgName); err != nil {
+		if err := startDaemon(sockPath, home, cwd, globalCfgPath, settings, mc, cfgName); err != nil {
 			fmt.Fprintf(os.Stderr, "gohome: daemon start failed: %v\n", err)
 			os.Exit(1)
 		}
@@ -261,7 +261,7 @@ func runConfigMode() {
 
 // startDaemon builds all agent dependencies and starts the daemon server
 // in-process as a goroutine.
-func startDaemon(sockPath, home, cwd string, settings config.Settings, mc config.ModelConfig, cfgName string) error {
+func startDaemon(sockPath, home, cwd, globalPath string, settings config.Settings, mc config.ModelConfig, cfgName string) error {
 	apiKey, err := config.ResolveAPIKey(mc)
 	if err != nil {
 		return fmt.Errorf("no API key for model config %q", cfgName)
@@ -330,6 +330,7 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		Settings:        settings,
 		ModelConfig:     cfgName,
 		ModelName:       mc.ModelName,
+		GlobalPath:      globalPath,
 	})
 	if err != nil {
 		return fmt.Errorf("cannot start daemon: %w", err)
@@ -379,6 +380,11 @@ func runClient(sockPath string, settings config.Settings, mc config.ModelConfig,
 		cfe.ReadLoop()
 		close(eventCh)
 	}()
+
+	cwd, _ := os.Getwd()
+	if err := cfe.SendConnect(cwd); err != nil {
+		slog.Warn("session.connect failed", "err", err)
+	}
 
 	// Build TUI model.
 	m := tui.New("main")
