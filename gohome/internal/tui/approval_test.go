@@ -44,7 +44,7 @@ func TestApprovalOverlayShowsAndAllowOnce(t *testing.T) {
 
 	// Wait for the overlay to appear.
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("Approve")) && bytes.Contains(out, []byte("bash"))
+		return bytes.Contains(out, []byte("bash: ls"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
 	// Press '1' -> AllowOnce.
@@ -70,7 +70,7 @@ func TestApprovalOverlayEscDenies(t *testing.T) {
 	tm.Send(msg)
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("Approve"))
+		return bytes.Contains(out, []byte("bash: ls"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyEsc})
@@ -94,7 +94,7 @@ func TestApprovalOverlayKey3Denies(t *testing.T) {
 	tm.Send(msg)
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("Approve"))
+		return bytes.Contains(out, []byte("bash: ls"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}})
@@ -120,7 +120,7 @@ func TestApprovalAllowAlwaysDefaultPattern(t *testing.T) {
 	tm.Send(msg)
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("Approve"))
+		return bytes.Contains(out, []byte("bash: ls"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
 	// Press '2' without editing -> AllowAlways with the original pattern.
@@ -148,7 +148,7 @@ func TestApprovalEditPatternThenAllowAlways(t *testing.T) {
 	tm.Send(msg)
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("Approve"))
+		return bytes.Contains(out, []byte("bash: ls"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
 	// Press 'e' to enter edit mode.
@@ -183,7 +183,7 @@ func TestApprovalEditPatternEscReverts(t *testing.T) {
 	tm.Send(msg)
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("Approve"))
+		return bytes.Contains(out, []byte("bash: ls"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
 	// Enter edit mode, type something, then Esc to revert.
@@ -217,7 +217,7 @@ func TestApprovalDenySteer(t *testing.T) {
 	tm.Send(msg)
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("Approve"))
+		return bytes.Contains(out, []byte("bash: ls"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
 	// Press '4' to enter steer mode.
@@ -247,7 +247,7 @@ func TestApprovalDenySteerEscCancels(t *testing.T) {
 	tm.Send(msg)
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("Approve"))
+		return bytes.Contains(out, []byte("bash: ls"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
 	// Enter steer mode, then Esc -> should return to menu without resolving.
@@ -489,7 +489,7 @@ func TestCrossSessionNotificationLine(t *testing.T) {
 	// In the same frame, the normal textarea must be visible (no Approve overlay on "main").
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		hasNotif := bytes.Contains(out, []byte("sub-1")) && bytes.Contains(out, []byte("approval"))
-		noOverlay := !bytes.Contains(out, []byte("Approve tool call"))
+		noOverlay := !bytes.Contains(out, []byte("Allow once"))
 		return hasNotif && noOverlay
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
