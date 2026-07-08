@@ -16,9 +16,10 @@ import (
 // connects (or reconnects). The TUI model uses it to set the model name, yolo
 // flag, and focused session ID.
 type StateSyncMsg struct {
-	SessionID string
-	Model     string
-	Yolo      bool
+	SessionID  string
+	Model      string
+	ConfigName string
+	Yolo       bool
 }
 
 // ClientFrontend connects the TUI to a daemon over JSON-RPC. It receives
@@ -117,9 +118,10 @@ func (cf *ClientFrontend) handleNotification(msg *rpc.Message) {
 		}
 		select {
 		case cf.stateSync <- StateSyncMsg{
-			SessionID: params.SessionID,
-			Model:     params.Model,
-			Yolo:      params.Yolo,
+			SessionID:  params.SessionID,
+			Model:      params.Model,
+			ConfigName: params.ConfigName,
+			Yolo:       params.Yolo,
 		}:
 		default:
 			// Drop if channel is full; the next sync will update.

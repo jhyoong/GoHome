@@ -43,9 +43,10 @@ type AgentEventParams struct {
 
 // SessionStateParams carries a full session state snapshot from daemon to TUI.
 type SessionStateParams struct {
-	SessionID string `json:"sessionID"`
-	Model     string `json:"model"`
-	Yolo      bool   `json:"yolo"`
+	SessionID  string `json:"sessionID"`
+	Model      string `json:"model"`
+	ConfigName string `json:"configName"`
+	Yolo       bool   `json:"yolo"`
 }
 
 // ---------- TUI -> Daemon Requests ----------

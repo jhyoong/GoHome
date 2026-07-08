@@ -900,6 +900,36 @@ func TestServer_ModelSet_UpdatesAgentParams(t *testing.T) {
 	}
 }
 
+func TestServer_StateSync_IncludesConfigName(t *testing.T) {
+	sock := newTestSocket(t)
+	srv := newTestAgentServer(t, sock, func(cfg *ServerConfig) {
+		cfg.SessionID = "config-name-test"
+		cfg.ModelConfig = "my-config"
+	})
+
+	serveBackground(t, srv)
+
+	conn := dialTestServer(t, sock)
+	_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+	rc := rpc.NewConn(conn)
+
+	msg, err := rc.Read()
+	if err != nil {
+		t.Fatalf("read state notification: %v", err)
+	}
+	if msg.Method != rpc.MethodSessionState {
+		t.Fatalf("expected session.state, got %q", msg.Method)
+	}
+
+	var state rpc.SessionStateParams
+	if err := json.Unmarshal(msg.Params, &state); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if state.ConfigName != "my-config" {
+		t.Errorf("ConfigName = %q, want %q", state.ConfigName, "my-config")
+	}
+}
+
 // noopApprover satisfies guard.Frontend for test purposes.
 type noopApprover struct{}
 

@@ -97,6 +97,7 @@ func (s *Server) sendStateSync(c *rpc.Conn) {
 	}
 	sess := s.agent.State.Session()
 	model := s.agent.State.Model()
+	cfgName := s.agent.State.ModelConfig()
 
 	yolo := false
 	if s.agent.Guard != nil {
@@ -104,9 +105,10 @@ func (s *Server) sendStateSync(c *rpc.Conn) {
 	}
 
 	params := rpc.SessionStateParams{
-		SessionID: sess.ID,
-		Model:     model,
-		Yolo:      yolo,
+		SessionID:  sess.ID,
+		Model:      model,
+		ConfigName: cfgName,
+		Yolo:       yolo,
 	}
 	data, _ := json.Marshal(params)
 	_ = c.Notify(rpc.MethodSessionState, data)
