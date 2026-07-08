@@ -151,6 +151,7 @@ type Model struct {
 	// /model, /cancel). Set via SetSlashCallbacks.
 	slashCB SlashCallbacks
 
+	configOnlyMode    bool
 	configEditScope   string
 	configGlobalPath  string
 	configProjectPath string
@@ -425,6 +426,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	if m.configOnlyMode && m.activeModal == nil {
+		return m, tea.Quit
+	}
+
 	return m, nil
 }
 
@@ -643,6 +648,26 @@ func (m *Model) ShowConfig() bool {
 // synchronously without going through the slash command path.
 func (m *Model) OpenConfigOverlay(ann config.AnnotatedSettings) {
 	m.openConfigOverlayWith(ann)
+}
+
+// OpenConfigWizard opens the setup wizard modal targeting the given output
+// path. Used by the --config CLI flag when no global settings file exists.
+func (m *Model) OpenConfigWizard(outputPath string) {
+	w := NewConfigWizard(
+		func() { m.activeModal = nil },
+		func(path string) {
+			m.activeModal = nil
+			m.statusMsg = "Config saved to " + path
+		},
+	)
+	w.outputPath = outputPath
+	m.activeModal = w
+}
+
+// SetConfigOnlyMode marks the model as running in standalone config mode.
+// When true, the program quits as soon as the active modal is dismissed.
+func (m *Model) SetConfigOnlyMode(v bool) {
+	m.configOnlyMode = v
 }
 
 // OpenHelpOverlay opens the help overlay. Used in tests to set this state

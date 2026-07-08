@@ -33,6 +33,7 @@ var (
 	resume      = flag.Bool("resume", false, "resume a past session")
 	showVersion = flag.Bool("version", false, "print version and exit")
 	stopFlag    = flag.Bool("stop", false, "stop the running daemon and exit")
+	configFlag  = flag.Bool("config", false, "open config manager and exit")
 )
 
 // setupLogging configures the global slog logger to write JSON to
@@ -96,6 +97,14 @@ func main() {
 
 	if *stopFlag {
 		stopDaemon(sockPath)
+		if logFile != nil {
+			_ = logFile.Close()
+		}
+		return
+	}
+
+	if *configFlag {
+		runConfigMode()
 		if logFile != nil {
 			_ = logFile.Close()
 		}
@@ -213,6 +222,41 @@ func stopDaemon(sockPath string) {
 		Params: json.RawMessage(`{}`),
 	})
 	fmt.Println("gohome: daemon stopped")
+}
+
+// runConfigMode launches the TUI in standalone config management mode.
+// If no global settings file exists, it opens the setup wizard; otherwise
+// it opens the config overlay. The program exits when the modal is closed.
+func runConfigMode() {
+	globalPath, err := config.DefaultGlobalPath()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gohome: cannot determine config path: %v\n", err)
+		os.Exit(1)
+	}
+	cwd, _ := os.Getwd()
+	projectPath := config.DefaultProjectPath(cwd)
+
+	ann, err := config.LoadAnnotated(globalPath, projectPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gohome: config load error: %v\n", err)
+		os.Exit(1)
+	}
+
+	m := tui.New("config")
+
+	if _, statErr := os.Stat(globalPath); os.IsNotExist(statErr) {
+		m.OpenConfigWizard(globalPath)
+	} else {
+		m.OpenConfigOverlay(ann)
+	}
+
+	m.SetConfigOnlyMode(true)
+
+	p := tea.NewProgram(m, tea.WithAltScreen())
+	if _, err := p.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "gohome: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 // startDaemon builds all agent dependencies and starts the daemon server
