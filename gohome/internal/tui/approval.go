@@ -54,7 +54,6 @@ func newApprovalPrompt(req guard.ApprovalRequest, resolve func(guard.ApprovalDec
 	}
 }
 
-
 var approvalBoxStyle = lipgloss.NewStyle().
 	Border(lipgloss.RoundedBorder()).
 	Padding(0, 1).
