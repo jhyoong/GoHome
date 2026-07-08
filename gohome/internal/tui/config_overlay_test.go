@@ -134,6 +134,20 @@ func TestConfigEditMsg_Type(t *testing.T) {
 	}
 }
 
+func TestConfigOverlay_WizardAction(t *testing.T) {
+	var editScope string
+	co := NewConfigOverlay(sampleAnnotated(), func() {}, func(scope string) {
+		editScope = scope
+	})
+	// Navigate to "Run setup wizard" (third item)
+	co.HandleInput(tea.KeyMsg{Type: tea.KeyDown})
+	co.HandleInput(tea.KeyMsg{Type: tea.KeyDown})
+	co.HandleInput(tea.KeyMsg{Type: tea.KeyEnter})
+	if editScope != "wizard" {
+		t.Errorf("expected wizard scope, got %q", editScope)
+	}
+}
+
 func TestConfigOverlay_Render_EmptyConfig(t *testing.T) {
 	empty := config.AnnotatedSettings{
 		Settings: config.Settings{

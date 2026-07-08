@@ -363,6 +363,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if path != "" {
 				return mdl, openConfigEditor(path, scope)
 			}
+			if scope == "wizard" {
+				globalPath, _ := config.DefaultGlobalPath()
+				w := NewConfigWizard(
+					func() { m.activeModal = nil },
+					func(path string) {
+						m.activeModal = nil
+						m.statusMsg = "Config saved to " + path + ". Restart gohome to apply."
+					},
+				)
+				w.outputPath = globalPath
+				m.activeModal = w
+				return mdl, nil
+			}
 		}
 		return mdl, cmd
 
