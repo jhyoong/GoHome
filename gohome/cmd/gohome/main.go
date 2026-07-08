@@ -395,6 +395,15 @@ func runClient(sockPath string, settings config.Settings, mc config.ModelConfig)
 		SetModel: func(name string) (string, int, error) {
 			return cfe.SendModelSet(name)
 		},
+		OpenConfig: func() (config.AnnotatedSettings, error) {
+			globalPath, err := config.DefaultGlobalPath()
+			if err != nil {
+				return config.AnnotatedSettings{}, err
+			}
+			cwd, _ := os.Getwd()
+			projectPath := config.DefaultProjectPath(cwd)
+			return config.LoadAnnotated(globalPath, projectPath)
+		},
 	})
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
