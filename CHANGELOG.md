@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.3.1
+
+### Added
+
+- **Config overlay** -- New `/config` slash command opens a scrollable overlay showing all settings with source annotations (global, project, or default). Press `e` from the overlay to launch the settings file in an external editor (#24).
+- **Setup wizard** -- Interactive first-run wizard guides new users through creating `~/.gohome/settings.json` with wire protocol, endpoint URL, API key, and model name (#24).
+- **`--config` CLI flag** -- Prints the merged configuration and exits without starting the TUI, useful for verifying settings (#24).
+- **`reasoningEffort` model config field** -- New optional field wired through the daemon to the agent and sent as `reasoning_effort` on the OpenAI wire protocol for models like o1/o3. Free-form string passed through to the API as-is (#24).
+
+### Changed
+
+- **Streamlined approval overlay** -- Simplified the approval prompt from a verbose 4-line header to a single contextual summary line matching the timeline display format (e.g., `bash: git status`, `read: path/to/file`). Removed redundant `bashCommand` helper (#23).
+
 ## v0.3.0
 
 ### Added
