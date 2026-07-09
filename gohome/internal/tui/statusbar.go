@@ -88,7 +88,7 @@ func (m *Model) statusBar() string {
 		if totalLines > 0 {
 			scrollPct = int(float64(currentLine) / float64(totalLines) * 100)
 		}
-		right = fmt.Sprintf("Ln %d/%d (%d%%)", currentLine+1, totalLines, scrollPct)
+		right = fmt.Sprintf("Ln %d/%d (%d%%)", currentLine, totalLines, scrollPct)
 	}
 
 	if right != "" {

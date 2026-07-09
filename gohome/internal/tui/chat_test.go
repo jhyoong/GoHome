@@ -782,21 +782,38 @@ func TestScrollInfoReturnsPosition(t *testing.T) {
 	}
 	c := NewChat(&entries, 10)
 
-	// Auto-scroll: position should be at the end.
+	// Auto-scroll: position should be at the end (viewport bottom = totalLines).
 	currentLine, totalLines := c.ScrollInfo(80)
 	if totalLines <= 10 {
 		t.Fatalf("totalLines = %d, want > 10", totalLines)
 	}
-	if currentLine != totalLines-10 {
-		t.Errorf("currentLine = %d, want %d (auto-scroll at bottom)", currentLine, totalLines-10)
+	if currentLine != totalLines {
+		t.Errorf("currentLine = %d, want %d (auto-scroll shows bottom of viewport)", currentLine, totalLines)
 	}
 
-	// Scroll to top.
+	// Scroll to top: viewport bottom = maxHeight (10).
 	c.autoScroll = false
 	c.scrollTop = 0
 	currentLine, _ = c.ScrollInfo(80)
-	if currentLine != 0 {
-		t.Errorf("currentLine = %d, want 0 (scrolled to top)", currentLine)
+	if currentLine != 10 {
+		t.Errorf("currentLine = %d, want 10 (viewport bottom at top)", currentLine)
+	}
+
+	// Cursor on last entry: position should equal totalLines (100%).
+	c.cursor = len(entries) - 1
+	currentLine, _ = c.ScrollInfo(80)
+	if currentLine != totalLines {
+		t.Errorf("currentLine = %d, want %d (cursor on last entry)", currentLine, totalLines)
+	}
+
+	// Cursor on first entry.
+	c.cursor = 0
+	currentLine, _ = c.ScrollInfo(80)
+	if currentLine <= 0 {
+		t.Errorf("currentLine = %d, want > 0 (cursor on first entry)", currentLine)
+	}
+	if currentLine >= totalLines {
+		t.Errorf("currentLine = %d, want < %d (cursor on first entry)", currentLine, totalLines)
 	}
 }
 
