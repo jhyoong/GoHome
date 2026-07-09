@@ -8,14 +8,49 @@ For fun, mostly. Since I made a dumb choice of buying an annual subscription, I 
 
 ---
 
-## Build and install
+## Install
+
+### Download a pre-built binary
+
+Pre-built binaries are attached to each [GitHub release](https://github.com/jhyoong/GoHome/releases). Pick the one matching your platform:
+
+| Platform | Binary name |
+|---|---|
+| Linux x64 | `gohome-linux-amd64` |
+| macOS Apple Silicon | `gohome-darwin-arm64` |
+| macOS Intel | `gohome-darwin-amd64` |
+| Windows x64 | `gohome-windows-amd64.exe` |
+
+#### macOS / Linux
+
+```sh
+# Download (replace the URL with the latest release and your platform)
+curl -L -o gohome https://github.com/jhyoong/GoHome/releases/download/v0.3.1/gohome-darwin-arm64
+
+# Make it executable
+chmod +x gohome
+
+# Move it somewhere on your PATH
+sudo mv gohome /usr/local/bin/
+
+# Verify
+gohome --version
+```
+
+#### Windows
+
+1. Download `gohome-windows-amd64.exe` from the [latest release](https://github.com/jhyoong/GoHome/releases/latest).
+2. Rename it to `gohome.exe` (optional, for convenience).
+3. Move it to a directory on your `PATH`, or run it directly.
+
+### Build from source
 
 The source tree lives under `gohome/` at the repo root. Because the module layout places source in a subdirectory named `gohome/`, the binary **must** be built with an explicit `-o` flag; a bare `go build ./gohome/cmd/gohome` would collide with that directory name.
 
 ```sh
 git clone https://github.com/jhyoong/GoHome
 cd GoHome
-go build -ldflags "-X main.version=v0.3.0" -o bin/gohome ./gohome/cmd/gohome
+go build -ldflags "-X main.version=v0.3.1" -o bin/gohome ./gohome/cmd/gohome
 ```
 
 ### Run
@@ -32,6 +67,7 @@ go build -ldflags "-X main.version=v0.3.0" -o bin/gohome ./gohome/cmd/gohome
 | `--yolo` | Start with all approval prompts disabled |
 | `--resume` | Resume the most recent session for the current working directory |
 | `--stop` | Shut down a running daemon for the current working directory |
+| `--config` | Print merged configuration and exit |
 | `--version` | Print version and exit |
 
 ---
@@ -150,6 +186,7 @@ When the input editor is empty, `Up` and `Down` arrow keys move a `>` cursor thr
 | `/new` | Starts a new session (requires backend callback via `SetSlashCallbacks`; shows "not configured" until wired) |
 | `/resume <id>` | Resumes a previous session by ID (requires backend callback; shows "not configured" until wired) |
 | `/model <name>` | Switches the active model config (rebuilds the LLM client). Without arguments, opens a selector listing all configured model configs |
+| `/config` | Opens the config overlay showing all settings with source annotations. Press `e` to edit in an external editor |
 
 ---
 
