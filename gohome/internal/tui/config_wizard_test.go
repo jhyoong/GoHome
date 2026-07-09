@@ -139,6 +139,20 @@ func TestConfigWizard_EscOnFirstStepCancels(t *testing.T) {
 	}
 }
 
+func TestConfigWizard_NullBytesStripped(t *testing.T) {
+	w := NewConfigWizard(func() {}, func(string) {})
+	// Advance past wire selection to a text input step
+	w.HandleInput(tea.KeyMsg{Type: tea.KeyEnter})
+	if w.step != wizardStepBaseURL {
+		t.Fatalf("expected step %d, got %d", wizardStepBaseURL, w.step)
+	}
+	// Simulate a Windows paste with null bytes interleaved (UTF-16LE artifact)
+	w.HandleInput(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{0, 0, 0, 'h', 't', 't', 'p'}})
+	if w.textBuf != "http" {
+		t.Errorf("expected %q, got %q", "http", w.textBuf)
+	}
+}
+
 func TestConfigWizard_CancelOnConfirmStep(t *testing.T) {
 	cancelled := false
 	w := NewConfigWizard(func() { cancelled = true }, func(string) {})

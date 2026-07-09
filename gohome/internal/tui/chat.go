@@ -107,28 +107,52 @@ func (c *ChatComponent) ScrollToBottom() {
 // IsAutoScroll reports whether auto-scroll is active.
 func (c *ChatComponent) IsAutoScroll() bool { return c.autoScroll }
 
-// ScrollInfo returns the effective scroll offset and total line count at the
-// given width. Used by the status bar to display scroll position.
+// ScrollInfo returns the line position the user has reached and the total
+// line count at the given width. When the cursor is active it returns the
+// bottom line of the cursor entry; otherwise it returns the bottom line of
+// the viewport. Used by the status bar to display scroll position.
 func (c *ChatComponent) ScrollInfo(maxWidth int) (currentLine, totalLines int) {
 	if c.timeline == nil || len(*c.timeline) == 0 {
 		return 0, 0
 	}
 	totalLines = c.countLines(maxWidth)
 	if totalLines <= c.maxHeight {
-		return 0, totalLines
+		return totalLines, totalLines
 	}
+
+	if c.cursor >= 0 && c.cursor < len(*c.timeline) {
+		pos := 0
+		hasOutput := false
+		lastVisibleKind := ""
+		for i := 0; i <= c.cursor; i++ {
+			e := &(*c.timeline)[i]
+			n := c.entryLineCount(e, maxWidth)
+			if n > 0 {
+				if hasOutput && needsSeparator(e.Kind, lastVisibleKind) {
+					pos++
+				}
+				hasOutput = true
+				lastVisibleKind = e.Kind
+			}
+			pos += n
+		}
+		return pos, totalLines
+	}
+
+	scrollTop := c.scrollTop
 	if c.autoScroll {
-		currentLine = totalLines - c.maxHeight
-	} else {
-		currentLine = c.scrollTop
-		if currentLine > totalLines-c.maxHeight {
-			currentLine = totalLines - c.maxHeight
-		}
-		if currentLine < 0 {
-			currentLine = 0
-		}
+		scrollTop = totalLines - c.maxHeight
+	} else if scrollTop > totalLines-c.maxHeight {
+		scrollTop = totalLines - c.maxHeight
 	}
-	return currentLine, totalLines
+	if scrollTop < 0 {
+		scrollTop = 0
+	}
+	viewportBottom := scrollTop + c.maxHeight
+	if viewportBottom > totalLines {
+		viewportBottom = totalLines
+	}
+	return viewportBottom, totalLines
 }
 
 // DisableAutoScroll turns off auto-scroll, anchoring scrollTop to the current

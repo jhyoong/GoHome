@@ -232,7 +232,11 @@ func (w *ConfigWizard) HandleInput(msg tea.KeyMsg) tea.Cmd {
 			w.textBuf = w.textBuf[:len(w.textBuf)-1]
 		}
 	case tea.KeyRunes:
-		w.textBuf += string(msg.Runes)
+		for _, r := range msg.Runes {
+			if r != 0 {
+				w.textBuf += string(r)
+			}
+		}
 	}
 	return nil
 }
