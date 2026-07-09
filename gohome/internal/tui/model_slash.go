@@ -137,6 +137,7 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 					m.statusMsg = fmt.Sprintf("/model: %v", err)
 				} else {
 					m.modelName = model
+					m.configName = name
 					if ctxWin > 0 {
 						m.contextWindow = ctxWin
 					}
@@ -165,6 +166,7 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 				return
 			}
 			m.modelName = model
+			m.configName = configName
 			if ctxWin > 0 {
 				m.contextWindow = ctxWin
 			}

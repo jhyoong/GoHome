@@ -89,6 +89,22 @@ func TestStatusBarModelUnknown(t *testing.T) {
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
 
+// TestStatusBarShowsConfigName verifies the status bar shows "configName (modelName)"
+// when both are set and differ.
+func TestStatusBarShowsConfigName(t *testing.T) {
+	m := tui.New("")
+	m.SetConfigName("local-openai")
+	m.SetModelName("Studio-General")
+	m.SetGitContext("~/GoHome", "main")
+	bar := m.StatusBarForTest()
+	if !strings.Contains(bar, "local-openai") {
+		t.Errorf("status bar missing configName: %q", bar)
+	}
+	if !strings.Contains(bar, "(Studio-General)") {
+		t.Errorf("status bar missing modelName in parens: %q", bar)
+	}
+}
+
 // TestStatusBarShowsGitContext verifies the status bar includes project dir
 // and git branch when SetGitContext has been called.
 func TestStatusBarShowsGitContext(t *testing.T) {

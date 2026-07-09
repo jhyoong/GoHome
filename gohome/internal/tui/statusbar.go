@@ -36,9 +36,15 @@ func (m *Model) statusBar() string {
 		return ""
 	}
 
-	modelName := m.modelName
-	if modelName == "" {
-		modelName = "?"
+	modelDisplay := m.configName
+	if modelDisplay == "" {
+		modelDisplay = m.modelName
+	}
+	if modelDisplay == "" {
+		modelDisplay = "?"
+	}
+	if m.modelName != "" && m.configName != "" && m.modelName != m.configName {
+		modelDisplay = m.configName + " (" + m.modelName + ")"
 	}
 
 	used := usedTokens(sv.Usage)
@@ -64,7 +70,7 @@ func (m *Model) statusBar() string {
 
 	line := fmt.Sprintf("%s · %s · %s %s/%s (%d%%)",
 		project,
-		modelName,
+		modelDisplay,
 		bar,
 		formatTokens(used),
 		formatTokens(total),

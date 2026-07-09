@@ -116,6 +116,7 @@ type Model struct {
 
 	// LLM and context window settings.
 	modelName      string  // LLM model name; "?" when empty
+	configName     string  // model config key name for status bar
 	yolo           bool    // YOLO mode (skip approval)
 	contextWindow  int     // context window size; defaults to 128000
 	contextWarnPct float64 // ratio at which to show 80% warning
@@ -203,6 +204,11 @@ func New(sessionID string) *Model {
 // SetModelName sets the LLM model name shown in the status bar.
 func (m *Model) SetModelName(name string) {
 	m.modelName = name
+}
+
+// SetConfigName sets the model config key name shown in the status bar.
+func (m *Model) SetConfigName(name string) {
+	m.configName = name
 }
 
 // SetYolo sets YOLO mode. When true the status bar shows a red [YOLO] badge.
@@ -390,6 +396,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case StateSyncMsg:
 		m.modelName = msg.Model
+		if msg.ConfigName != "" {
+			m.configName = msg.ConfigName
+		}
 		m.yolo = msg.Yolo
 		if msg.SessionID != "" && msg.SessionID != m.focused {
 			// Remove the placeholder session if it has no content.

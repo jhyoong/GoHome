@@ -45,6 +45,7 @@ type ServerConfig struct {
 	Settings    config.Settings
 	ModelConfig string // current model config name
 	ModelName   string // LLM model name (e.g. "claude-sonnet-4-5-20250514")
+	GlobalPath  string // path to global settings.json, used for config reload
 }
 
 // Server listens on a Unix socket, accepts a single client connection, and
