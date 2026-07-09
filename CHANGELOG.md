@@ -8,6 +8,12 @@
 - **Setup wizard** -- Interactive first-run wizard guides new users through creating `~/.gohome/settings.json` with wire protocol, endpoint URL, API key, and model name (#24).
 - **`--config` CLI flag** -- Prints the merged configuration and exits without starting the TUI, useful for verifying settings (#24).
 - **`reasoningEffort` model config field** -- New optional field wired through the daemon to the agent and sent as `reasoning_effort` on the OpenAI wire protocol for models like o1/o3. Free-form string passed through to the API as-is (#24).
+- **Config name in status bar** -- The status bar now shows the config key alongside the resolved model name when they differ (e.g., `local-openai (gpt-4o)`). Falls back to just the model name when the config key is empty or identical (#26).
+- **`session.connect` RPC** -- When a TUI client connects, it sends its working directory to the daemon so project-level settings are reloaded and merged, ensuring project-specific model configs are available even when the daemon started from a different directory (#26).
+
+### Fixed
+
+- **Agent params not updated on model switch** -- Switching models via `/model` now correctly updates `maxTokens`, `thinkingBudget`, and `reasoningEffort` on the running agent, not just the model name and client (#26).
 
 ### Changed
 
