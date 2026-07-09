@@ -86,7 +86,10 @@ go build -ldflags "-X main.version=v0.3.1" -o bin/gohome ./gohome/cmd/gohome
       "modelName": "claude-opus-4-7",
       "contextWindow": 200000,
       "maxTokens": 16384,
-      "thinkingBudget": 10240
+      "thinkingBudget": 10240,
+      "headers": {
+        "X-Custom-Header": "value"
+      }
     },
     "local-openai": {
       "wire": "openai",
@@ -99,6 +102,7 @@ go build -ldflags "-X main.version=v0.3.1" -o bin/gohome ./gohome/cmd/gohome
     }
   },
   "defaultModel": "local-anthropic",
+  "systemPrompt": "You are a helpful coding assistant.",
   "bashTimeoutMs": 120000,
   "maxBashTimeoutMs": 600000,
   "contextWarnPct": 0.80,
@@ -122,12 +126,14 @@ Both `"anthropic"` and `"openai"` wires are supported. Set `apiKey` for a litera
 | `maxTokens` | `16384` | Max output tokens per LLM turn |
 | `thinkingBudget` | `10240` | Extended thinking token budget (Anthropic wire only; ignored by OpenAI) |
 | `reasoningEffort` | — | Reasoning effort level sent as `reasoning_effort` on the OpenAI wire (e.g. `"low"`, `"medium"`, `"high"`). Ignored by Anthropic wire. Free-form string passed through to the API as-is |
+| `headers` | — | Custom HTTP headers added to every request to this endpoint. Map of header name to value |
 
 **Top-level fields:**
 
 | Field | Default | Description |
 |---|---|---|
 | `defaultModel` | — | Name of the model config used when `--model` is not passed |
+| `systemPrompt` | — | Custom system prompt sent to the LLM. Overrides the built-in default when set |
 | `bashTimeoutMs` | `120000` | Default bash command timeout in milliseconds |
 | `maxBashTimeoutMs` | `600000` | Maximum bash command timeout in milliseconds |
 | `contextWarnPct` | `0.80` | Context window usage ratio at which a warning is shown (must be < `contextCritPct`) |
