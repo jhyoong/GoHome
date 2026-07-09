@@ -848,6 +848,171 @@ func TestServer_ModelSet_Success(t *testing.T) {
 	}
 }
 
+func TestServer_ModelSet_UpdatesAgentParams(t *testing.T) {
+	sock := newTestSocket(t)
+
+	t.Setenv("TEST_GOHOME_PARAM_KEY", "test-key")
+
+	srv := newTestAgentServer(t, sock, func(cfg *ServerConfig) {
+		cfg.SessionID = "param-test-1"
+		cfg.MaxTokens = 1024
+		cfg.ThinkingBudget = 500
+		cfg.ReasoningEffort = "low"
+		cfg.Settings = config.Settings{
+			ModelConfig: map[string]config.ModelConfig{
+				"big-model": {
+					Wire:            config.WireOpenAI,
+					BaseURL:         "http://localhost:0/v1",
+					APIKeyEnv:       "TEST_GOHOME_PARAM_KEY",
+					ModelName:       "big-model-name",
+					ContextWindow:   256000,
+					MaxTokens:       32000,
+					ThinkingBudget:  10240,
+					ReasoningEffort: "high",
+				},
+			},
+		}
+	})
+
+	serveBackground(t, srv)
+
+	// Verify initial values.
+	if srv.agent.MaxTokens != 1024 {
+		t.Fatalf("initial MaxTokens = %d, want 1024", srv.agent.MaxTokens)
+	}
+
+	conn := dialTestServer(t, sock)
+
+	params, _ := json.Marshal(rpc.ModelSetParams{Name: "big-model"})
+	msg := sendRequest(t, conn, 1, rpc.MethodModelSet, params)
+	if msg.Error != nil {
+		t.Fatalf("model.set error: %v", msg.Error)
+	}
+
+	if srv.agent.MaxTokens != 32000 {
+		t.Errorf("MaxTokens = %d, want 32000", srv.agent.MaxTokens)
+	}
+	if srv.agent.ThinkingBudget != 10240 {
+		t.Errorf("ThinkingBudget = %d, want 10240", srv.agent.ThinkingBudget)
+	}
+	if srv.agent.ReasoningEffort != "high" {
+		t.Errorf("ReasoningEffort = %q, want %q", srv.agent.ReasoningEffort, "high")
+	}
+}
+
+func TestServer_StateSync_IncludesConfigName(t *testing.T) {
+	sock := newTestSocket(t)
+	srv := newTestAgentServer(t, sock, func(cfg *ServerConfig) {
+		cfg.SessionID = "config-name-test"
+		cfg.ModelConfig = "my-config"
+	})
+
+	serveBackground(t, srv)
+
+	conn := dialTestServer(t, sock)
+	_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+	rc := rpc.NewConn(conn)
+
+	msg, err := rc.Read()
+	if err != nil {
+		t.Fatalf("read state notification: %v", err)
+	}
+	if msg.Method != rpc.MethodSessionState {
+		t.Fatalf("expected session.state, got %q", msg.Method)
+	}
+
+	var state rpc.SessionStateParams
+	if err := json.Unmarshal(msg.Params, &state); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if state.ConfigName != "my-config" {
+		t.Errorf("ConfigName = %q, want %q", state.ConfigName, "my-config")
+	}
+}
+
+func TestServer_SessionConnect_ReloadsConfig(t *testing.T) {
+	sock := newTestSocket(t)
+
+	// Create a project dir with a settings file containing a project-only model config.
+	projectDir := t.TempDir()
+	projectSettingsDir := filepath.Join(projectDir, ".gohome")
+	if err := os.MkdirAll(projectSettingsDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	projectSettings := `{
+		"modelConfig": {
+			"proj-model": {
+				"wire": "openai",
+				"baseURL": "http://localhost:0/v1",
+				"apiKey": "sk-test",
+				"modelName": "proj-model-name"
+			}
+		}
+	}`
+	if err := os.WriteFile(filepath.Join(projectSettingsDir, "settings.json"), []byte(projectSettings), 0o644); err != nil {
+		t.Fatalf("write project settings: %v", err)
+	}
+
+	// Create a global settings file with a global-only model config.
+	globalDir := t.TempDir()
+	globalSettings := `{
+		"modelConfig": {
+			"global-model": {
+				"wire": "openai",
+				"baseURL": "http://localhost:0/v1",
+				"apiKey": "sk-global",
+				"modelName": "global-model-name"
+			}
+		},
+		"defaultModel": "global-model"
+	}`
+	if err := os.WriteFile(filepath.Join(globalDir, "settings.json"), []byte(globalSettings), 0o644); err != nil {
+		t.Fatalf("write global settings: %v", err)
+	}
+	globalPath := filepath.Join(globalDir, "settings.json")
+
+	t.Setenv("TEST_CONNECT_KEY", "test-key")
+
+	srv := newTestAgentServer(t, sock, func(cfg *ServerConfig) {
+		cfg.SessionID = "connect-test-1"
+		cfg.Settings = config.Settings{
+			ModelConfig: map[string]config.ModelConfig{
+				"global-model": {
+					Wire:      config.WireOpenAI,
+					BaseURL:   "http://localhost:0/v1",
+					APIKeyEnv: "TEST_CONNECT_KEY",
+					ModelName: "global-model-name",
+				},
+			},
+			DefaultModel: "global-model",
+		}
+		cfg.GlobalPath = globalPath
+	})
+
+	serveBackground(t, srv)
+
+	// Before connect, only "global-model" exists.
+	if _, ok := srv.config.Settings.ModelConfig["proj-model"]; ok {
+		t.Fatal("proj-model should not exist before session.connect")
+	}
+
+	conn := dialTestServer(t, sock)
+
+	connectParams, _ := json.Marshal(rpc.SessionConnectParams{CWD: projectDir})
+	msg := sendRequest(t, conn, 1, rpc.MethodSessionConnect, connectParams)
+	if msg.Error != nil {
+		t.Fatalf("session.connect error: %v", msg.Error)
+	}
+
+	// After connect, both models should exist.
+	if _, ok := srv.config.Settings.ModelConfig["global-model"]; !ok {
+		t.Error("global-model should still exist after session.connect")
+	}
+	if _, ok := srv.config.Settings.ModelConfig["proj-model"]; !ok {
+		t.Error("proj-model should exist after session.connect")
+	}
+}
+
 // noopApprover satisfies guard.Frontend for test purposes.
 type noopApprover struct{}
 

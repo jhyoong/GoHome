@@ -140,6 +140,25 @@ func (s *Server) handleYoloSet(c *rpc.Conn, msg *rpc.Message) {
 	respondOK(c, msg.ID, struct{}{})
 }
 
+// handleSessionConnect reloads the daemon's config from the TUI client's
+// working directory, merging project-level settings with the global config.
+func (s *Server) handleSessionConnect(c *rpc.Conn, msg *rpc.Message) {
+	var params rpc.SessionConnectParams
+	if !unmarshalParams(c, msg.ID, msg.Params, &params) {
+		return
+	}
+
+	if s.config.GlobalPath != "" && params.CWD != "" {
+		projectPath := config.DefaultProjectPath(params.CWD)
+		reloaded, err := config.Load(s.config.GlobalPath, projectPath)
+		if err == nil {
+			s.config.Settings = reloaded
+		}
+	}
+
+	respondOK(c, msg.ID, struct{}{})
+}
+
 // handleModelSet looks up a model config by name, creates a new LLM client,
 // and updates the agent state.
 func (s *Server) handleModelSet(c *rpc.Conn, msg *rpc.Message) {
@@ -173,6 +192,10 @@ func (s *Server) handleModelSet(c *rpc.Conn, msg *rpc.Message) {
 	s.agent.State.SetClient(newClient)
 	s.agent.State.SetModel(cfg.ModelName)
 	s.agent.State.SetModelConfig(params.Name)
+
+	s.agent.MaxTokens = cfg.MaxTokens
+	s.agent.ThinkingBudget = cfg.ThinkingBudget
+	s.agent.ReasoningEffort = cfg.ReasoningEffort
 
 	ctxWin := cfg.ContextWindow
 	if ctxWin <= 0 {

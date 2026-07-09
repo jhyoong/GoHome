@@ -63,6 +63,9 @@ func (s *Server) dispatch(c *rpc.Conn, msg *rpc.Message) {
 	case rpc.MethodYoloSet:
 		s.handleYoloSet(c, msg)
 
+	case rpc.MethodSessionConnect:
+		s.handleSessionConnect(c, msg)
+
 	default:
 		respondError(c, msg.ID, rpc.ErrMethodNotFound, "method not found")
 	}

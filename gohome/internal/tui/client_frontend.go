@@ -16,9 +16,10 @@ import (
 // connects (or reconnects). The TUI model uses it to set the model name, yolo
 // flag, and focused session ID.
 type StateSyncMsg struct {
-	SessionID string
-	Model     string
-	Yolo      bool
+	SessionID  string
+	Model      string
+	ConfigName string
+	Yolo       bool
 }
 
 // ClientFrontend connects the TUI to a daemon over JSON-RPC. It receives
@@ -117,9 +118,10 @@ func (cf *ClientFrontend) handleNotification(msg *rpc.Message) {
 		}
 		select {
 		case cf.stateSync <- StateSyncMsg{
-			SessionID: params.SessionID,
-			Model:     params.Model,
-			Yolo:      params.Yolo,
+			SessionID:  params.SessionID,
+			Model:      params.Model,
+			ConfigName: params.ConfigName,
+			Yolo:       params.Yolo,
 		}:
 		default:
 			// Drop if channel is full; the next sync will update.
@@ -280,6 +282,12 @@ func (cf *ClientFrontend) SendModelSet(name string) (string, int, error) {
 // SendYoloSet sends a yolo.set request to the daemon.
 func (cf *ClientFrontend) SendYoloSet(enabled bool) error {
 	_, err := sendRPC[struct{}](cf, rpc.MethodYoloSet, rpc.YoloSetParams{Enabled: enabled})
+	return err
+}
+
+// SendConnect sends a session.connect request to reload daemon config from the given cwd.
+func (cf *ClientFrontend) SendConnect(cwd string) error {
+	_, err := sendRPC[struct{}](cf, rpc.MethodSessionConnect, rpc.SessionConnectParams{CWD: cwd})
 	return err
 }
 
