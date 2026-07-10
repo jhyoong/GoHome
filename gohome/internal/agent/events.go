@@ -22,6 +22,7 @@ const (
 	EventError          EventKind = "error"
 	EventThinkingDelta  EventKind = "thinking_delta"
 	EventThinkingDone   EventKind = "thinking_done"
+	EventToolDenied     EventKind = "tool_denied"
 )
 
 type ToolResult struct {
