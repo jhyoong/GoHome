@@ -30,9 +30,6 @@ func TestNoTUIImport(t *testing.T) {
 		module + "/gohome/internal/tools",
 		module + "/gohome/internal/guard",
 		module + "/gohome/internal/session",
-		module + "/gohome/internal/daemon",
-		module + "/gohome/internal/daemon/rpc",
-		module + "/gohome/internal/daemon/frontend",
 	}
 
 	for _, pkg := range pkgs {

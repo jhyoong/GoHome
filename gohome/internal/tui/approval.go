@@ -9,18 +9,21 @@ import (
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
 )
 
-// ApprovalReqMsg is sent into the Bubble Tea loop when a tool call needs
-// approval. It carries a resolve callback that delivers the user's decision.
+// ApprovalReqMsg is sent by Frontend.RequestApproval into the Bubble Tea loop.
 // It is exported so that tests can send it directly via tm.Send.
+// The reply channel must be buffered (cap >= 1) so resolving never blocks Update.
 type ApprovalReqMsg struct {
-	Req     guard.ApprovalRequest
-	Resolve func(guard.ApprovalDecision)
+	Req   guard.ApprovalRequest
+	Reply chan guard.ApprovalDecision
 }
+
+// approvalReqMsg is an internal alias so the switch in Update compiles cleanly.
+type approvalReqMsg = ApprovalReqMsg
 
 // approvalPrompt holds all UI state for one pending approval request.
 type approvalPrompt struct {
 	req     guard.ApprovalRequest
-	resolve func(guard.ApprovalDecision)
+	reply   chan guard.ApprovalDecision
 	pattern string // current (possibly edited) pattern
 
 	// selected is the currently highlighted menu item (0=Allow once, 1=Allow always,
@@ -36,8 +39,8 @@ type approvalPrompt struct {
 	steerInput textinput.Model
 }
 
-// newApprovalPrompt builds an approvalPrompt from a request and resolve callback.
-func newApprovalPrompt(req guard.ApprovalRequest, resolve func(guard.ApprovalDecision)) *approvalPrompt {
+// newApprovalPrompt builds an approvalPrompt from a request.
+func newApprovalPrompt(req guard.ApprovalRequest, reply chan guard.ApprovalDecision) *approvalPrompt {
 	pi := textinput.New()
 	pi.Placeholder = "pattern"
 	pi.SetValue(req.SuggestedPattern)
@@ -47,7 +50,7 @@ func newApprovalPrompt(req guard.ApprovalRequest, resolve func(guard.ApprovalDec
 
 	return &approvalPrompt{
 		req:          req,
-		resolve:      resolve,
+		reply:        reply,
 		pattern:      req.SuggestedPattern,
 		patternInput: pi,
 		steerInput:   si,
@@ -68,16 +71,6 @@ var approvalBoxStyle = lipgloss.NewStyle().
 	Border(lipgloss.RoundedBorder()).
 	Padding(0, 1).
 	BorderForeground(lipgloss.Color("3"))
-
-// approvalSummaryLine builds a single contextual line describing the tool call
-// (e.g. "bash: git status", "read: path/to/file").
-func approvalSummaryLine(ap *approvalPrompt) string {
-	arg := extractToolArg(ap.req.Tool, string(ap.req.Input))
-	if arg != "" {
-		return fmt.Sprintf("%s: %s", ap.req.Tool, arg)
-	}
-	return ap.req.Tool
-}
 
 // renderApprovalOverlay renders the approval prompt box for the given prompt.
 func renderApprovalOverlay(ap *approvalPrompt, width int) string {

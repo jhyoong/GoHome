@@ -14,7 +14,7 @@ import (
 )
 
 func TestSlashResumeOpensAndCloses(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	m.SetSlashCallbacks(tui.SlashCallbacks{
 		ListSessions: func() ([]session.Listing, error) {
 			return []session.Listing{
@@ -45,7 +45,7 @@ func TestSlashResumeOpensAndCloses(t *testing.T) {
 }
 
 func TestSlashResumeWithFilterPreFills(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	m.SetSlashCallbacks(tui.SlashCallbacks{
 		ListSessions: func() ([]session.Listing, error) {
 			return []session.Listing{
@@ -77,7 +77,7 @@ func TestSlashResumeWithFilterPreFills(t *testing.T) {
 }
 
 func TestSlashResumeLoadsHistory(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	m.SetSlashCallbacks(tui.SlashCallbacks{
 		ListSessions: func() ([]session.Listing, error) {
 			return []session.Listing{
@@ -121,7 +121,8 @@ func TestSlashResumeLoadsHistory(t *testing.T) {
 }
 
 func TestStatusMsgClearedOnSend(t *testing.T) {
-	m := tui.New("")
+	fe := tui.NewFrontend()
+	m := tui.New(fe, "")
 	m.SetSlashCallbacks(tui.SlashCallbacks{
 		ListSessions: func() ([]session.Listing, error) {
 			return []session.Listing{
@@ -135,6 +136,12 @@ func TestStatusMsgClearedOnSend(t *testing.T) {
 
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
+
+	// Drain input channel so sends don't block.
+	go func() {
+		for range fe.InputCh() {
+		}
+	}()
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("─"))
@@ -168,7 +175,7 @@ func TestStatusMsgClearedOnSend(t *testing.T) {
 }
 
 func TestSlashModelOpensSelector(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	m.SetSettings(config.Settings{
 		ModelConfig: map[string]config.ModelConfig{
 			"anthropic": {ModelName: "claude-sonnet-4-20250514"},

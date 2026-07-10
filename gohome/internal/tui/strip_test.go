@@ -14,7 +14,7 @@ import (
 // TestSessionStripShowsFocused verifies the strip renders when there is only
 // the default "main" session.
 func TestSessionStripShowsFocused(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(120, 24))
 	t.Cleanup(func() {
 		_ = tm.Quit()

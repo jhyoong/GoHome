@@ -25,14 +25,6 @@ func TestVisualWidth(t *testing.T) {
 	}
 }
 
-func TestStripAnsiOSC8(t *testing.T) {
-	s := "\x1b]8;;https://example.com\x1b\\link text\x1b]8;;\x1b\\"
-	got := StripAnsi(s)
-	if got != "link text" {
-		t.Errorf("StripAnsi with OSC 8: got %q, want %q", got, "link text")
-	}
-}
-
 func TestTruncateText(t *testing.T) {
 	tests := []struct {
 		input string

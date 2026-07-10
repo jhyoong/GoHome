@@ -14,8 +14,7 @@ import (
 )
 
 // makeApprovalReq is a test helper that creates an ApprovalReqMsg for testing.
-// It returns the message and a channel that receives the decision when the
-// resolve callback is invoked.
+// It returns the message and the buffered reply channel.
 func makeApprovalReq(sessionID, tool, suggestedPattern string, inputJSON json.RawMessage) (tui.ApprovalReqMsg, chan guard.ApprovalDecision) {
 	ch := make(chan guard.ApprovalDecision, 1)
 	msg := tui.ApprovalReqMsg{
@@ -25,9 +24,7 @@ func makeApprovalReq(sessionID, tool, suggestedPattern string, inputJSON json.Ra
 			Input:            inputJSON,
 			SuggestedPattern: suggestedPattern,
 		},
-		Resolve: func(dec guard.ApprovalDecision) {
-			ch <- dec
-		},
+		Reply: ch,
 	}
 	return msg, ch
 }
@@ -35,7 +32,7 @@ func makeApprovalReq(sessionID, tool, suggestedPattern string, inputJSON json.Ra
 // --- Task 11.9: approval prompt overlay basics ---
 
 func TestApprovalOverlayShowsAndAllowOnce(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
@@ -62,7 +59,7 @@ func TestApprovalOverlayShowsAndAllowOnce(t *testing.T) {
 }
 
 func TestApprovalOverlayEscDenies(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
@@ -86,7 +83,7 @@ func TestApprovalOverlayEscDenies(t *testing.T) {
 }
 
 func TestApprovalOverlayKey3Denies(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
@@ -112,7 +109,7 @@ func TestApprovalOverlayKey3Denies(t *testing.T) {
 // --- Task 11.10: editable allow-always pattern ---
 
 func TestApprovalAllowAlwaysDefaultPattern(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
@@ -140,7 +137,7 @@ func TestApprovalAllowAlwaysDefaultPattern(t *testing.T) {
 }
 
 func TestApprovalEditPatternThenAllowAlways(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
@@ -175,7 +172,7 @@ func TestApprovalEditPatternThenAllowAlways(t *testing.T) {
 }
 
 func TestApprovalEditPatternEscReverts(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
@@ -209,7 +206,7 @@ func TestApprovalEditPatternEscReverts(t *testing.T) {
 // --- Task 11.11: deny + steer ---
 
 func TestApprovalDenySteer(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
@@ -239,7 +236,7 @@ func TestApprovalDenySteer(t *testing.T) {
 }
 
 func TestApprovalDenySteerEscCancels(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
@@ -272,7 +269,7 @@ func TestApprovalDenySteerEscCancels(t *testing.T) {
 // --- Arrow key navigation ---
 
 func TestApprovalArrowRenderShowsMarker(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
@@ -285,7 +282,7 @@ func TestApprovalArrowRenderShowsMarker(t *testing.T) {
 }
 
 func TestApprovalArrowDownChangesSelection(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
@@ -304,7 +301,7 @@ func TestApprovalArrowDownChangesSelection(t *testing.T) {
 }
 
 func TestApprovalEnterDispatchesAllowOnce(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
@@ -329,7 +326,7 @@ func TestApprovalEnterDispatchesAllowOnce(t *testing.T) {
 }
 
 func TestApprovalArrowDownDownEnterDenies(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
@@ -361,7 +358,7 @@ func TestApprovalArrowDownDownEnterDenies(t *testing.T) {
 }
 
 func TestApprovalArrowUpClampsAtZero(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
@@ -386,7 +383,7 @@ func TestApprovalArrowUpClampsAtZero(t *testing.T) {
 }
 
 func TestApprovalArrowDownEnterAllowAlways(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
@@ -420,7 +417,7 @@ func TestApprovalArrowDownEnterAllowAlways(t *testing.T) {
 }
 
 func TestApprovalArrowToSteerEntersSteerMode(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
@@ -468,7 +465,7 @@ func TestApprovalArrowToSteerEntersSteerMode(t *testing.T) {
 // --- Task 11.12: cross-session notification line ---
 
 func TestCrossSessionNotificationLine(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 

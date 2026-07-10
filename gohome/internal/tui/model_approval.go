@@ -11,11 +11,12 @@ import (
 // handleApprovalReq processes an incoming approval request. If the request is
 // for the focused session and no approval is currently active, it becomes the
 // active prompt; otherwise it is queued in pendingApprovals.
-func (m *Model) handleApprovalReq(msg ApprovalReqMsg) {
+func (m *Model) handleApprovalReq(msg approvalReqMsg) {
 	if msg.Req.SessionID == m.focused && m.activeApproval == nil {
-		m.activeApproval = newApprovalPrompt(msg.Req, msg.Resolve)
+		ap := newApprovalPrompt(msg.Req, msg.Reply)
+		m.activeApproval = ap
 	} else {
-		m.pendingApprovals[msg.Req.SessionID] = newApprovalPrompt(msg.Req, msg.Resolve)
+		m.pendingApprovals[msg.Req.SessionID] = newApprovalPrompt(msg.Req, msg.Reply)
 	}
 }
 
@@ -116,15 +117,16 @@ func (m *Model) handleApprovalKey(msg tea.KeyMsg) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-// resolveApproval delivers the decision via the resolve callback and clears
+// resolveApproval sends dec on the active approval's reply channel and clears
 // the active approval. If another pending approval exists for the focused
 // session, it is promoted to active.
 func (m *Model) resolveApproval(dec guard.ApprovalDecision) {
 	if m.activeApproval == nil {
 		return
 	}
-	m.activeApproval.resolve(dec)
+	m.activeApproval.reply <- dec
 	m.activeApproval = nil
+	// Promote any pending approval for the now-focused session.
 	m.promoteApproval()
 }
 
@@ -158,7 +160,7 @@ func (m *Model) notificationLine() string {
 			}
 		}
 	}
-	// Context fullness warning for the focused session.
+	// Context fullness warning for the focused session (Task 11.16).
 	if m.contextNotice != "" {
 		return m.contextNotice
 	}

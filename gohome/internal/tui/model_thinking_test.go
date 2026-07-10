@@ -11,7 +11,7 @@ func TestHandleAgentEvent_ThinkingDoneIsNoOp(t *testing.T) {
 	m.winW = 80
 	m.winH = 40
 
-	// Simulate a thinking delta arriving (creates a thinking entry).
+	// Simulate a thinking delta arriving (creates an expanded thinking entry).
 	m.handleAgentEvent(AgentEventMsg{
 		SessionID: "sess-1",
 		Ev: agent.Event{

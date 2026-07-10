@@ -69,13 +69,3 @@ func (s *Session) HasRead(path string) bool {
 func (s *Session) CWD() string {
 	return s.cwd
 }
-
-// NewID generates an 8-char lowercase base32 session ID using crypto/rand.
-func NewID() string {
-	buf := make([]byte, 5) // 5 bytes -> 8 base32 chars (no padding)
-	if _, err := rand.Read(buf); err != nil {
-		panic("session.NewID: crypto/rand failed: " + err.Error())
-	}
-	enc := base32.StdEncoding.WithPadding(base32.NoPadding)
-	return strings.ToLower(enc.EncodeToString(buf))
-}

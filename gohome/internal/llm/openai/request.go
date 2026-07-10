@@ -119,7 +119,6 @@ func buildOpenAIBody(req common.Request) ([]byte, error) {
 		StreamOptions: openaiStreamOptions{
 			IncludeUsage: true,
 		},
-		ReasoningEffort: req.ReasoningEffort,
 	}
 	if len(tools) > 0 {
 		body.Tools = tools

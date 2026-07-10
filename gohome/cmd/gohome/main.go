@@ -6,19 +6,18 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
-	"net"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/jhyoong/GoHome/gohome/internal/agent"
 	"github.com/jhyoong/GoHome/gohome/internal/config"
-	"github.com/jhyoong/GoHome/gohome/internal/daemon"
-	"github.com/jhyoong/GoHome/gohome/internal/daemon/rpc"
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
 	"github.com/jhyoong/GoHome/gohome/internal/llm"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
@@ -206,28 +205,6 @@ func main() {
 	}
 	slog.Info("gohome started", "cwd", cwd, "home", home, "yolo", *yolo, "resume", *resume)
 
-	sockPath := filepath.Join(home, "daemon.sock")
-
-	if *stopFlag {
-		stopDaemon(sockPath)
-		if logFile != nil {
-			_ = logFile.Close()
-		}
-		return
-	}
-
-	if *configFlag {
-		runConfigMode()
-		if logFile != nil {
-			_ = logFile.Close()
-		}
-		return
-	}
-
-	if *resume {
-		fmt.Fprintf(os.Stderr, "gohome: --resume is not yet supported in daemon mode (will be added in a future update)\n")
-	}
-
 	// Load config.
 	globalCfgPath, err := config.DefaultGlobalPath()
 	if err != nil {
@@ -255,150 +232,36 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Check for existing daemon.
-	if !isDaemonRunning(sockPath) {
-		if err := startDaemon(sockPath, home, cwd, globalCfgPath, settings, mc, cfgName); err != nil {
-			fmt.Fprintf(os.Stderr, "gohome: daemon start failed: %v\n", err)
-			os.Exit(1)
-		}
-		waitForDaemon(sockPath, 5*time.Second)
-	}
-
-	// Run TUI client.
-	runClient(sockPath, settings, mc, cfgName)
-
-	if logFile != nil {
-		slog.Info("gohome exiting")
-		_ = logFile.Close()
-	}
-}
-
-// isDaemonRunning probes the daemon socket with a health check.
-func isDaemonRunning(sockPath string) bool {
-	conn, err := net.DialTimeout("unix", sockPath, time.Second)
-	if err != nil {
-		return false
-	}
-	defer func() { _ = conn.Close() }()
-
-	_ = conn.SetDeadline(time.Now().Add(time.Second))
-
-	c := rpc.NewConn(conn)
-	if err := c.WriteRequest(rpc.Request{
-		ID:     rpc.NewID(1),
-		Method: rpc.MethodDaemonHealth,
-		Params: json.RawMessage(`{}`),
-	}); err != nil {
-		return false
-	}
-
-	// Skip notifications (e.g. session.state sent on connect) until
-	// we receive the health response.
-	for {
-		msg, err := c.Read()
-		if err != nil {
-			return false
-		}
-		if msg.IsResponse() {
-			return msg.Error == nil
-		}
-	}
-}
-
-// waitForDaemon polls the socket until the daemon responds to a health check
-// or the timeout elapses.
-func waitForDaemon(sockPath string, timeout time.Duration) {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if isDaemonRunning(sockPath) {
-			return
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	fmt.Fprintf(os.Stderr, "gohome: daemon did not start within %s\n", timeout)
-	os.Exit(1)
-}
-
-// stopDaemon sends a daemon.stop RPC to the daemon and exits.
-func stopDaemon(sockPath string) {
-	conn, err := net.DialTimeout("unix", sockPath, time.Second)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "gohome: no daemon running\n")
-		return
-	}
-	defer func() { _ = conn.Close() }()
-
-	c := rpc.NewConn(conn)
-	_ = c.WriteRequest(rpc.Request{
-		ID:     rpc.NewID(1),
-		Method: rpc.MethodDaemonStop,
-		Params: json.RawMessage(`{}`),
-	})
-	fmt.Println("gohome: daemon stopped")
-}
-
-// runConfigMode launches the TUI in standalone config management mode.
-// If no global settings file exists, it opens the setup wizard; otherwise
-// it opens the config overlay. The program exits when the modal is closed.
-func runConfigMode() {
-	globalPath, err := config.DefaultGlobalPath()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "gohome: cannot determine config path: %v\n", err)
-		os.Exit(1)
-	}
-	cwd, _ := os.Getwd()
-	projectPath := config.DefaultProjectPath(cwd)
-
-	ann, err := config.LoadAnnotated(globalPath, projectPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "gohome: config load error: %v\n", err)
-		os.Exit(1)
-	}
-
-	m := tui.New("config")
-
-	if _, statErr := os.Stat(globalPath); os.IsNotExist(statErr) {
-		m.OpenConfigWizard(globalPath)
-	} else {
-		m.OpenConfigOverlay(ann)
-	}
-
-	m.SetConfigOnlyMode(true)
-
-	p := tea.NewProgram(m, tea.WithAltScreen())
-	if _, err := p.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "gohome: %v\n", err)
-		os.Exit(1)
-	}
-}
-
-// startDaemon builds all agent dependencies and starts the daemon server
-// in-process as a goroutine.
-func startDaemon(sockPath, home, cwd, globalPath string, settings config.Settings, mc config.ModelConfig, cfgName string) error {
 	apiKey, err := config.ResolveAPIKey(mc)
 	if err != nil {
-		return fmt.Errorf("no API key for model config %q", cfgName)
+		fmt.Fprintf(os.Stderr, "gohome: no API key for model config %q.\n", cfgName)
+		fmt.Fprintf(os.Stderr, "  Set apiKey in settings.json or the environment variable named by apiKeyEnv.\n")
+		os.Exit(1)
 	}
 
+	// Build LLM client.
 	client, err := llm.New(mc, apiKey)
 	if err != nil {
-		return fmt.Errorf("cannot create LLM client: %w", err)
+		fmt.Fprintf(os.Stderr, "gohome: cannot create LLM client: %v\n", err)
+		os.Exit(1)
 	}
 
+	// Build whitelist.
 	wl, err := guard.LoadWhitelist(
 		filepath.Join(home, "whitelist.json"),
 		filepath.Join(cwd, ".gohome", "whitelist.json"),
 	)
 	if err != nil {
-		return fmt.Errorf("whitelist error: %w", err)
+		fmt.Fprintf(os.Stderr, "gohome: whitelist error: %v\n", err)
+		os.Exit(1)
 	}
 
-	// Build guard with nil frontend. The daemon's RPCFrontend will be set
-	// when the first client connects (server.go sets agent.Frontend = fe,
-	// and the guard's frontend will be wired in a follow-up task).
-	g := guard.NewGuard(wl, nil)
+	// Build frontend and guard.
+	fe := tui.NewFrontend()
+	g := guard.NewGuard(wl, fe)
 	g.SetYolo(*yolo)
 
+	// Build tools registry.
 	registry := tools.NewRegistry()
 	registry.Register(tools.ReadTool{})
 	registry.Register(tools.WriteTool{})
@@ -408,11 +271,28 @@ func startDaemon(sockPath, home, cwd, globalPath string, settings config.Setting
 		MaxTimeoutMs:     settings.MaxBashTimeoutMs,
 	})
 
-	systemPrompt := `You are gohome, an AI coding assistant. You help users with software development tasks.
-You have access to tools for reading and writing files, running bash commands, and spawning subagents for parallel work.
-Be concise and precise. Ask for clarification when requirements are ambiguous.`
-	if settings.SystemPrompt != "" {
-		systemPrompt = settings.SystemPrompt
+	// Build or resume session.
+	// When --resume is set, load the most-recent session for this cwd.
+	// OpenWriter uses O_APPEND so resuming appends to the existing JSONL file.
+	var (
+		sess       *session.Session
+		writerPath string
+		isResumed  bool
+	)
+
+	if *resume {
+		loadedSess, _, resumePath, rerr := pickResume(home, cwd)
+		if rerr != nil {
+			slog.Warn("resume: failed to load sessions, starting fresh", "err", rerr)
+		} else if loadedSess == nil {
+			slog.Info("resume: no previous sessions found, starting fresh")
+		} else {
+			sess = loadedSess
+			writerPath = resumePath
+			isResumed = true
+			fmt.Fprintf(os.Stderr, "gohome: resuming session %s (%s)\n", sess.ID, resumePath)
+			slog.Info("resuming session", "id", sess.ID, "path", resumePath)
+		}
 	}
 
 	if sess == nil {
@@ -421,90 +301,29 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		writerPath = session.SessionPath(home, cwd, sess.ID, time.Now().UTC())
 	}
 
-	reasoningEffort := mc.ReasoningEffort
-
-	sessionID := session.NewID()
-
-	srv, err := daemon.NewServer(sockPath, daemon.ServerConfig{
-		Version:         version,
-		LLMClient:       client,
-		Guard:           g,
-		Registry:        registry,
-		SystemPrompt:    systemPrompt,
-		MaxTokens:       maxTokens,
-		ThinkingBudget:  thinkingBudget,
-		ReasoningEffort: reasoningEffort,
-		Home:            home,
-		CWD:             cwd,
-		SessionID:       sessionID,
-		Settings:        settings,
-		ModelConfig:     cfgName,
-		ModelName:       mc.ModelName,
-		GlobalPath:      globalPath,
-	})
+	writer, err := session.OpenWriter(writerPath)
 	if err != nil {
-		return fmt.Errorf("cannot start daemon: %w", err)
-	}
-
-	go srv.Serve()
-	return nil
-}
-
-func pipeToProgram[T any](p *tea.Program, ch <-chan T) {
-	for msg := range ch {
-		p.Send(msg)
-	}
-}
-
-// detectGitBranch reads .git/HEAD to determine the current branch name.
-// Returns the branch name on success, or an error if not in a git repo.
-func detectGitBranch() (string, error) {
-	data, err := os.ReadFile(".git/HEAD")
-	if err != nil {
-		return "", err
-	}
-	head := strings.TrimSpace(string(data))
-	if strings.HasPrefix(head, "ref: refs/heads/") {
-		return strings.TrimPrefix(head, "ref: refs/heads/"), nil
-	}
-	// Detached HEAD -- show short hash.
-	if len(head) >= 8 {
-		return head[:8], nil
-	}
-	return head, nil
-}
-
-// runClient connects to the daemon and runs the TUI.
-func runClient(sockPath string, settings config.Settings, mc config.ModelConfig, cfgName string) {
-	conn, err := net.Dial("unix", sockPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "gohome: cannot connect to daemon: %v\n", err)
+		fmt.Fprintf(os.Stderr, "gohome: cannot open session writer: %v\n", err)
 		os.Exit(1)
 	}
 
-	c := rpc.NewConn(conn)
-	eventCh := make(chan tui.AgentEventMsg, 64)
-	cfe := tui.NewClientFrontend(c, eventCh)
-
-	go func() {
-		cfe.ReadLoop()
-		close(eventCh)
-	}()
-
-	cwd, _ := os.Getwd()
-	if err := cfe.SendConnect(cwd); err != nil {
-		slog.Warn("session.connect failed", "err", err)
+	// Emit session_start only for fresh sessions (resume appends to existing file).
+	if !isResumed {
+		writer.Emit(session.SessionStart{
+			ID:          sess.ID,
+			ParentID:    sess.ParentID,
+			CWD:         cwd,
+			Model:       mc.ModelName,
+			ModelConfig: cfgName,
+			Depth:       sess.Depth,
+			StartedAt:   sess.StartedAt,
+		})
 	}
 
 	// Build TUI model.
-	m := tui.New("main")
-	m.SetClientFrontend(cfe)
-	m.SetYoloCallback(func(v bool) {
-		go func() { _ = cfe.SendYoloSet(v) }()
-	})
+	m := tui.New(fe, sess.ID)
+	m.SetYoloCallback(g.SetYolo)
 	m.SetModelName(mc.ModelName)
-	m.SetConfigName(cfgName)
-
 	contextWindow := mc.ContextWindow
 	if contextWindow <= 0 {
 		contextWindow = config.DefaultContextWindow
@@ -541,18 +360,16 @@ func runClient(sockPath string, settings config.Settings, mc config.ModelConfig,
 		})
 	}
 
-	// Detect git context for the status bar.
-	if branch, err := detectGitBranch(); err == nil {
-		dir, _ := os.Getwd()
-		home, _ := os.UserHomeDir()
-		if home != "" && strings.HasPrefix(dir, home) {
-			dir = "~" + dir[len(home):]
-		}
-		// Use only the last path component for brevity.
-		if idx := strings.LastIndex(dir, "/"); idx >= 0 {
-			dir = "~/" + dir[idx+1:]
-		}
-		m.SetGitContext(dir, branch)
+	// Build tea program and wire frontend.
+	p := tea.NewProgram(m, tea.WithAltScreen())
+	fe.SetProgram(p)
+
+	// Build agent.
+	systemPrompt := `You are gohome, an AI coding assistant. You help users with software development tasks.
+You have access to tools for reading and writing files, running bash commands, and spawning subagents for parallel work.
+Be concise and precise. Ask for clarification when requirements are ambiguous.`
+	if settings.SystemPrompt != "" {
+		systemPrompt = settings.SystemPrompt
 	}
 
 	maxTokens := mc.MaxTokens
@@ -683,41 +500,48 @@ func runClient(sockPath string, settings config.Settings, mc config.ModelConfig,
 			return config.LoadAnnotated(globalCfgPath, config.DefaultProjectPath(cwd))
 		},
 		CancelSession: func(id string) {
-			go func() { _ = cfe.SendCancel(id) }()
-		},
-		SetModel: func(name string) (string, int, error) {
-			return cfe.SendModelSet(name)
-		},
-		OpenConfig: func() (config.AnnotatedSettings, error) {
-			globalPath, err := config.DefaultGlobalPath()
-			if err != nil {
-				return config.AnnotatedSettings{}, err
+			turnMu.Lock()
+			defer turnMu.Unlock()
+			if turnCancel != nil {
+				turnCancel()
+				turnCancel = nil
 			}
-			cwd, _ := os.Getwd()
-			projectPath := config.DefaultProjectPath(cwd)
-			return config.LoadAnnotated(globalPath, projectPath)
+			state.ClearPending()
 		},
 	})
 
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	// Shutdown ordering (Task 12.5):
+	//   1. p.Run() returns when the user quits the TUI (Ctrl+C / /quit).
+	//      OR a SIGINT/SIGTERM arrives and calls cancel() + p.Quit().
+	//   2. cancel() unblocks AwaitUserInput and any in-flight a.Run call.
+	//   3. wg.Wait() ensures the agent goroutine has exited before we proceed.
+	//   4. session_end is emitted, writer is closed (flushes all queued JSONL),
+	//      then the log file is closed. Guaranteed to complete within ~1s.
+	ctx, cancel := context.WithCancel(context.Background())
 
-	go pipeToProgram(p, eventCh)
-	go pipeToProgram(p, cfe.Approvals())
-	go pipeToProgram(p, cfe.StateSync())
-
-	// Handle signals.
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigCh
-		_ = cfe.Close()
+		cancel()
 		p.Quit()
 	}()
 
+	// Agent driver goroutine: REPL loop awaiting user input.
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runLoop(ctx, a, fe, &turnMu, &turnCancel)
+	}()
+
+	// Run TUI in the main goroutine (blocks until user quits or signal).
 	if _, err := p.Run(); err != nil {
 		slog.Error("tui error", "err", err)
 	}
 
+	// Shutdown sequence: stop signal delivery so the goroutine can exit, cancel
+	// the context, then wait for the agent goroutine before flushing JSONL.
 	signal.Stop(sigCh)
 	cancel()
 	wg.Wait()

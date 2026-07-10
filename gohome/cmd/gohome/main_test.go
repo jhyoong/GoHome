@@ -1,8 +1,16 @@
 package main
 
 import (
-	"flag"
+	"context"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/jhyoong/GoHome/gohome/internal/agent"
+	"github.com/jhyoong/GoHome/gohome/internal/guard"
+	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
+	"github.com/jhyoong/GoHome/gohome/internal/session"
+	"github.com/jhyoong/GoHome/gohome/internal/tools"
 )
 
 // blockingClient sends one delta then blocks until its background context ends.
