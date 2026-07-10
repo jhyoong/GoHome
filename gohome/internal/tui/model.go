@@ -126,6 +126,11 @@ type Model struct {
 	gitBranch  string
 	projectDir string
 
+	// Config overlay state.
+	configGlobalPath  string
+	configProjectPath string
+	configEditScope   string
+
 	// Approval overlay state (Task 11.9+).
 	// activeApproval is the prompt currently displayed in the input region.
 	// pendingApprovals maps sessionID -> prompt for non-focused sessions.
