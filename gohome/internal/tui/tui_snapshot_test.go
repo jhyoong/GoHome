@@ -319,6 +319,21 @@ func TestSnapshots(t *testing.T) {
 		golden.RequireEqual(t, []byte(normEditPath(m.View())))
 	})
 
+	t.Run("with_cross_session_approval", func(t *testing.T) {
+		m := newSized()
+		reply := make(chan guard.ApprovalDecision, 1)
+		m = apply(m, tui.ApprovalReqMsg{
+			Req: guard.ApprovalRequest{
+				SessionID:        "sub-1",
+				Tool:             "bash",
+				Input:            []byte(`{"command":"git status"}`),
+				SuggestedPattern: "git*",
+			},
+			Reply: reply,
+		})
+		golden.RequireEqual(t, []byte(m.View()))
+	})
+
 	t.Run("subagent_shadow_entries", func(t *testing.T) {
 		m := newSized()
 		m.AddTimelineEntry("main", tui.TimelineEntry{
@@ -769,5 +784,118 @@ func TestToggleExpansion_PreservesScrollPosition(t *testing.T) {
 	// The tool entry should still be visible after expansion (not scrolled away).
 	if !strings.Contains(viewAfter, "$ ls") {
 		t.Errorf("tool entry should remain visible after expansion.\nBefore:\n%s\nAfter:\n%s", viewBefore, viewAfter)
+	}
+}
+
+func TestApproval_SubagentShowsImmediately(t *testing.T) {
+	m := newSized()
+	reply := make(chan guard.ApprovalDecision, 1)
+	m = apply(m, tui.ApprovalReqMsg{
+		Req: guard.ApprovalRequest{
+			SessionID:        "sub-1",
+			Tool:             "bash",
+			Input:            []byte(`{"command":"git status"}`),
+			SuggestedPattern: "git*",
+		},
+		Reply: reply,
+	})
+	view := m.View()
+	if !strings.Contains(view, "[sub-1]") {
+		t.Fatalf("expected [sub-1] label in approval overlay, got:\n%s", view)
+	}
+	if !strings.Contains(view, "bash: git status") {
+		t.Fatalf("expected tool summary in approval overlay, got:\n%s", view)
+	}
+}
+
+func TestApproval_FIFOQueueOrder(t *testing.T) {
+	m := newSized()
+	reply1 := make(chan guard.ApprovalDecision, 1)
+	reply2 := make(chan guard.ApprovalDecision, 1)
+	reply3 := make(chan guard.ApprovalDecision, 1)
+
+	m = apply(m, tui.ApprovalReqMsg{
+		Req:   guard.ApprovalRequest{SessionID: "main", Tool: "bash", Input: []byte(`{"command":"cmd1"}`)},
+		Reply: reply1,
+	})
+	m = apply(m, tui.ApprovalReqMsg{
+		Req:   guard.ApprovalRequest{SessionID: "sub-1", Tool: "read", Input: []byte(`{"file_path":"file.go"}`)},
+		Reply: reply2,
+	})
+	m = apply(m, tui.ApprovalReqMsg{
+		Req:   guard.ApprovalRequest{SessionID: "sub-1", Tool: "bash", Input: []byte(`{"command":"cmd3"}`)},
+		Reply: reply3,
+	})
+
+	view := m.View()
+	if !strings.Contains(view, "cmd1") {
+		t.Fatalf("expected cmd1 in active approval, got:\n%s", view)
+	}
+
+	m = apply(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+	view = m.View()
+	if !strings.Contains(view, "read: file.go") {
+		t.Fatalf("expected read: file.go after resolving first approval, got:\n%s", view)
+	}
+
+	m = apply(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+	view = m.View()
+	if !strings.Contains(view, "cmd3") {
+		t.Fatalf("expected cmd3 after resolving second approval, got:\n%s", view)
+	}
+}
+
+func TestApproval_SessionSwitchPreservesActive(t *testing.T) {
+	m := newSized()
+	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventSessionStarted,
+		SessionID: "sub-1",
+	}})
+
+	reply := make(chan guard.ApprovalDecision, 1)
+	m = apply(m, tui.ApprovalReqMsg{
+		Req: guard.ApprovalRequest{
+			SessionID: "sub-1",
+			Tool:      "bash",
+			Input:     []byte(`{"command":"ls"}`),
+		},
+		Reply: reply,
+	})
+
+	view := m.View()
+	if !strings.Contains(view, "[sub-1]") {
+		t.Fatalf("expected [sub-1] label, got:\n%s", view)
+	}
+
+	// Ctrl+Right is absorbed by the approval handler (cannot switch sessions
+	// while an approval overlay is active). The approval must remain visible.
+	m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlRight})
+
+	view = m.View()
+	if !strings.Contains(view, "bash: ls") {
+		t.Fatalf("expected approval still active after Ctrl+Right, got:\n%s", view)
+	}
+	if !strings.Contains(view, "[sub-1]") {
+		t.Fatalf("expected [sub-1] label still present (session switch blocked by approval), got:\n%s", view)
+	}
+}
+
+func TestApproval_NotificationLineShowsQueueDepth(t *testing.T) {
+	m := newSized()
+	reply1 := make(chan guard.ApprovalDecision, 1)
+	reply2 := make(chan guard.ApprovalDecision, 1)
+
+	m = apply(m, tui.ApprovalReqMsg{
+		Req:   guard.ApprovalRequest{SessionID: "main", Tool: "bash", Input: []byte(`{"command":"a"}`)},
+		Reply: reply1,
+	})
+	m = apply(m, tui.ApprovalReqMsg{
+		Req:   guard.ApprovalRequest{SessionID: "sub-1", Tool: "bash", Input: []byte(`{"command":"b"}`)},
+		Reply: reply2,
+	})
+
+	view := m.View()
+	if !strings.Contains(view, "1 more approval(s) queued") {
+		t.Fatalf("expected queue depth notification, got:\n%s", view)
 	}
 }

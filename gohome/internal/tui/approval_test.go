@@ -462,9 +462,9 @@ func TestApprovalArrowToSteerEntersSteerMode(t *testing.T) {
 	}
 }
 
-// --- Task 11.12: cross-session notification line ---
+// --- Task 11.12: cross-session approval shows label ---
 
-func TestCrossSessionNotificationLine(t *testing.T) {
+func TestCrossSessionApprovalShowsLabel(t *testing.T) {
 	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
@@ -479,14 +479,15 @@ func TestCrossSessionNotificationLine(t *testing.T) {
 	})
 
 	// Send an approval for "sub-1" while focused on "main".
+	// With the unified FIFO queue, the approval shows immediately as an overlay
+	// with a [sub-1] session label prefix.
 	subMsg, _ := makeApprovalReq("sub-1", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
 	tm.Send(subMsg)
 
-	// The notification line must mention "sub-1" and "approval".
-	// In the same frame, the normal textarea must be visible (no Approve overlay on "main").
+	// The overlay IS visible and contains the [sub-1] label and tool summary.
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		hasNotif := bytes.Contains(out, []byte("sub-1")) && bytes.Contains(out, []byte("approval"))
-		noOverlay := !bytes.Contains(out, []byte("bash: ls"))
-		return hasNotif && noOverlay
+		hasLabel := bytes.Contains(out, []byte("[sub-1]"))
+		hasOverlay := bytes.Contains(out, []byte("bash: ls"))
+		return hasLabel && hasOverlay
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
