@@ -308,6 +308,93 @@ func TestRun_DenySteer(t *testing.T) {
 	}
 }
 
+// TestRun_MixedBatch verifies that when a batch has one approved and one
+// plain-denied tool call, Run returns ErrToolDenied but the approved tool
+// still executes and both results appear in history.
+func TestRun_MixedBatch(t *testing.T) {
+	turn1 := []common.StreamEvent{
+		{Kind: common.EventToolCallDone, ToolCallID: "tc-ok", ToolName: "allowed", InputJSON: `{}`},
+		{Kind: common.EventToolCallDone, ToolCallID: "tc-no", ToolName: "denied", InputJSON: `{}`},
+		{Kind: common.EventTurnDone, StopReason: "tool_use"},
+	}
+	client := &fakeClient{sequences: [][]common.StreamEvent{turn1}}
+
+	executedAllowed := false
+	executedDenied := false
+
+	reg := tools.NewRegistry()
+	reg.Register(&trackingTool{
+		fakeTool: &fakeTool{name: "allowed", content: "ok"},
+		executed: &executedAllowed,
+	})
+	reg.Register(&trackingTool{
+		fakeTool: &fakeTool{name: "denied", content: "should-not-run"},
+		executed: &executedDenied,
+	})
+
+	callCount := 0
+	fe := &fakeRecorder{
+		approvalFunc: func(_ context.Context, req guard.ApprovalRequest) (guard.ApprovalDecision, error) {
+			callCount++
+			if req.Tool == "allowed" {
+				return guard.ApprovalDecision{Outcome: guard.AllowOnce}, nil
+			}
+			return guard.ApprovalDecision{Outcome: guard.Deny}, nil
+		},
+	}
+
+	wl, err := guard.Compile(guard.WhitelistFile{}, guard.WhitelistFile{}, "")
+	if err != nil {
+		t.Fatalf("guard.Compile: %v", err)
+	}
+	gfe := &guardFE{fe: fe}
+	g := guard.NewGuard(wl, gfe)
+
+	a, sess := newTestAgentWithGuard(t, client, fe, g, reg)
+
+	runErr := a.Run(context.Background(), sess)
+	if !errors.Is(runErr, ErrToolDenied) {
+		t.Fatalf("Run: got %v, want ErrToolDenied", runErr)
+	}
+
+	if !executedAllowed {
+		t.Error("allowed tool was not executed")
+	}
+	if executedDenied {
+		t.Error("denied tool was executed")
+	}
+
+	// History should have: assistant (turn1) + tool results.
+	// The RoleTool message should have 2 blocks.
+	var toolMsg *common.Message
+	for i := range sess.History {
+		if sess.History[i].Role == common.RoleTool {
+			toolMsg = &sess.History[i]
+			break
+		}
+	}
+	if toolMsg == nil {
+		t.Fatal("no RoleTool message in history")
+	}
+	if len(toolMsg.Content) != 2 {
+		t.Fatalf("RoleTool blocks: got %d, want 2", len(toolMsg.Content))
+	}
+
+	// First block (allowed) should not be error.
+	if toolMsg.Content[0].IsError {
+		t.Errorf("allowed tool result should not be IsError")
+	}
+	// Second block (denied) should be error.
+	if !toolMsg.Content[1].IsError {
+		t.Errorf("denied tool result should be IsError")
+	}
+
+	// Run should NOT have called Stream a second time.
+	if client.callCount != 1 {
+		t.Errorf("Stream call count: got %d, want 1", client.callCount)
+	}
+}
+
 // TestRun_UnknownTool verifies that a tool_use for an unregistered tool name
 // produces an IsError result but does not crash Run.
 func TestRun_UnknownTool(t *testing.T) {
