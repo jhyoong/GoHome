@@ -524,10 +524,10 @@ func runClient(sockPath string, settings config.Settings, mc config.ModelConfig,
 		ListSessions: func() ([]session.Listing, error) {
 			return session.List(home, cwd)
 		},
-		ResumeSession: func(id string) ([]common.Message, error) {
+		ResumeSession: func(id string) (string, []common.Message, error) {
 			listings, err := session.List(home, cwd)
 			if err != nil {
-				return nil, err
+				return "", nil, err
 			}
 			var path string
 			for _, l := range listings {
@@ -537,12 +537,14 @@ func runClient(sockPath string, settings config.Settings, mc config.ModelConfig,
 				}
 			}
 			if path == "" {
-				return nil, fmt.Errorf("session %q not found", id)
+				return "", nil, fmt.Errorf("session %q not found", id)
 			}
 			loaded, history, err := session.Load(path)
 			if err != nil {
-				return nil, err
+				return "", nil, err
 			}
+
+			resolvedID := loaded.ID
 
 			err = state.Swap("resume "+id, func(_ *session.Session, oldWriter *session.Writer) (*session.Session, *session.Writer, error) {
 				oldWriter.Emit(session.SessionEnd{Reason: "switch"})
@@ -555,9 +557,9 @@ func runClient(sockPath string, settings config.Settings, mc config.ModelConfig,
 				return loaded, newWriter, nil
 			})
 			if err != nil {
-				return nil, err
+				return "", nil, err
 			}
-			return history, nil
+			return resolvedID, history, nil
 		},
 		NewSession: func() (string, error) {
 			id := newSessionID()

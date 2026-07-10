@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/jhyoong/GoHome/gohome/internal/config"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 	"github.com/jhyoong/GoHome/gohome/internal/session"
 )
@@ -208,6 +209,14 @@ func (m *Model) completeSlash() bool {
 	}
 	m.editor.SetValue(matches[0] + " ")
 	return true
+}
+
+// openConfigOverlayWith opens the config overlay with the given annotated
+// settings. This is a placeholder that will be fully implemented when the
+// config overlay component is ported (Task 7).
+func (m *Model) openConfigOverlayWith(ann config.AnnotatedSettings) {
+	_ = ann // Will be used when ConfigOverlay is added.
+	m.statusMsg = "Config: " + ann.DefaultModel
 }
 
 var slashHighlight = lipgloss.NewStyle().Bold(true)

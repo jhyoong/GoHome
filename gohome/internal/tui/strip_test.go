@@ -30,7 +30,7 @@ func TestSessionStripShowsFocused(t *testing.T) {
 // TestFocusCyclingCtrlRight verifies that Ctrl+Right moves focus to a
 // sub-session registered via an EventSessionStarted message.
 func TestFocusCyclingCtrlRight(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(120, 24))
 	t.Cleanup(func() {
 		_ = tm.Quit()
@@ -77,7 +77,7 @@ func TestFocusCyclingCtrlRight(t *testing.T) {
 
 // TestFocusCyclingCtrlLeft verifies that Ctrl+Left moves focus backward.
 func TestFocusCyclingCtrlLeft(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(120, 24))
 	t.Cleanup(func() {
 		_ = tm.Quit()

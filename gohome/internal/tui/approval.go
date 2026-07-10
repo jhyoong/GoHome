@@ -54,6 +54,16 @@ func newApprovalPrompt(req guard.ApprovalRequest, resolve func(guard.ApprovalDec
 	}
 }
 
+// approvalSummaryLine builds a single contextual line describing the tool call
+// (e.g. "bash: git status", "read: path/to/file").
+func approvalSummaryLine(ap *approvalPrompt) string {
+	arg := extractToolArg(ap.req.Tool, string(ap.req.Input))
+	if arg != "" {
+		return fmt.Sprintf("%s: %s", ap.req.Tool, arg)
+	}
+	return ap.req.Tool
+}
+
 var approvalBoxStyle = lipgloss.NewStyle().
 	Border(lipgloss.RoundedBorder()).
 	Padding(0, 1).

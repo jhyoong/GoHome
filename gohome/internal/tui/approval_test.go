@@ -489,7 +489,7 @@ func TestCrossSessionNotificationLine(t *testing.T) {
 	// In the same frame, the normal textarea must be visible (no Approve overlay on "main").
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		hasNotif := bytes.Contains(out, []byte("sub-1")) && bytes.Contains(out, []byte("approval"))
-		noOverlay := !bytes.Contains(out, []byte("Allow once"))
+		noOverlay := !bytes.Contains(out, []byte("bash: ls"))
 		return hasNotif && noOverlay
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }

@@ -816,7 +816,6 @@ func TestToggleExpansion_PreservesScrollPosition(t *testing.T) {
 	viewAfter := m.View()
 
 	// The tool entry should still be visible after expansion (not scrolled away).
-	// With the contextual format, bash shows as "$ ls" instead of "[tool] bash".
 	if !strings.Contains(viewAfter, "$ ls") {
 		t.Errorf("tool entry should remain visible after expansion.\nBefore:\n%s\nAfter:\n%s", viewBefore, viewAfter)
 	}

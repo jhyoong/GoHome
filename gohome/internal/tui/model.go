@@ -126,7 +126,7 @@ type Model struct {
 	gitBranch  string
 	projectDir string
 
-	// Approval overlay state.
+	// Approval overlay state (Task 11.9+).
 	// activeApproval is the prompt currently displayed in the input region.
 	// pendingApprovals maps sessionID -> prompt for non-focused sessions.
 	activeApproval   *approvalPrompt
@@ -211,6 +211,16 @@ func (m *Model) SetConfigName(name string) {
 	m.configName = name
 }
 
+// SetGitBranch sets the git branch displayed in the status bar.
+func (m *Model) SetGitBranch(branch string) {
+	m.gitBranch = branch
+}
+
+// SetProjectDir sets the project directory displayed in the status bar.
+func (m *Model) SetProjectDir(dir string) {
+	m.projectDir = dir
+}
+
 // SetYolo sets YOLO mode. When true the status bar shows a red [YOLO] badge.
 func (m *Model) SetYolo(yolo bool) {
 	m.yolo = yolo
@@ -251,13 +261,6 @@ func (m *Model) SetContextThresholds(warn, crit float64) {
 	}
 	m.contextWarnPct = warn
 	m.contextCritPct = crit
-}
-
-// SetGitContext sets the project directory and git branch displayed in the
-// status bar.
-func (m *Model) SetGitContext(projectDir, branch string) {
-	m.projectDir = projectDir
-	m.gitBranch = branch
 }
 
 // StatusBarForTest returns the rendered status bar string. Exported for tests.
@@ -302,7 +305,7 @@ func (m *Model) syncChatHeight() {
 }
 
 // rebuildViewport refreshes the chat component state from the focused session.
-// When keepScroll is false, the viewport scrolls to the bottom.
+// When keepScroll is false (or omitted), the viewport scrolls to the bottom.
 func (m *Model) rebuildViewport(keepScroll ...bool) {
 	sv, ok := m.sessions[m.focused]
 	if !ok {

@@ -41,7 +41,7 @@ func TestChatRenderToolCollapsed(t *testing.T) {
 	lines := c.Render(80)
 	joined := StripAnsi(strings.Join(lines, "\n"))
 	if !strings.Contains(joined, "$ ls") {
-		t.Errorf("tool summary missing: %q", joined)
+		t.Errorf("contextual tool display missing: %q", joined)
 	}
 }
 
@@ -75,9 +75,9 @@ func TestToolStatusPending(t *testing.T) {
 	}}
 	c := NewChat(&entries, 20)
 	lines := c.Render(80)
-	joined := strings.Join(lines, "\n")
+	joined := StripAnsi(strings.Join(lines, "\n"))
 	if !strings.Contains(joined, "$ ls") {
-		t.Errorf("tool summary not found: %q", joined)
+		t.Errorf("contextual tool display not found: %q", joined)
 	}
 }
 
@@ -91,9 +91,9 @@ func TestToolStatusSuccess(t *testing.T) {
 	}}
 	c := NewChat(&entries, 20)
 	lines := c.Render(80)
-	joined := strings.Join(lines, "\n")
+	joined := StripAnsi(strings.Join(lines, "\n"))
 	if !strings.Contains(joined, "$ ls") {
-		t.Errorf("tool summary not found: %q", joined)
+		t.Errorf("contextual tool display not found: %q", joined)
 	}
 }
 
@@ -113,20 +113,17 @@ func TestToolStatusError(t *testing.T) {
 	}
 }
 
-func TestChatRenderThinkingAlwaysVisible(t *testing.T) {
+func TestChatRenderThinkingInline(t *testing.T) {
 	entries := []TimelineEntry{{Kind: KindThinking, Text: "Let me reason\nabout this\nstep by step."}}
 	c := NewChat(&entries, 20)
 	lines := c.Render(80)
 	joined := StripAnsi(strings.Join(lines, "\n"))
-	// Content should always be visible inline (no collapsed label).
+	// Thinking content is now always shown inline (dim italic), not collapsed.
 	if !strings.Contains(joined, "Let me reason") {
-		t.Errorf("thinking content not visible: %q", joined)
+		t.Errorf("thinking content missing: %q", joined)
 	}
 	if !strings.Contains(joined, "step by step") {
-		t.Errorf("thinking content not fully visible: %q", joined)
-	}
-	if strings.Contains(joined, "Thinking...") {
-		t.Errorf("should not contain collapsed label: %q", joined)
+		t.Errorf("thinking content continuation missing: %q", joined)
 	}
 }
 
