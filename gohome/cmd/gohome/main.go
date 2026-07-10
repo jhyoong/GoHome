@@ -63,6 +63,93 @@ func setupLogging(home string) (*os.File, error) {
 	return f, nil
 }
 
+// pickResume finds the most-recent session for (home, cwd) and loads it.
+// Returns nil session when no sessions exist (caller should start fresh).
+// The returned path is the JSONL file path so the caller can open the writer
+// in append mode to the same file.
+func pickResume(home, cwd string) (*session.Session, []common.Message, string, error) {
+	listings, err := session.List(home, cwd)
+	if err != nil {
+		return nil, nil, "", fmt.Errorf("pickResume: list: %w", err)
+	}
+	if len(listings) == 0 {
+		return nil, nil, "", nil
+	}
+	// List returns sorted descending by StartedAt; index 0 is most recent.
+	listing := listings[0]
+	sess, history, err := session.Load(listing.Path)
+	if err != nil {
+		return nil, nil, "", fmt.Errorf("pickResume: load %s: %w", listing.Path, err)
+	}
+	return sess, history, listing.Path, nil
+}
+
+// runLoop is the agent's REPL: it waits for user input, appends it to the
+// session history, persists it, and runs the agent. It returns when ctx is
+// cancelled.
+func runLoop(
+	ctx context.Context,
+	a *agent.Agent,
+	fe agent.Frontend,
+	turnMu *sync.Mutex,
+	turnCancel *context.CancelFunc,
+) {
+	for {
+		text, err := fe.AwaitUserInput(ctx)
+		if err != nil {
+			return
+		}
+
+		// Re-fetch after blocking: the session and writer may have been
+		// swapped (via /resume or /new) while we waited for input.
+		sess := a.State.Session()
+		writer := a.State.Writer()
+
+		sess.History = append(sess.History, common.Message{
+			Role: common.RoleUser,
+			Content: []common.Block{
+				{Kind: common.BlockText, Text: text},
+			},
+		})
+		writer.Emit(session.UserMessage{
+			Content: []common.Block{
+				{Kind: common.BlockText, Text: text},
+			},
+		})
+
+		turnCtx, cancel := context.WithCancel(ctx)
+		turnMu.Lock()
+		*turnCancel = cancel
+		turnMu.Unlock()
+
+		runErr := a.Run(turnCtx, sess)
+
+		turnMu.Lock()
+		*turnCancel = nil
+		turnMu.Unlock()
+		cancel()
+
+		if runErr != nil {
+			slog.Error("agent run failed", "err", runErr)
+			if ctx.Err() != nil {
+				return
+			}
+		}
+
+		if tag, drainErr := a.State.DrainPending(); tag != "" {
+			if drainErr != nil {
+				slog.Error("session swap failed", "tag", tag, "err", drainErr)
+			} else {
+				newSess := a.State.Session()
+				fe.Emit(newSess.ID, agent.Event{
+					Kind:      agent.EventSessionSwapped,
+					SessionID: newSess.ID,
+				})
+			}
+		}
+	}
+}
+
 func main() {
 	flag.Parse()
 
@@ -435,10 +522,71 @@ func runClient(sockPath string, settings config.Settings, mc config.ModelConfig,
 	// Wire slash command callbacks to send RPC requests to the daemon.
 	m.SetSlashCallbacks(tui.SlashCallbacks{
 		ListSessions: func() ([]session.Listing, error) {
-			return cfe.SendSessionList()
+			return session.List(home, cwd)
+		},
+		ResumeSession: func(id string) ([]common.Message, error) {
+			listings, err := session.List(home, cwd)
+			if err != nil {
+				return nil, err
+			}
+			var path string
+			for _, l := range listings {
+				if l.ID == id {
+					path = l.Path
+					break
+				}
+			}
+			if path == "" {
+				return nil, fmt.Errorf("session %q not found", id)
+			}
+			loaded, history, err := session.Load(path)
+			if err != nil {
+				return nil, err
+			}
+
+			err = state.Swap("resume "+id, func(_ *session.Session, oldWriter *session.Writer) (*session.Session, *session.Writer, error) {
+				oldWriter.Emit(session.SessionEnd{Reason: "switch"})
+				_ = oldWriter.Close()
+
+				newWriter, err := session.OpenWriter(path)
+				if err != nil {
+					return nil, nil, fmt.Errorf("open writer: %w", err)
+				}
+				return loaded, newWriter, nil
+			})
+			if err != nil {
+				return nil, err
+			}
+			return history, nil
 		},
 		NewSession: func() (string, error) {
-			return cfe.SendSessionNew()
+			id := newSessionID()
+			currentModel := state.Model()
+			currentCfg := state.ModelConfig()
+			newSess := session.NewSession(id, cwd, currentModel, currentCfg)
+			wrPath := session.SessionPath(home, cwd, id, time.Now().UTC())
+
+			err := state.Swap("new "+id, func(_ *session.Session, oldWriter *session.Writer) (*session.Session, *session.Writer, error) {
+				oldWriter.Emit(session.SessionEnd{Reason: "switch"})
+				_ = oldWriter.Close()
+
+				newWriter, err := session.OpenWriter(wrPath)
+				if err != nil {
+					return nil, nil, fmt.Errorf("open writer: %w", err)
+				}
+				newWriter.Emit(session.SessionStart{
+					ID:          newSess.ID,
+					CWD:         cwd,
+					Model:       currentModel,
+					ModelConfig: currentCfg,
+					StartedAt:   newSess.StartedAt,
+				})
+				return newSess, newWriter, nil
+			})
+			if err != nil {
+				return "", err
+			}
+			return id, nil
 		},
 		ResumeSession: func(id string) (string, []common.Message, error) {
 			return cfe.SendSessionResume(id)

@@ -147,7 +147,7 @@ func (a *Agent) dispatchTool(
 	res, execErr := safeExecute(tctx, tool, input, tools.NullSink{})
 	elapsed = time.Since(start)
 	if execErr != nil {
-		return fmt.Sprintf("tool execution error: %v", execErr), true, elapsed
+		slog.Debug("tool execution error", "tool", block.ToolName, "err", execErr)
 	}
 	return res.Content, res.IsError, elapsed
 }

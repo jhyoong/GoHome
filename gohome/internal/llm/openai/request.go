@@ -111,10 +111,11 @@ func buildOpenAIBody(req common.Request) ([]byte, error) {
 	}
 
 	body := openaiBody{
-		Model:     req.Model,
-		Messages:  msgs,
-		MaxTokens: req.MaxTokens,
-		Stream:    true,
+		Model:           req.Model,
+		Messages:        msgs,
+		MaxTokens:       req.MaxTokens,
+		Stream:          true,
+		ReasoningEffort: req.ReasoningEffort,
 		StreamOptions: openaiStreamOptions{
 			IncludeUsage: true,
 		},

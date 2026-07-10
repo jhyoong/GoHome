@@ -105,7 +105,7 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, error)
 				goto done
 
 			case common.EventError:
-				a.Frontend().Emit(sess.ID, Event{
+				a.Frontend.Emit(sess.ID, Event{
 					Kind:       EventError,
 					SessionID:  sess.ID,
 					Err:        ev.Err,
@@ -122,6 +122,8 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, error)
 	}
 
 done:
+	elapsed := time.Since(start)
+
 	// Build the assistant message: thinking block first, then text, then tool_use blocks.
 	var blocks []common.Block
 	if thinkingBuf != "" {
@@ -149,6 +151,18 @@ done:
 				StopReason: stopReason,
 				Usage:      usage,
 			})
+		}
+	}
+
+	// Build turn stats from usage and elapsed time.
+	var stats *TurnStats
+	if usage != nil {
+		stats = &TurnStats{
+			OutputTokens:     usage.OutputTokens,
+			InputTokens:      usage.InputTokens,
+			CacheReadTokens:  usage.CacheReadTokens,
+			CacheWriteTokens: usage.CacheWriteTokens,
+			Elapsed:          elapsed,
 		}
 	}
 
