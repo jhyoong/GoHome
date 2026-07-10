@@ -152,7 +152,7 @@ func DefaultProjectPath(cwd string) string {
 	return filepath.Join(cwd, ".gohome", "settings.json")
 }
 
-// Source indicates where a setting value came from.
+// Source identifies where a setting value came from.
 type Source string
 
 const (
@@ -161,8 +161,7 @@ const (
 	SourceDefault Source = "default"
 )
 
-// AnnotatedSettings wraps merged Settings with provenance metadata
-// so callers can display where each value originated.
+// AnnotatedSettings wraps merged Settings with provenance info for each field.
 type AnnotatedSettings struct {
 	Settings
 	GlobalPath   string
@@ -171,8 +170,8 @@ type AnnotatedSettings struct {
 	ModelSources map[string]Source
 }
 
-// LoadAnnotated loads and merges settings like Load, but also records
-// which layer (default / global / project) each scalar field came from.
+// LoadAnnotated loads global and project settings, merges them, and returns
+// an AnnotatedSettings that records which source provided each value.
 func LoadAnnotated(globalPath, projectPath string) (AnnotatedSettings, error) {
 	global := load(globalPath)
 	project := load(projectPath)

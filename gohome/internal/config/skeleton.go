@@ -7,8 +7,7 @@ import (
 	"runtime"
 )
 
-// SkeletonJSON returns a JSON template showing all configurable fields
-// with placeholder values. Used to bootstrap new settings files.
+// SkeletonJSON returns a template settings.json with all fields shown.
 func SkeletonJSON() []byte {
 	return []byte(`{
   "modelConfig": {
@@ -37,9 +36,8 @@ func SkeletonJSON() []byte {
 `)
 }
 
-// ResolveEditor returns the user's preferred text editor.
-// It checks VISUAL first, then EDITOR, falling back to "vi" on Unix
-// or "notepad" on Windows.
+// ResolveEditor returns the user's preferred editor from VISUAL or EDITOR,
+// falling back to "vi" (or "notepad" on Windows).
 func ResolveEditor() string {
 	if v := os.Getenv("VISUAL"); v != "" {
 		return v
@@ -53,9 +51,8 @@ func ResolveEditor() string {
 	return "vi"
 }
 
-// EnsureConfigFile creates path with the skeleton template if it does not
-// already exist. Parent directories are created as needed. An existing file
-// is never modified.
+// EnsureConfigFile creates a settings file with skeleton content if it does
+// not already exist. Parent directories are created as needed.
 func EnsureConfigFile(path string) error {
 	if _, err := os.Stat(path); err == nil {
 		return nil
