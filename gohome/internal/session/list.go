@@ -16,7 +16,7 @@ type Listing struct {
 	ID         string    `json:"id"`
 	StartedAt  time.Time `json:"startedAt"`
 	LastActive time.Time `json:"lastActive"`
-	Title      string    `json:"title"` // first user_message text block, truncated to <=60 runes
+	Title      string    `json:"title"`
 	Depth      int       `json:"depth"`
 }
 

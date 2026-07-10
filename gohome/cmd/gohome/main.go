@@ -628,5 +628,18 @@ func runClient(sockPath string, settings config.Settings, mc config.ModelConfig,
 	}
 
 	signal.Stop(sigCh)
-	_ = cfe.Close()
+	cancel()
+	wg.Wait()
+
+	state.Writer().Emit(session.SessionEnd{Reason: "user_quit"})
+	if err := state.Writer().Close(); err != nil {
+		slog.Error("writer close error", "err", err)
+	}
+
+	// TODO(task8): blank session cleanup moved to session-internal; re-add in main rewrite.
+
+	if logFile != nil {
+		slog.Info("gohome exiting")
+		_ = logFile.Close()
+	}
 }
