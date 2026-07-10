@@ -60,8 +60,13 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 
 		// Dispatch each tool call and collect results.
 		var resultBlocks []common.Block
+		var anyDenied bool
 		for _, block := range toolUseBlocks {
-			content, isError, elapsed := a.dispatchTool(ctx, tctx, sess, block)
+			content, isError, elapsed, denied := a.dispatchTool(ctx, tctx, sess, block)
+
+			if denied {
+				anyDenied = true
+			}
 
 			// Persist the tool result event.
 			if w := a.State.Writer(); w != nil {
@@ -98,25 +103,34 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 			Role:    common.RoleTool,
 			Content: resultBlocks,
 		})
+
+		if anyDenied {
+			a.Frontend.Emit(sess.ID, Event{
+				Kind:      EventToolDenied,
+				SessionID: sess.ID,
+			})
+			return ErrToolDenied
+		}
 	}
 }
 
 // dispatchTool runs guard.Check, persists an Approval event, and either
 // executes the tool or synthesises a denial result.
 //
-// It returns (content, isError, elapsed).
+// It returns (content, isError, elapsed, denied). The denied flag is true only
+// for plain denials (not steer), signalling that Run should return ErrToolDenied.
 func (a *Agent) dispatchTool(
 	ctx context.Context,
 	tctx context.Context,
 	sess *session.Session,
 	block common.Block,
-) (content string, isError bool, elapsed time.Duration) {
+) (content string, isError bool, elapsed time.Duration, denied bool) {
 	input := json.RawMessage(block.InputJSON)
 
 	// Guard check.
 	dec, err := a.Guard.Check(ctx, sess.ID, block.ToolName, input)
 	if err != nil {
-		return fmt.Sprintf("guard error: %v", err), true, 0
+		return fmt.Sprintf("guard error: %v", err), true, 0, false
 	}
 
 	// Persist approval event.
@@ -130,17 +144,16 @@ func (a *Agent) dispatchTool(
 	}
 
 	if !dec.Allow {
-		// Denied. Use steer message if available.
 		if dec.SteerMessage != "" {
-			return dec.SteerMessage, true, 0
+			return dec.SteerMessage, true, 0, false
 		}
-		return "Tool call denied by user.", true, 0
+		return "Tool call denied by user.", true, 0, true
 	}
 
 	// Allowed: look up and execute.
 	tool, ok := a.Tools.Get(block.ToolName)
 	if !ok {
-		return fmt.Sprintf("unknown tool: %s", block.ToolName), true, 0
+		return fmt.Sprintf("unknown tool: %s", block.ToolName), true, 0, false
 	}
 
 	start := time.Now()
@@ -149,7 +162,7 @@ func (a *Agent) dispatchTool(
 	if execErr != nil {
 		slog.Debug("tool execution error", "tool", block.ToolName, "err", execErr)
 	}
-	return res.Content, res.IsError, elapsed
+	return res.Content, res.IsError, elapsed, false
 }
 
 // safeExecute calls tool.Execute and recovers from any panic, returning an
