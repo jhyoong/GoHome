@@ -191,18 +191,18 @@ func New(fe *Frontend, sessionID string) *Model {
 	}
 
 	m := &Model{
-		theme:            style.Default(),
-		sessions:         map[string]*SessionView{sessionID: main},
-		order:            []string{sessionID},
-		focused:          sessionID,
-		childToParent:    make(map[string]string),
-		inputCh:          inputCh,
-		contextWindow:    config.DefaultContextWindow,
-		contextWarnPct:   config.DefaultContextWarnPct,
-		contextCritPct:   config.DefaultContextCritPct,
-		editor:           NewEditor(80, 24),
-		spinner:          NewSpinner(),
-		fileSearch:       NewFileSearchPopup(),
+		theme:          style.Default(),
+		sessions:       map[string]*SessionView{sessionID: main},
+		order:          []string{sessionID},
+		focused:        sessionID,
+		childToParent:  make(map[string]string),
+		inputCh:        inputCh,
+		contextWindow:  config.DefaultContextWindow,
+		contextWarnPct: config.DefaultContextWarnPct,
+		contextCritPct: config.DefaultContextCritPct,
+		editor:         NewEditor(80, 24),
+		spinner:        NewSpinner(),
+		fileSearch:     NewFileSearchPopup(),
 	}
 	m.chat = NewChat(&main.Timeline, 20)
 	m.pending = NewPendingMessages(&m.pendingMessages)
