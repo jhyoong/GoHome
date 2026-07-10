@@ -8,15 +8,15 @@ import (
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
 )
 
-// handleApprovalReq processes an incoming approval request. If the request is
-// for the focused session and no approval is currently active, it becomes the
-// active prompt; otherwise it is queued in pendingApprovals.
+// handleApprovalReq processes an incoming approval request. If no approval is
+// currently active, it becomes the active prompt; otherwise it is appended to
+// the FIFO approval queue.
 func (m *Model) handleApprovalReq(msg approvalReqMsg) {
-	if msg.Req.SessionID == m.focused && m.activeApproval == nil {
-		ap := newApprovalPrompt(msg.Req, msg.Reply)
+	ap := newApprovalPrompt(msg.Req, msg.Reply)
+	if m.activeApproval == nil {
 		m.activeApproval = ap
 	} else {
-		m.pendingApprovals[msg.Req.SessionID] = newApprovalPrompt(msg.Req, msg.Reply)
+		m.approvalQueue = append(m.approvalQueue, ap)
 	}
 }
 
@@ -118,41 +118,35 @@ func (m *Model) handleApprovalKey(msg tea.KeyMsg) tea.Cmd {
 }
 
 // resolveApproval sends dec on the active approval's reply channel and clears
-// the active approval. If another pending approval exists for the focused
-// session, it is promoted to active.
+// the active approval. The next queued approval (if any) is promoted to active.
 func (m *Model) resolveApproval(dec guard.ApprovalDecision) {
 	if m.activeApproval == nil {
 		return
 	}
 	m.activeApproval.reply <- dec
 	m.activeApproval = nil
-	// Promote any pending approval for the now-focused session.
 	m.promoteApproval()
 }
 
-// promoteApproval checks whether the focused session has a pending approval
-// and, if so, sets it as the active approval.
+// promoteApproval pops the next approval from the FIFO queue (if any) and
+// sets it as the active approval.
 func (m *Model) promoteApproval() {
 	if m.activeApproval != nil {
 		return
 	}
-	if ap, ok := m.pendingApprovals[m.focused]; ok {
-		m.activeApproval = ap
-		delete(m.pendingApprovals, m.focused)
+	if len(m.approvalQueue) > 0 {
+		m.activeApproval = m.approvalQueue[0]
+		m.approvalQueue[0] = nil
+		m.approvalQueue = m.approvalQueue[1:]
 	}
 }
 
-// notificationLine returns a warning string when a non-focused session needs
-// approval (or another session is in-flight), or the highest context warning,
-// or "" when quiet.
+// notificationLine returns a warning string when approvals are queued,
+// another session is in-flight, or a context warning is active, or "" when quiet.
 func (m *Model) notificationLine() string {
-	// Pending approvals take priority.
-	for sid := range m.pendingApprovals {
-		if sid != m.focused {
-			return fmt.Sprintf("! [%s] needs approval -- Ctrl+Right to focus", sid)
-		}
+	if n := len(m.approvalQueue); n > 0 {
+		return fmt.Sprintf("! %d more approval(s) queued", n)
 	}
-	// Secondary: another session is in-flight while we are focused elsewhere.
 	for _, id := range m.order {
 		if id != m.focused {
 			if sv, ok := m.sessions[id]; ok && sv.InFlight {
@@ -160,7 +154,6 @@ func (m *Model) notificationLine() string {
 			}
 		}
 	}
-	// Context fullness warning for the focused session (Task 11.16).
 	if m.contextNotice != "" {
 		return m.contextNotice
 	}

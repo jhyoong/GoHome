@@ -135,11 +135,11 @@ type Model struct {
 	configProjectPath string
 	configEditScope   string
 
-	// Approval overlay state (Task 11.9+).
+	// Approval overlay state.
 	// activeApproval is the prompt currently displayed in the input region.
-	// pendingApprovals maps sessionID -> prompt for non-focused sessions.
-	activeApproval   *approvalPrompt
-	pendingApprovals map[string]*approvalPrompt
+	// approvalQueue holds pending approvals in FIFO order (any session).
+	activeApproval *approvalPrompt
+	approvalQueue  []*approvalPrompt
 
 	// statusMsg is a transient message shown near the status bar (Task 11.14).
 	statusMsg string
@@ -191,19 +191,18 @@ func New(fe *Frontend, sessionID string) *Model {
 	}
 
 	m := &Model{
-		theme:            style.Default(),
-		sessions:         map[string]*SessionView{sessionID: main},
-		order:            []string{sessionID},
-		focused:          sessionID,
-		childToParent:    make(map[string]string),
-		inputCh:          inputCh,
-		contextWindow:    config.DefaultContextWindow,
-		contextWarnPct:   config.DefaultContextWarnPct,
-		contextCritPct:   config.DefaultContextCritPct,
-		pendingApprovals: make(map[string]*approvalPrompt),
-		editor:           NewEditor(80, 24),
-		spinner:          NewSpinner(),
-		fileSearch:       NewFileSearchPopup(),
+		theme:          style.Default(),
+		sessions:       map[string]*SessionView{sessionID: main},
+		order:          []string{sessionID},
+		focused:        sessionID,
+		childToParent:  make(map[string]string),
+		inputCh:        inputCh,
+		contextWindow:  config.DefaultContextWindow,
+		contextWarnPct: config.DefaultContextWarnPct,
+		contextCritPct: config.DefaultContextCritPct,
+		editor:         NewEditor(80, 24),
+		spinner:        NewSpinner(),
+		fileSearch:     NewFileSearchPopup(),
 	}
 	m.chat = NewChat(&main.Timeline, 20)
 	m.pending = NewPendingMessages(&m.pendingMessages)
@@ -585,7 +584,7 @@ func (m *Model) View() string {
 
 	// Input region (swappable slot).
 	if m.activeApproval != nil {
-		sections = append(sections, renderApprovalOverlay(m.activeApproval, m.winW))
+		sections = append(sections, renderApprovalOverlay(m.activeApproval, m.winW, m.focused))
 	} else if m.activeModal != nil {
 		modalLines := m.activeModal.Render(m.winW)
 		sections = append(sections, strings.Join(modalLines, "\n"))
