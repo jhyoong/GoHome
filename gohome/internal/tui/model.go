@@ -135,11 +135,11 @@ type Model struct {
 	configProjectPath string
 	configEditScope   string
 
-	// Approval overlay state (Task 11.9+).
+	// Approval overlay state.
 	// activeApproval is the prompt currently displayed in the input region.
-	// pendingApprovals maps sessionID -> prompt for non-focused sessions.
-	activeApproval   *approvalPrompt
-	pendingApprovals map[string]*approvalPrompt
+	// approvalQueue holds pending approvals in FIFO order (any session).
+	activeApproval *approvalPrompt
+	approvalQueue  []*approvalPrompt
 
 	// statusMsg is a transient message shown near the status bar (Task 11.14).
 	statusMsg string
@@ -200,7 +200,6 @@ func New(fe *Frontend, sessionID string) *Model {
 		contextWindow:    config.DefaultContextWindow,
 		contextWarnPct:   config.DefaultContextWarnPct,
 		contextCritPct:   config.DefaultContextCritPct,
-		pendingApprovals: make(map[string]*approvalPrompt),
 		editor:           NewEditor(80, 24),
 		spinner:          NewSpinner(),
 		fileSearch:       NewFileSearchPopup(),
