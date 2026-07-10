@@ -2,7 +2,6 @@ package tui_test
 
 import (
 	"bytes"
-	"strings"
 	"testing"
 	"time"
 
@@ -16,7 +15,7 @@ import (
 // when the model has a focused session with non-zero usage, a modelName, and
 // yolo mode enabled.
 func TestStatusBarContent(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	m.SetModelName("opus")
 	m.SetYolo(true)
 
@@ -50,7 +49,7 @@ func TestStatusBarContent(t *testing.T) {
 
 // TestStatusBarNoYolo verifies [YOLO] is absent when yolo is false.
 func TestStatusBarNoYolo(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	m.SetModelName("sonnet")
 	// yolo defaults to false
 
@@ -76,7 +75,7 @@ func TestStatusBarNoYolo(t *testing.T) {
 
 // TestStatusBarModelUnknown verifies "?" is shown when no modelName is set.
 func TestStatusBarModelUnknown(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	// modelName defaults to ""
 
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(120, 24))
@@ -87,38 +86,4 @@ func TestStatusBarModelUnknown(t *testing.T) {
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("?"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
-}
-
-// TestStatusBarShowsConfigName verifies the status bar shows "configName (modelName)"
-// when both are set and differ.
-func TestStatusBarShowsConfigName(t *testing.T) {
-	m := tui.New("")
-	m.SetConfigName("local-openai")
-	m.SetModelName("Studio-General")
-	m.SetGitContext("~/GoHome", "main")
-	bar := m.StatusBarForTest()
-	if !strings.Contains(bar, "local-openai") {
-		t.Errorf("status bar missing configName: %q", bar)
-	}
-	if !strings.Contains(bar, "(Studio-General)") {
-		t.Errorf("status bar missing modelName in parens: %q", bar)
-	}
-}
-
-// TestStatusBarShowsGitContext verifies the status bar includes project dir
-// and git branch when SetGitContext has been called.
-func TestStatusBarShowsGitContext(t *testing.T) {
-	m := tui.New("")
-	m.SetGitContext("~/GoHome", "main")
-	m.SetModelName("claude-opus-4")
-	bar := m.StatusBarForTest()
-	if !strings.Contains(bar, "~/GoHome") {
-		t.Errorf("status bar missing project dir: %q", bar)
-	}
-	if !strings.Contains(bar, "(main)") {
-		t.Errorf("status bar missing git branch: %q", bar)
-	}
-	if !strings.Contains(bar, "claude-opus-4") {
-		t.Errorf("status bar missing model name: %q", bar)
-	}
 }

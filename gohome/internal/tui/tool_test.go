@@ -14,7 +14,7 @@ import (
 // TestToolCallCollapsedLine sends EventToolCallDone + EventToolResult and
 // asserts the collapsed line shows the tool name.
 func TestToolCallCollapsedLine(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
@@ -41,7 +41,7 @@ func TestToolCallCollapsedLine(t *testing.T) {
 // TestToolCallExpansionToggle sends a tool event, moves cursor to it (Up with
 // empty input), presses Enter to expand, and asserts expanded content appears.
 func TestToolCallExpansionToggle(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
@@ -60,7 +60,7 @@ func TestToolCallExpansionToggle(t *testing.T) {
 		},
 	}})
 
-	// Wait for the collapsed line to appear (contextual format: "$ ls -la").
+	// Wait for the collapsed line to appear (shown as "$ ls -la").
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("$ ls -la"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))

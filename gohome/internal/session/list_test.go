@@ -170,7 +170,7 @@ func TestIsBlankTrue(t *testing.T) {
 	path := writeBlankJSONL(t, home, cwd, "blank1", now)
 	blank, err := isBlank(path)
 	if err != nil {
-		t.Fatalf("IsBlank: %v", err)
+		t.Fatalf("isBlank: %v", err)
 	}
 	if !blank {
 		t.Error("expected blank session to be blank")
@@ -184,7 +184,7 @@ func TestIsBlankFalse(t *testing.T) {
 	path := writeTestJSONL(t, home, cwd, "used1", now, "hello world")
 	blank, err := isBlank(path)
 	if err != nil {
-		t.Fatalf("IsBlank: %v", err)
+		t.Fatalf("isBlank: %v", err)
 	}
 	if blank {
 		t.Error("expected session with user_message to not be blank")
@@ -202,7 +202,7 @@ func TestCleanBlank(t *testing.T) {
 
 	removed, err := cleanBlank(home, cwd)
 	if err != nil {
-		t.Fatalf("CleanBlank: %v", err)
+		t.Fatalf("cleanBlank: %v", err)
 	}
 	if removed != 2 {
 		t.Errorf("expected 2 removed, got %d", removed)
@@ -230,7 +230,7 @@ func TestCleanBlankNoDir(t *testing.T) {
 	home := t.TempDir()
 	removed, err := cleanBlank(home, "/nonexistent/project")
 	if err != nil {
-		t.Fatalf("CleanBlank should not error on missing dir: %v", err)
+		t.Fatalf("cleanBlank should not error on missing dir: %v", err)
 	}
 	if removed != 0 {
 		t.Errorf("expected 0 removed, got %d", removed)

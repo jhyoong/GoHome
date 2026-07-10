@@ -30,7 +30,7 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 			if ctx.Err() != nil {
 				// Context was cancelled during Turn. Emit a frontend event but
 				// do NOT write session_end here — the writer's owner emits that.
-				a.Frontend().Emit(sess.ID, Event{
+				a.Frontend.Emit(sess.ID, Event{
 					Kind:       EventTurnDone,
 					SessionID:  sess.ID,
 					StopReason: "cancelled",
@@ -73,7 +73,7 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 			}
 
 			// Forward to Frontend.
-			a.Frontend().Emit(sess.ID, Event{
+			a.Frontend.Emit(sess.ID, Event{
 				Kind:       EventToolResult,
 				SessionID:  sess.ID,
 				ToolCallID: block.ToolUseID,
@@ -147,7 +147,7 @@ func (a *Agent) dispatchTool(
 	res, execErr := safeExecute(tctx, tool, input, tools.NullSink{})
 	elapsed = time.Since(start)
 	if execErr != nil {
-		return fmt.Sprintf("tool execution error: %v", execErr), true, elapsed
+		slog.Debug("tool execution error", "tool", block.ToolName, "err", execErr)
 	}
 	return res.Content, res.IsError, elapsed
 }

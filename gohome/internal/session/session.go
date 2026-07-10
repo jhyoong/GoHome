@@ -10,6 +10,16 @@ import (
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 )
 
+// NewID returns a random 8-character lowercase base32 session identifier.
+func NewID() string {
+	buf := make([]byte, 5)
+	if _, err := rand.Read(buf); err != nil {
+		panic("session.NewID: crypto/rand failed: " + err.Error())
+	}
+	enc := base32.StdEncoding.WithPadding(base32.NoPadding)
+	return strings.ToLower(enc.EncodeToString(buf))
+}
+
 // Session holds all state for one agent session.
 type Session struct {
 	ID          string
@@ -58,14 +68,4 @@ func (s *Session) HasRead(path string) bool {
 // CWD returns the working directory for this session.
 func (s *Session) CWD() string {
 	return s.cwd
-}
-
-// NewID generates an 8-char lowercase base32 session ID using crypto/rand.
-func NewID() string {
-	buf := make([]byte, 5) // 5 bytes -> 8 base32 chars (no padding)
-	if _, err := rand.Read(buf); err != nil {
-		panic("session.NewID: crypto/rand failed: " + err.Error())
-	}
-	enc := base32.StdEncoding.WithPadding(base32.NoPadding)
-	return strings.ToLower(enc.EncodeToString(buf))
 }

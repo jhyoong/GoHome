@@ -67,7 +67,6 @@ func TestSwapWhileBusy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// When busy, the swap is queued (session unchanged until DrainPending).
 	if st.Session().ID != "s1" {
 		t.Errorf("session should still be s1 while busy, got %q", st.Session().ID)
 	}

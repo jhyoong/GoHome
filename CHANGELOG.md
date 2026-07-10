@@ -1,69 +1,16 @@
 # Changelog
 
-## v0.3.1
-
-### Added
-
-- **Config overlay** -- New `/config` slash command opens a scrollable overlay showing all settings with source annotations (global, project, or default). Press `e` from the overlay to launch the settings file in an external editor (#24).
-- **Setup wizard** -- Interactive first-run wizard guides new users through creating `~/.gohome/settings.json` with wire protocol, endpoint URL, API key, and model name (#24).
-- **`--config` CLI flag** -- Prints the merged configuration and exits without starting the TUI, useful for verifying settings (#24).
-- **`reasoningEffort` model config field** -- New optional field wired through the daemon to the agent and sent as `reasoning_effort` on the OpenAI wire protocol for models like o1/o3. Free-form string passed through to the API as-is (#24).
-- **Config name in status bar** -- The status bar now shows the config key alongside the resolved model name when they differ (e.g., `local-openai (gpt-4o)`). Falls back to just the model name when the config key is empty or identical (#26).
-- **`session.connect` RPC** -- When a TUI client connects, it sends its working directory to the daemon so project-level settings are reloaded and merged, ensuring project-specific model configs are available even when the daemon started from a different directory (#26).
-
-### Fixed
-
-- **Agent params not updated on model switch** -- Switching models via `/model` now correctly updates `maxTokens`, `thinkingBudget`, and `reasoningEffort` on the running agent, not just the model name and client (#26).
+## v0.4.0
 
 ### Changed
 
-- **Streamlined approval overlay** -- Simplified the approval prompt from a verbose 4-line header to a single contextual summary line matching the timeline display format (e.g., `bash: git status`, `read: path/to/file`). Removed redundant `bashCommand` helper (#23).
-
-## v0.3.0
-
-### Added
-
-- **Daemon mode** -- The agent now runs as a background daemon process communicating with the TUI over JSON-RPC 2.0 on a Unix socket. The TUI is a thin client that sends input and receives events over the connection. Subagents run as goroutines in the daemon. Auto-shutdown after a configurable grace period (default 30s) when idle. New `--stop` flag shuts down a running daemon (#20).
-- **Contextual tool call headers** -- Replaced the generic `[tool]` prefix with contextual display: bash shows `$ cmd`, read/write/edit show file paths, subagent shows `subagent: prompt`.
-- **User message blocks** -- User messages now render with a full-width styled block (thick left border and background) instead of a plain `you:` prefix.
-- **Tool call visual grouping** -- Tool entries render inside styled blocks with a dark background and a color-coded left border: green for success, red for error, yellow for pending.
-- **Per-tool execution timing** -- Completed tool blocks show a "Took Xs" line with wall-clock execution time.
-- **Per-response performance stats** -- Each LLM response shows tokens per second, token counts, cache hits, and elapsed time.
-- **Status bar improvements** -- Status bar now shows the project directory and git branch instead of the session ID. When scrolled up, displays scroll position as "Ln X/Y (Z%)".
-- **Scroll improvements** -- Gradient fade effects on boundary lines for scroll overflow. Fixed scroll anchoring so PgUp/PgDown from auto-scroll mode works correctly. Arrow keys can scroll line-by-line within entries taller than the viewport (#21).
-- **Expand hint on truncated tool output** -- Truncated tool output now shows "... (N earlier lines, enter to expand)" below the preview.
-- **Markdown styling** -- Headings now render in cyan. Links styled with cyan color and OSC 8 hyperlink support.
-- **Uniform entry spacing** -- Blank-line separators between conversation turns for consistent visual rhythm.
-
-### Fixed
-
-- **Concurrent access races** -- Added mutex protection to `Guard.frontend` and `Agent.Frontend` for safe concurrent access during daemon operation.
-- **Session swap use-after-close panic** -- New writer is now opened before closing the old one to prevent use-after-close.
-- **RPC buffer size** -- Increased RPC scanner buffer to 1MB to handle large agent events without truncation.
-- **Blank-line gaps from whitespace-only LLM text** -- Whitespace-only text content from LLMs is now skipped instead of rendering as empty entries.
-- **Markdown trailing blank lines** -- Stripped trailing blank lines from markdown output to prevent double-spacing between entries.
-- **Border width layout overflow** -- Accounted for left border width in styled block layout, fixing spurious thin lines between turns.
-- **Ctrl+C hang** -- Cancellable context in `ClientFrontend` prevents hangs during spinner.
-- **Goroutine leaks on shutdown** -- Event and approval channels now close when `ReadLoop` exits.
-- **Approval prompt on session switch** -- Switching to a session with a pending approval now correctly shows the approval prompt.
-- **Non-blocking channel sends** -- Channel sends in `ClientFrontend` and daemon `Frontend` are non-blocking to prevent stalls.
-- **Whitelist persist error silenced** -- `_ = err` in `guard/check.go` replaced with `slog.Warn` (M8).
-- **Cross-platform snapshot tests** -- Fixed snapshot golden files using platform-specific temp paths that failed on Linux/Windows CI.
-
-### Changed
-
-- **Architecture: daemon-only** -- Replaced the monolithic in-process architecture with a daemon-client model. The old `tui.Frontend`, `inputCh`, and in-process agent paths have been removed. All agent communication flows through JSON-RPC (#20).
-- **Approval flow unified** -- `ApprovalReqMsg` and `ClientApprovalReqMsg` merged into a single type with a resolve callback, eliminating dual-path approval handling.
-- **Thinking content always inline** -- Thinking entries always display their content as dim italic text. The collapsed state for thinking has been removed.
-- **Session focus keys** -- Rebound session focus from `Ctrl+[/]` to `Ctrl+Left/Right` to avoid conflict with Esc (ASCII 0x1B).
-- **`server.go` decomposed** -- Extracted handlers, dispatch, and loop logic into separate files for maintainability.
-- **Dead code cleanup** -- Removed unused fields (`homeDir`, `cwd` from `Model`; `Timeline`, `PendingApproval` from `SessionStateParams`), unused `EventToolCallStart` constant, unused `Pending.Call` method, and inlined type aliases. Replaced `dirOf` with `filepath.Dir` (L3). Deduplicated `newSessionID` into `session.NewID()` (M6). Narrowed `Frontend.AwaitUserInput` by removing unused `sessionID` parameter (M7).
+- **Architecture: restored in-process** -- Removed the daemon-client model introduced in v0.3.0. The agent now runs in the same process as the TUI with direct channel communication, eliminating Unix socket dependency, RPC serialization overhead, and associated concurrency bugs. Windows support is restored.
+- **In-process model switching** -- /model command rebuilds the LLM client directly in-process instead of routing through daemon RPC. Agent params (maxTokens, thinkingBudget, reasoningEffort) are updated immediately.
 
 ### Removed
 
-- **`tui.Frontend` struct** -- Dead code since daemon migration; all communication now flows through `ClientFrontend` and daemon `RPCFrontend`.
-- **Gutter scrollbar** -- Replaced by status bar scroll indicator and gradient fade effects.
-- **Old plan documents** -- Removed design and implementation plan docs that were completed.
+- **Daemon mode** -- Removed daemon server, JSON-RPC protocol, Unix socket communication, RPCFrontend, ClientFrontend, and --stop CLI flag.
+- **--stop CLI flag** -- No daemon to stop.
 
 ## v0.2.5
 

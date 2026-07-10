@@ -3,12 +3,9 @@ package tui
 import (
 	"strings"
 	"testing"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
-	"github.com/muesli/termenv"
 )
 
 func TestChatRenderUserMessage(t *testing.T) {
@@ -41,7 +38,7 @@ func TestChatRenderToolCollapsed(t *testing.T) {
 	lines := c.Render(80)
 	joined := StripAnsi(strings.Join(lines, "\n"))
 	if !strings.Contains(joined, "$ ls") {
-		t.Errorf("tool summary missing: %q", joined)
+		t.Errorf("contextual tool display missing: %q", joined)
 	}
 }
 
@@ -75,9 +72,9 @@ func TestToolStatusPending(t *testing.T) {
 	}}
 	c := NewChat(&entries, 20)
 	lines := c.Render(80)
-	joined := strings.Join(lines, "\n")
+	joined := StripAnsi(strings.Join(lines, "\n"))
 	if !strings.Contains(joined, "$ ls") {
-		t.Errorf("tool summary not found: %q", joined)
+		t.Errorf("contextual tool display not found: %q", joined)
 	}
 }
 
@@ -91,9 +88,9 @@ func TestToolStatusSuccess(t *testing.T) {
 	}}
 	c := NewChat(&entries, 20)
 	lines := c.Render(80)
-	joined := strings.Join(lines, "\n")
+	joined := StripAnsi(strings.Join(lines, "\n"))
 	if !strings.Contains(joined, "$ ls") {
-		t.Errorf("tool summary not found: %q", joined)
+		t.Errorf("contextual tool display not found: %q", joined)
 	}
 }
 
@@ -113,31 +110,27 @@ func TestToolStatusError(t *testing.T) {
 	}
 }
 
-func TestChatRenderThinkingAlwaysVisible(t *testing.T) {
+func TestChatRenderThinkingInline(t *testing.T) {
 	entries := []TimelineEntry{{Kind: KindThinking, Text: "Let me reason\nabout this\nstep by step."}}
 	c := NewChat(&entries, 20)
 	lines := c.Render(80)
 	joined := StripAnsi(strings.Join(lines, "\n"))
-	// Content should always be visible inline (no collapsed label).
+	// Thinking content is now always shown inline (dim italic), not collapsed.
 	if !strings.Contains(joined, "Let me reason") {
-		t.Errorf("thinking content not visible: %q", joined)
+		t.Errorf("thinking content missing: %q", joined)
 	}
 	if !strings.Contains(joined, "step by step") {
-		t.Errorf("thinking content not fully visible: %q", joined)
-	}
-	if strings.Contains(joined, "Thinking...") {
-		t.Errorf("should not contain collapsed label: %q", joined)
+		t.Errorf("thinking content continuation missing: %q", joined)
 	}
 }
 
-func TestChatRenderThinkingAlwaysVisibleRegardlessOfExpanded(t *testing.T) {
-	// Expanded field is ignored for KindThinking; content always shown.
+func TestChatRenderThinkingExpanded(t *testing.T) {
 	entries := []TimelineEntry{{Kind: KindThinking, Text: "Step 1: analyze\nStep 2: solve", Expanded: true}}
 	c := NewChat(&entries, 20)
 	lines := c.Render(80)
 	joined := StripAnsi(strings.Join(lines, "\n"))
 	if !strings.Contains(joined, "Step 1") {
-		t.Errorf("thinking content missing: %q", joined)
+		t.Errorf("expanded thinking content missing: %q", joined)
 	}
 }
 
@@ -266,275 +259,13 @@ func TestCountLinesCacheBehavior(t *testing.T) {
 	}
 }
 
-func TestRenderToolSummary(t *testing.T) {
-	tests := []struct {
-		name     string
-		entry    TimelineEntry
-		maxWidth int
-		wantSub  string // substring expected in stripped output
-	}{
-		{
-			name: "bash command",
-			entry: TimelineEntry{
-				Kind:       KindTool,
-				ToolName:   "bash",
-				Text:       `{"command":"ls -la"}`,
-				ToolResult: "27 lines",
-				Status:     "success",
-			},
-			maxWidth: 80,
-			wantSub:  "$ ls -la -> 27 lines",
-		},
-		{
-			name: "read file_path",
-			entry: TimelineEntry{
-				Kind:       KindTool,
-				ToolName:   "read",
-				Text:       `{"file_path":"/src/main.go"}`,
-				ToolResult: "200 lines",
-				Status:     "success",
-			},
-			maxWidth: 80,
-			wantSub:  "/src/main.go -> 200 lines",
-		},
-		{
-			name: "write file_path",
-			entry: TimelineEntry{
-				Kind:       KindTool,
-				ToolName:   "write",
-				Text:       `{"file_path":"/tmp/out.txt","content":"hello"}`,
-				ToolResult: "ok",
-				Status:     "success",
-			},
-			maxWidth: 80,
-			wantSub:  "write /tmp/out.txt -> ok",
-		},
-		{
-			name: "edit file_path",
-			entry: TimelineEntry{
-				Kind:       KindTool,
-				ToolName:   "edit",
-				Text:       `{"file_path":"/src/foo.go","old_string":"a","new_string":"b"}`,
-				ToolResult: "applied",
-				Status:     "success",
-			},
-			maxWidth: 80,
-			wantSub:  "edit /src/foo.go -> applied",
-		},
-		{
-			name: "subagent prompt",
-			entry: TimelineEntry{
-				Kind:       KindTool,
-				ToolName:   "subagent",
-				Text:       `{"prompt":"Refactor the logging module"}`,
-				ToolResult: "done",
-				Status:     "success",
-			},
-			maxWidth: 80,
-			wantSub:  "subagent: Refactor the logging module -> done",
-		},
-		{
-			name: "unknown tool",
-			entry: TimelineEntry{
-				Kind:       KindTool,
-				ToolName:   "custom_tool",
-				Text:       `{"query":"find stuff"}`,
-				ToolResult: "3 results",
-				Status:     "success",
-			},
-			maxWidth: 80,
-			wantSub:  "custom_tool:",
-		},
-		{
-			name: "invalid json fallback",
-			entry: TimelineEntry{
-				Kind:       KindTool,
-				ToolName:   "bash",
-				Text:       `not valid json`,
-				ToolResult: "error",
-				Status:     "error",
-			},
-			maxWidth: 80,
-			wantSub:  "$ not valid json -> ERROR: error",
-		},
-		{
-			name: "error status",
-			entry: TimelineEntry{
-				Kind:       KindTool,
-				ToolName:   "bash",
-				Text:       `{"command":"rm -rf /"}`,
-				ToolResult: "permission denied",
-				Status:     "error",
-			},
-			maxWidth: 80,
-			wantSub:  "$ rm -rf / -> ERROR: permission denied",
-		},
-		{
-			name: "pending status no result",
-			entry: TimelineEntry{
-				Kind:     KindTool,
-				ToolName: "bash",
-				Text:     `{"command":"sleep 10"}`,
-				Status:   "pending",
-			},
-			maxWidth: 80,
-			wantSub:  "$ sleep 10",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := StripAnsi(renderToolSummary(tt.entry, tt.maxWidth))
-			if !strings.Contains(got, tt.wantSub) {
-				t.Errorf("renderToolSummary() = %q, want substring %q", got, tt.wantSub)
-			}
-		})
-	}
-}
-
-func TestExtractToolArg(t *testing.T) {
-	tests := []struct {
-		name     string
-		toolName string
-		input    string
-		want     string
-	}{
-		{"bash", "bash", `{"command":"echo hi"}`, "echo hi"},
-		{"read", "read", `{"file_path":"/foo/bar.go"}`, "/foo/bar.go"},
-		{"write", "write", `{"file_path":"/x.txt","content":"data"}`, "/x.txt"},
-		{"edit", "edit", `{"file_path":"/a.go","old_string":"x","new_string":"y"}`, "/a.go"},
-		{"subagent", "subagent", `{"prompt":"do thing"}`, "do thing"},
-		{"unknown", "grep", `{"pattern":"foo"}`, `{"pattern":"foo"}`},
-		{"invalid json", "bash", `not json`, "not json"},
-		{"empty", "bash", "", ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := extractToolArg(tt.toolName, tt.input)
-			if got != tt.want {
-				t.Errorf("extractToolArg(%q, %q) = %q, want %q", tt.toolName, tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestExpandHintOnTruncatedOutput(t *testing.T) {
-	// 6-line result: preview shows last 3 lines + hint showing "3 earlier lines"
-	entries := []TimelineEntry{{
-		Kind:       KindTool,
-		ToolName:   "bash",
-		Text:       `{"command":"find ."}`,
-		ToolResult: "line1\nline2\nline3\nline4\nline5\nline6",
-		Status:     "success",
-	}}
-	c := NewChat(&entries, 20)
-	lines := c.Render(80)
-	joined := StripAnsi(strings.Join(lines, "\n"))
-	if !strings.Contains(joined, "... (3 earlier lines, enter to expand)") {
-		t.Errorf("expected expand hint with 3 earlier lines, got:\n%s", joined)
-	}
-}
-
-func TestExpandHintOnTruncatedOutput_Shadow(t *testing.T) {
-	// Shadow entry with 5-line result: preview shows last 3 + hint "2 earlier lines"
-	entries := []TimelineEntry{{
-		Kind:       KindTool,
-		ToolName:   "bash",
-		Text:       `{"command":"ls"}`,
-		ToolResult: "a\nb\nc\nd\ne",
-		Status:     "success",
-		Shadow:     true,
-	}}
-	c := NewChat(&entries, 20)
-	lines := c.Render(80)
-	joined := StripAnsi(strings.Join(lines, "\n"))
-	if !strings.Contains(joined, "... (2 earlier lines, enter to expand)") {
-		t.Errorf("expected expand hint with 2 earlier lines for shadow entry, got:\n%s", joined)
-	}
-}
-
-func TestNoExpandHintWhenFewLines(t *testing.T) {
-	// 3-line result: all 3 lines shown in preview, no hint needed
-	entries := []TimelineEntry{{
-		Kind:       KindTool,
-		ToolName:   "bash",
-		Text:       `{"command":"ls"}`,
-		ToolResult: "line1\nline2\nline3",
-		Status:     "success",
-	}}
-	c := NewChat(&entries, 20)
-	lines := c.Render(80)
-	joined := StripAnsi(strings.Join(lines, "\n"))
-	if strings.Contains(joined, "earlier lines") {
-		t.Errorf("should NOT show expand hint for result with <= maxPreviewLines lines, got:\n%s", joined)
-	}
-}
-
-func TestNoExpandHintWhenSingleLine(t *testing.T) {
-	// 1-line result: no preview at all, no hint
-	entries := []TimelineEntry{{
-		Kind:       KindTool,
-		ToolName:   "bash",
-		Text:       `{"command":"echo hi"}`,
-		ToolResult: "hi",
-		Status:     "success",
-	}}
-	c := NewChat(&entries, 20)
-	lines := c.Render(80)
-	joined := StripAnsi(strings.Join(lines, "\n"))
-	if strings.Contains(joined, "earlier lines") {
-		t.Errorf("should NOT show expand hint for single-line result, got:\n%s", joined)
-	}
-}
-
-func TestExpandHintLineCount(t *testing.T) {
-	// Verify entryLineCount accounts for the hint line
-	entries := []TimelineEntry{{
-		Kind:       KindTool,
-		ToolName:   "bash",
-		Text:       `{"command":"find ."}`,
-		ToolResult: "line1\nline2\nline3\nline4\nline5\nline6",
-		Status:     "success",
-	}}
-	c := NewChat(&entries, 40)
-	lines := c.Render(80)
-	// 1 (header) + 3 (preview lines) + 1 (hint) = 5
-	if len(lines) != 5 {
-		t.Errorf("expected 5 lines (header + 3 preview + hint), got %d: %v", len(lines), lines)
-	}
-}
-
-func TestToolBlockHasBackground(t *testing.T) {
-	// Enable ANSI256 color profile for this test so lipgloss emits
-	// background escape sequences. Restore the original profile afterward.
-	lipgloss.SetColorProfile(termenv.ANSI256)
-	defer lipgloss.SetColorProfile(termenv.Ascii)
-
-	entries := []TimelineEntry{{
-		Kind:       KindTool,
-		ToolName:   "bash",
-		Text:       `{"command":"ls"}`,
-		ToolResult: "file1.txt\nfile2.txt\nfile3.txt",
-		Status:     "success",
-	}}
-	c := NewChat(&entries, 20)
-	lines := c.Render(80)
-	joined := strings.Join(lines, "\n")
-	// The tool block should have a background color applied (color 235).
-	// lipgloss renders backgrounds as ANSI 48;5;N sequences.
-	if !strings.Contains(joined, "48;5;235") {
-		t.Errorf("tool block missing background tint; output:\n%s", joined)
-	}
-}
-
 func TestRenderThrottle_SkipsIntermediateRebuilds(t *testing.T) {
-	m := New("main")
+	m := New(nil, "main")
 	m.SetRenderThrottleMs(100)
 	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 
 	// Send first token delta -- should render immediately (lastRenderTime is zero).
-	model1, _ := m.Update(AgentEventMsg{SessionID: "main", Ev: agent.Event{
+	model1, _ := m.Update(agentEventMsg{SessionID: "main", Ev: agent.Event{
 		Kind:      agent.EventTokenDelta,
 		SessionID: "main",
 		TextDelta: "Hello ",
@@ -543,7 +274,7 @@ func TestRenderThrottle_SkipsIntermediateRebuilds(t *testing.T) {
 
 	// Send second token delta immediately -- should be throttled because
 	// less than 100ms has elapsed since the first render.
-	model2, cmd2 := m1.Update(AgentEventMsg{SessionID: "main", Ev: agent.Event{
+	model2, cmd2 := m1.Update(agentEventMsg{SessionID: "main", Ev: agent.Event{
 		Kind:      agent.EventTokenDelta,
 		SessionID: "main",
 		TextDelta: "world",
@@ -567,363 +298,5 @@ func TestRenderThrottle_SkipsIntermediateRebuilds(t *testing.T) {
 	last := sv.Timeline[len(sv.Timeline)-1]
 	if last.Text != "Hello world" {
 		t.Errorf("text: got %q, want %q", last.Text, "Hello world")
-	}
-}
-
-func TestFormatTurnStats(t *testing.T) {
-	s := &TurnStatsData{
-		TPS:              42.1,
-		OutputTokens:     1200,
-		InputTokens:      3400,
-		CacheReadTokens:  2100,
-		CacheWriteTokens: 0,
-		Elapsed:          8300 * time.Millisecond,
-	}
-	got := formatTurnStats(s)
-	if !strings.Contains(got, "42.1 TPS") {
-		t.Errorf("missing TPS: %q", got)
-	}
-	if !strings.Contains(got, "1.2k output") {
-		t.Errorf("missing output tokens: %q", got)
-	}
-	if !strings.Contains(got, "2.1k cached") {
-		t.Errorf("missing cache: %q", got)
-	}
-	if !strings.Contains(got, "8.3s") {
-		t.Errorf("missing elapsed: %q", got)
-	}
-}
-
-func TestWhitespaceOnlyAssistantProducesNoLines(t *testing.T) {
-	cases := []struct {
-		name string
-		text string
-	}{
-		{"newlines", "\n\n\n"},
-		{"double_newline", "\n\n"},
-		{"spaces_and_newlines", "  \n  \n"},
-		{"spaces_only", "   "},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			entries := []TimelineEntry{{Kind: KindAssistant, Text: tc.text}}
-			c := NewChat(&entries, 20)
-			lines := c.Render(80)
-			if len(lines) != 0 {
-				t.Errorf("whitespace-only assistant text %q produced %d lines, want 0: %q",
-					tc.text, len(lines), lines)
-			}
-		})
-	}
-}
-
-func TestWhitespaceOnlyThinkingProducesNoLines(t *testing.T) {
-	cases := []struct {
-		name string
-		text string
-	}{
-		{"newlines", "\n\n\n"},
-		{"single_newline", "\n"},
-		{"spaces_only", "   "},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			entries := []TimelineEntry{{Kind: KindThinking, Text: tc.text}}
-			c := NewChat(&entries, 20)
-			lines := c.Render(80)
-			if len(lines) != 0 {
-				t.Errorf("whitespace-only thinking text %q produced %d lines, want 0: %q",
-					tc.text, len(lines), lines)
-			}
-		})
-	}
-}
-
-func TestThinkingLeadingNewlinesStripped(t *testing.T) {
-	entries := []TimelineEntry{{Kind: KindThinking, Text: "\n\nActual thinking content"}}
-	c := NewChat(&entries, 20)
-	lines := c.Render(80)
-	if len(lines) != 1 {
-		t.Errorf("expected 1 line, got %d: %q", len(lines), lines)
-	}
-	plain := StripAnsi(strings.Join(lines, "\n"))
-	if strings.HasPrefix(strings.TrimLeft(plain, "> "), "\n") {
-		t.Errorf("leading blank line not stripped: %q", lines)
-	}
-}
-
-func TestCountLinesIncludesSeparators(t *testing.T) {
-	entries := []TimelineEntry{
-		{Kind: KindUser, Text: "hello"},
-		{Kind: KindAssistant, Text: "world"},
-		{Kind: KindUser, Text: "again"},
-	}
-	c := NewChat(&entries, 40)
-	// Each entry = 1 content line.
-	// 2 separators (before entries 1 and 2) = 2 blank lines.
-	// Total = 3 + 2 = 5.
-	got := c.countLines(80)
-	if got != 5 {
-		t.Errorf("countLines = %d, want 5 (3 entries + 2 separators)", got)
-	}
-}
-
-func TestEnsureCursorVisibleAccountsForSeparators(t *testing.T) {
-	// 5 user entries, then 1 assistant entry at index 5.
-	// Each entry after the first gets a separator blank line.
-	// cursorTop for entry 5 = 5 content lines + 5 separators = 10.
-	var entries []TimelineEntry
-	for i := 0; i < 5; i++ {
-		entries = append(entries, TimelineEntry{Kind: KindUser, Text: "msg"})
-	}
-	entries = append(entries, TimelineEntry{Kind: KindAssistant, Text: "reply"})
-
-	c := NewChat(&entries, 4) // viewport = 4 lines
-	c.SetCursor(5)
-	c.autoScroll = false
-	c.scrollTop = 0
-	c.EnsureCursorVisible(80)
-
-	// scrollTop = 10 + 1 - 4 = 7.
-	if c.scrollTop != 7 {
-		t.Errorf("scrollTop = %d, want 7 (accounting for separators)", c.scrollTop)
-	}
-}
-
-func TestRenderInsertsSeparatorBetweenEntries(t *testing.T) {
-	entries := []TimelineEntry{
-		{Kind: KindUser, Text: "hello"},
-		{Kind: KindAssistant, Text: "reply"},
-		{Kind: KindUser, Text: "follow-up"},
-	}
-	c := NewChat(&entries, 40)
-	lines := c.Render(80)
-	// 3 content lines + 2 separators = 5 total.
-	if len(lines) != 5 {
-		t.Fatalf("got %d lines, want 5 (3 content + 2 separators)", len(lines))
-	}
-	// Lines at index 1 and 3 should be blank separators.
-	plain := StripAnsi(lines[1])
-	if strings.TrimSpace(plain) != "" {
-		t.Errorf("line[1] should be blank separator, got %q", plain)
-	}
-	plain3 := StripAnsi(lines[3])
-	if strings.TrimSpace(plain3) != "" {
-		t.Errorf("line[3] should be blank separator, got %q", plain3)
-	}
-}
-
-func TestNoSeparatorAroundNotice(t *testing.T) {
-	entries := []TimelineEntry{
-		{Kind: KindUser, Text: "hello"},
-		{Kind: KindNotice, Text: "reconnected"},
-		{Kind: KindAssistant, Text: "reply"},
-	}
-	c := NewChat(&entries, 40)
-	lines := c.Render(80)
-	// 3 entries + 2 separators = 5 total.
-	if len(lines) != 5 {
-		t.Errorf("got %d lines, want 5", len(lines))
-	}
-}
-
-func TestNoSeparatorBetweenConsecutiveAssistantEntries(t *testing.T) {
-	entries := []TimelineEntry{
-		{Kind: KindAssistant, Text: "first"},
-		{Kind: KindAssistant, Text: "second"},
-		{Kind: KindAssistant, Text: "third"},
-	}
-	c := NewChat(&entries, 40)
-	lines := c.Render(80)
-	// 3 content lines, no separators (consecutive assistant entries merge visually).
-	if len(lines) != 3 {
-		t.Fatalf("got %d lines, want 3 (no separators between same-kind assistant)", len(lines))
-	}
-}
-
-func TestNoSeparatorBetweenAssistantEntriesSplitByEmptyThinking(t *testing.T) {
-	entries := []TimelineEntry{
-		{Kind: KindAssistant, Text: "first paragraph"},
-		{Kind: KindThinking, Text: "\n"},
-		{Kind: KindAssistant, Text: "second paragraph"},
-	}
-	c := NewChat(&entries, 40)
-	lines := c.Render(80)
-	// 2 content lines, no separators (thinking is empty, assistant entries are consecutive visible).
-	if len(lines) != 2 {
-		t.Fatalf("got %d lines, want 2 (empty thinking should not split assistant)", len(lines))
-	}
-}
-
-func TestSeparatorBetweenSameKindToolEntries(t *testing.T) {
-	entries := []TimelineEntry{
-		{Kind: KindTool, ToolName: "bash", Text: `{"command":"ls"}`, Status: "success", ToolResult: "file1"},
-		{Kind: KindTool, ToolName: "bash", Text: `{"command":"pwd"}`, Status: "success", ToolResult: "/home"},
-	}
-	c := NewChat(&entries, 40)
-	lines := c.Render(80)
-	// Tool entries always get separators even when consecutive.
-	hasBlank := false
-	for _, l := range lines {
-		if strings.TrimSpace(StripAnsi(l)) == "" {
-			hasBlank = true
-			break
-		}
-	}
-	if !hasBlank {
-		t.Errorf("expected blank separator between consecutive tool entries")
-	}
-}
-
-func TestScrollInfoReturnsPosition(t *testing.T) {
-	var entries []TimelineEntry
-	for i := 0; i < 20; i++ {
-		entries = append(entries, TimelineEntry{Kind: KindUser, Text: "line"})
-	}
-	c := NewChat(&entries, 10)
-
-	// Auto-scroll: position should be at the end (viewport bottom = totalLines).
-	currentLine, totalLines := c.ScrollInfo(80)
-	if totalLines <= 10 {
-		t.Fatalf("totalLines = %d, want > 10", totalLines)
-	}
-	if currentLine != totalLines {
-		t.Errorf("currentLine = %d, want %d (auto-scroll shows bottom of viewport)", currentLine, totalLines)
-	}
-
-	// Scroll to top: viewport bottom = maxHeight (10).
-	c.autoScroll = false
-	c.scrollTop = 0
-	currentLine, _ = c.ScrollInfo(80)
-	if currentLine != 10 {
-		t.Errorf("currentLine = %d, want 10 (viewport bottom at top)", currentLine)
-	}
-
-	// Cursor on last entry: position should equal totalLines (100%).
-	c.cursor = len(entries) - 1
-	currentLine, _ = c.ScrollInfo(80)
-	if currentLine != totalLines {
-		t.Errorf("currentLine = %d, want %d (cursor on last entry)", currentLine, totalLines)
-	}
-
-	// Cursor on first entry.
-	c.cursor = 0
-	currentLine, _ = c.ScrollInfo(80)
-	if currentLine <= 0 {
-		t.Errorf("currentLine = %d, want > 0 (cursor on first entry)", currentLine)
-	}
-	if currentLine >= totalLines {
-		t.Errorf("currentLine = %d, want < %d (cursor on first entry)", currentLine, totalLines)
-	}
-}
-
-func TestStatusBarShowsScrollPosition(t *testing.T) {
-	m := New("main")
-	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
-
-	sv := m.Sessions()["main"]
-	for i := 0; i < 50; i++ {
-		sv.Timeline = append(sv.Timeline, TimelineEntry{Kind: KindUser, Text: "message"})
-	}
-
-	// Scroll up to disable auto-scroll.
-	m.Sessions()["main"] = sv
-	m.Update(tea.KeyMsg{Type: tea.KeyPgUp})
-
-	bar := m.StatusBarForTest()
-	plain := StripAnsi(bar)
-	if !strings.Contains(plain, "Ln ") {
-		t.Errorf("status bar should show scroll position when scrolled up, got: %q", plain)
-	}
-}
-
-func TestStatusBarHidesScrollPositionAtBottom(t *testing.T) {
-	m := New("main")
-	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
-
-	sv := m.Sessions()["main"]
-	for i := 0; i < 50; i++ {
-		sv.Timeline = append(sv.Timeline, TimelineEntry{Kind: KindUser, Text: "message"})
-	}
-	m.Sessions()["main"] = sv
-
-	bar := m.StatusBarForTest()
-	plain := StripAnsi(bar)
-	if strings.Contains(plain, "Ln ") {
-		t.Errorf("status bar should NOT show scroll position at bottom, got: %q", plain)
-	}
-}
-
-func TestGradientFadeAtTop(t *testing.T) {
-	var entries []TimelineEntry
-	for i := 0; i < 20; i++ {
-		entries = append(entries, TimelineEntry{Kind: KindUser, Text: "line"})
-	}
-	c := NewChat(&entries, 10)
-	c.autoScroll = false
-	c.scrollTop = 5
-	lines := c.Render(80)
-	if len(lines) == 0 {
-		t.Fatal("expected non-empty render")
-	}
-	// First line should have dim ANSI prefix when there is content above.
-	if !strings.HasPrefix(lines[0], ansiDim) {
-		t.Errorf("first line should be dimmed when content above, got: %q", lines[0])
-	}
-	// Last line should also be dimmed since content extends below.
-	if !strings.HasPrefix(lines[len(lines)-1], ansiDim) {
-		t.Errorf("last line should be dimmed when content below, got: %q", lines[len(lines)-1])
-	}
-}
-
-func TestGradientFadeAtBottom(t *testing.T) {
-	var entries []TimelineEntry
-	for i := 0; i < 20; i++ {
-		entries = append(entries, TimelineEntry{Kind: KindUser, Text: "line"})
-	}
-	c := NewChat(&entries, 10)
-	// Auto-scroll = at the bottom. Content above exists, content below does not.
-	lines := c.Render(80)
-	if len(lines) == 0 {
-		t.Fatal("expected non-empty render")
-	}
-	// First line dimmed (content above).
-	if !strings.HasPrefix(lines[0], ansiDim) {
-		t.Errorf("first line should be dimmed when content above, got: %q", lines[0])
-	}
-	// Last line NOT dimmed (at bottom, no content below).
-	if strings.HasPrefix(lines[len(lines)-1], ansiDim) {
-		t.Errorf("last line should NOT be dimmed at bottom, got: %q", lines[len(lines)-1])
-	}
-}
-
-func TestNoGradientFadeWhenContentFits(t *testing.T) {
-	entries := []TimelineEntry{
-		{Kind: KindUser, Text: "hello"},
-		{Kind: KindAssistant, Text: "world"},
-	}
-	c := NewChat(&entries, 40)
-	lines := c.Render(80)
-	for i, l := range lines {
-		if strings.HasPrefix(l, ansiDim) {
-			t.Errorf("line[%d] should NOT be dimmed when all content fits, got: %q", i, l)
-		}
-	}
-}
-
-func TestFormatDuration(t *testing.T) {
-	tests := []struct {
-		d    time.Duration
-		want string
-	}{
-		{500 * time.Millisecond, "500ms"},
-		{1500 * time.Millisecond, "1.5s"},
-		{30 * time.Second, "30.0s"},
-	}
-	for _, tt := range tests {
-		got := formatDuration(tt.d)
-		if got != tt.want {
-			t.Errorf("formatDuration(%v) = %q, want %q", tt.d, got, tt.want)
-		}
 	}
 }

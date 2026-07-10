@@ -80,6 +80,7 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 	childAgent := &Agent{
 		Tools:           a.Tools.Without("subagent"),
 		Guard:           a.Guard,
+		Frontend:        a.Frontend,
 		State:           NewSessionState(child, cw, a.State.Client()),
 		System:          sys,
 		MaxTokens:       a.MaxTokens,
@@ -87,10 +88,9 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 		ReasoningEffort: a.ReasoningEffort,
 		Home:            a.Home,
 	}
-	childAgent.SetFrontend(a.Frontend())
 
 	// Notify the frontend that a new child session has started.
-	a.Frontend().Emit(childID, Event{
+	a.Frontend.Emit(childID, Event{
 		Kind:      EventSessionStarted,
 		SessionID: childID,
 	})
@@ -113,7 +113,7 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 		endReason = "cancelled"
 	}
 
-	a.Frontend().Emit(childID, Event{
+	a.Frontend.Emit(childID, Event{
 		Kind:      EventSessionEnded,
 		SessionID: childID,
 		EndReason: endReason,

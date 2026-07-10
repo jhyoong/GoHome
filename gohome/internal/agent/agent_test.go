@@ -20,12 +20,12 @@ func TestAgentStructFields(t *testing.T) {
 	var g *guard.Guard
 	var fe Frontend
 	a := &Agent{
-		Tools:  reg,
-		Guard:  g,
-		State:  NewSessionState(nil, nil, nil),
-		System: "you are an assistant",
+		Tools:    reg,
+		Guard:    g,
+		Frontend: fe,
+		State:    NewSessionState(nil, nil, nil),
+		System:   "you are an assistant",
 	}
-	a.SetFrontend(fe)
 	if a.System != "you are an assistant" {
 		t.Errorf("System field: got %q", a.System)
 	}

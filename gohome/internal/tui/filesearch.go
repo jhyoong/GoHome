@@ -28,7 +28,7 @@ type ScoredResult struct {
 }
 
 // FileSearchResultMsg is sent when fd/find results arrive.
-// Exported so tui_test (external package) can construct it.
+// Exported so tui_test (external package) can construct it for Task 7 tests.
 type FileSearchResultMsg struct {
 	Query   string
 	Results []ScoredResult

@@ -13,7 +13,7 @@ import (
 // events until the turn ends (EventTurnDone) or an error occurs.
 //
 // It mutates sess.History by appending the assistant message, persists an
-// AssistantMessage to a.Writer (if non-nil), and forwards events to a.Frontend().
+// AssistantMessage to a.Writer (if non-nil), and forwards events to a.Frontend.
 //
 // Returns the stopReason string (e.g. "end_turn", "tool_use") or an error if
 // the stream failed. A cancelled context causes the event loop to stop early;
@@ -63,7 +63,7 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, error)
 			switch ev.Kind {
 			case common.EventTextDelta:
 				textBuf += ev.TextDelta
-				a.Frontend().Emit(sess.ID, Event{
+				a.Frontend.Emit(sess.ID, Event{
 					Kind:      EventTokenDelta,
 					SessionID: sess.ID,
 					TextDelta: ev.TextDelta,
@@ -71,7 +71,7 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, error)
 
 			case common.EventThinkingDelta:
 				thinkingBuf += ev.ThinkingDelta
-				a.Frontend().Emit(sess.ID, Event{
+				a.Frontend.Emit(sess.ID, Event{
 					Kind:          EventThinkingDelta,
 					SessionID:     sess.ID,
 					ThinkingDelta: ev.ThinkingDelta,
@@ -79,7 +79,7 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, error)
 
 			case common.EventThinkingDone:
 				thinkingSig = ev.Signature
-				a.Frontend().Emit(sess.ID, Event{
+				a.Frontend.Emit(sess.ID, Event{
 					Kind:      EventThinkingDone,
 					SessionID: sess.ID,
 				})
@@ -91,7 +91,7 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, error)
 					ToolName:  ev.ToolName,
 					InputJSON: ev.InputJSON,
 				})
-				a.Frontend().Emit(sess.ID, Event{
+				a.Frontend.Emit(sess.ID, Event{
 					Kind:       EventToolCallDone,
 					SessionID:  sess.ID,
 					ToolCallID: ev.ToolCallID,
@@ -105,7 +105,7 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, error)
 				goto done
 
 			case common.EventError:
-				a.Frontend().Emit(sess.ID, Event{
+				a.Frontend.Emit(sess.ID, Event{
 					Kind:       EventError,
 					SessionID:  sess.ID,
 					Err:        ev.Err,
@@ -122,6 +122,8 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, error)
 	}
 
 done:
+	elapsed := time.Since(start)
+
 	// Build the assistant message: thinking block first, then text, then tool_use blocks.
 	var blocks []common.Block
 	if thinkingBuf != "" {
@@ -152,15 +154,7 @@ done:
 		}
 	}
 
-	// Forward usage and turn_done events regardless of content — the Run loop
-	// must always see EventTurnDone to know when to proceed.
-	if usage != nil {
-		a.Frontend().Emit(sess.ID, Event{
-			Kind:      EventUsageUpdated,
-			SessionID: sess.ID,
-			Usage:     usage,
-		})
-	}
+	// Build turn stats from usage and elapsed time.
 	var stats *TurnStats
 	if usage != nil {
 		stats = &TurnStats{
@@ -168,10 +162,20 @@ done:
 			InputTokens:      usage.InputTokens,
 			CacheReadTokens:  usage.CacheReadTokens,
 			CacheWriteTokens: usage.CacheWriteTokens,
-			Elapsed:          time.Since(start),
+			Elapsed:          elapsed,
 		}
 	}
-	a.Frontend().Emit(sess.ID, Event{
+
+	// Forward usage and turn_done events regardless of content — the Run loop
+	// must always see EventTurnDone to know when to proceed.
+	if usage != nil {
+		a.Frontend.Emit(sess.ID, Event{
+			Kind:      EventUsageUpdated,
+			SessionID: sess.ID,
+			Usage:     usage,
+		})
+	}
+	a.Frontend.Emit(sess.ID, Event{
 		Kind:       EventTurnDone,
 		SessionID:  sess.ID,
 		StopReason: stopReason,

@@ -76,7 +76,7 @@ type SessionView struct {
 	Completed bool
 	Usage     common.Usage
 
-	// Context-fullness warning sentinels.
+	// Context-fullness warning sentinels (Task 11.16).
 	warned80 bool
 	warned95 bool
 }
@@ -98,12 +98,16 @@ type Model struct {
 	editor  *EditorComponent
 	chat    *ChatComponent
 	spinner *SpinnerComponent
+	inputCh chan string
 	winW    int
 	winH    int
 
 	fileSearch    *FileSearchPopup
 	fileSearching bool
 	activeModal   Interactive
+
+	homeDir string
+	cwd     string
 
 	settings config.Settings
 
@@ -126,13 +130,18 @@ type Model struct {
 	gitBranch  string
 	projectDir string
 
-	// Approval overlay state.
+	// Config overlay state.
+	configGlobalPath  string
+	configProjectPath string
+	configEditScope   string
+
+	// Approval overlay state (Task 11.9+).
 	// activeApproval is the prompt currently displayed in the input region.
 	// pendingApprovals maps sessionID -> prompt for non-focused sessions.
 	activeApproval   *approvalPrompt
 	pendingApprovals map[string]*approvalPrompt
 
-	// statusMsg is a transient message shown near the status bar.
+	// statusMsg is a transient message shown near the status bar (Task 11.14).
 	statusMsg string
 
 	// onYoloChange is called whenever the /yolo command toggles the YOLO flag.
@@ -140,7 +149,7 @@ type Model struct {
 	// to the guard without importing the guard package directly.
 	onYoloChange func(bool)
 
-	// Context warning tracking per session.
+	// Context warning tracking per session (Task 11.16).
 	// warned80/warned95 are set in handleAgentEvent to fire once per session.
 	contextNotice string // most recent context warning for the notification line
 
@@ -152,27 +161,19 @@ type Model struct {
 	// /model, /cancel). Set via SetSlashCallbacks.
 	slashCB SlashCallbacks
 
-	configOnlyMode    bool
-	configEditScope   string
-	configGlobalPath  string
-	configProjectPath string
-
 	renderThrottleMs int
 	lastRenderTime   time.Time
 	renderPending    bool
-
-	// cfe is the ClientFrontend for daemon mode. Input submission and
-	// approval responses go through the daemon RPC. Set via SetClientFrontend.
-	cfe *ClientFrontend
 }
 
 // renderThrottleMsg fires when a deferred render is due.
 type renderThrottleMsg struct{}
 
 // New creates and returns a new Model with an initial session whose ID matches
-// the agent session. Input submission goes through the ClientFrontend (daemon
-// RPC) which is wired via SetClientFrontend.
-func New(sessionID string) *Model {
+// the agent session. fe may be nil (tests that do not need agent routing or
+// input submission). When fe is non-nil, the Model shares fe.input so submitted
+// text reaches AwaitUserInput.
+func New(fe *Frontend, sessionID string) *Model {
 	if sessionID == "" {
 		sessionID = "main"
 	}
@@ -182,12 +183,20 @@ func New(sessionID string) *Model {
 		Title: "main",
 	}
 
+	var inputCh chan string
+	if fe != nil {
+		inputCh = fe.input
+	} else {
+		inputCh = make(chan string, 1)
+	}
+
 	m := &Model{
 		theme:            style.Default(),
 		sessions:         map[string]*SessionView{sessionID: main},
 		order:            []string{sessionID},
 		focused:          sessionID,
 		childToParent:    make(map[string]string),
+		inputCh:          inputCh,
 		contextWindow:    config.DefaultContextWindow,
 		contextWarnPct:   config.DefaultContextWarnPct,
 		contextCritPct:   config.DefaultContextCritPct,
@@ -211,6 +220,16 @@ func (m *Model) SetConfigName(name string) {
 	m.configName = name
 }
 
+// SetGitBranch sets the git branch displayed in the status bar.
+func (m *Model) SetGitBranch(branch string) {
+	m.gitBranch = branch
+}
+
+// SetProjectDir sets the project directory displayed in the status bar.
+func (m *Model) SetProjectDir(dir string) {
+	m.projectDir = dir
+}
+
 // SetYolo sets YOLO mode. When true the status bar shows a red [YOLO] badge.
 func (m *Model) SetYolo(yolo bool) {
 	m.yolo = yolo
@@ -229,9 +248,24 @@ func (m *Model) SetSlashCallbacks(cb SlashCallbacks) {
 	m.slashCB = cb
 }
 
-func (m *Model) SetSettings(s config.Settings)         { m.settings = s }
-func (m *Model) SetRenderThrottleMs(ms int)            { m.renderThrottleMs = ms }
-func (m *Model) SetClientFrontend(cfe *ClientFrontend) { m.cfe = cfe }
+func (m *Model) SetHomeDir(dir string)         { m.homeDir = dir }
+func (m *Model) SetCWD(dir string)             { m.cwd = dir }
+func (m *Model) SetSettings(s config.Settings) { m.settings = s }
+func (m *Model) SetRenderThrottleMs(ms int)    { m.renderThrottleMs = ms }
+
+// ShowStartupWizard opens the config wizard as a modal overlay. Called from
+// main.go when no model configs exist and the user needs guided setup.
+func (m *Model) ShowStartupWizard(onSave func(path string)) {
+	m.activeModal = NewConfigWizard(
+		func() { m.activeModal = nil },
+		func(path string) {
+			m.activeModal = nil
+			if onSave != nil {
+				onSave(path)
+			}
+		},
+	)
+}
 
 // SetContextWindow sets the total context window size used in the token bar.
 // If size <= 0 the default is used.
@@ -251,13 +285,6 @@ func (m *Model) SetContextThresholds(warn, crit float64) {
 	}
 	m.contextWarnPct = warn
 	m.contextCritPct = crit
-}
-
-// SetGitContext sets the project directory and git branch displayed in the
-// status bar.
-func (m *Model) SetGitContext(projectDir, branch string) {
-	m.projectDir = projectDir
-	m.gitBranch = branch
 }
 
 // StatusBarForTest returns the rendered status bar string. Exported for tests.
@@ -302,7 +329,7 @@ func (m *Model) syncChatHeight() {
 }
 
 // rebuildViewport refreshes the chat component state from the focused session.
-// When keepScroll is false, the viewport scrolls to the bottom.
+// When keepScroll is false (or omitted), the viewport scrolls to the bottom.
 func (m *Model) rebuildViewport(keepScroll ...bool) {
 	sv, ok := m.sessions[m.focused]
 	if !ok {
@@ -353,7 +380,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, SpinnerTickCmd()
 		}
 
-	case ApprovalReqMsg:
+	case approvalReqMsg:
 		m.handleApprovalReq(msg)
 
 	case tea.KeyMsg:
@@ -367,18 +394,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "project":
 				return mdl, openConfigEditor(m.configProjectPath, scope)
 			case "wizard":
-				globalPath, _ := config.DefaultGlobalPath()
-				w := NewConfigWizard(
+				m.activeModal = NewConfigWizard(
 					func() { m.activeModal = nil },
 					func(path string) {
 						m.activeModal = nil
-						m.statusMsg = "Config saved to " + path + ". Restart gohome to apply."
+						m.statusMsg = "Config saved. Restart gohome to apply changes."
 					},
 				)
-				w.outputPath = globalPath
-				m.activeModal = w
-				return mdl, nil
 			}
+			return mdl, cmd
 		}
 		return mdl, cmd
 
@@ -394,33 +418,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.rebuildViewport()
 		}
 
-	case StateSyncMsg:
-		m.modelName = msg.Model
-		if msg.ConfigName != "" {
-			m.configName = msg.ConfigName
-		}
-		m.yolo = msg.Yolo
-		if msg.SessionID != "" && msg.SessionID != m.focused {
-			// Remove the placeholder session if it has no content.
-			if old, ok := m.sessions[m.focused]; ok && len(old.Timeline) == 0 {
-				delete(m.sessions, m.focused)
-				for i, id := range m.order {
-					if id == m.focused {
-						m.order = append(m.order[:i], m.order[i+1:]...)
-						break
-					}
-				}
-			}
-			m.getOrCreateSession(msg.SessionID, 0)
-			m.focused = msg.SessionID
-		}
-
-	case AgentEventMsg:
+	case agentEventMsg:
 		if cmd := m.handleAgentEvent(msg); cmd != nil {
 			return m, cmd
 		}
 
-	case ExternalEditorMsg:
+	case externalEditorMsg:
 		m.handleExternalEditorResult(msg)
 
 	case ConfigEditMsg:
@@ -429,10 +432,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.statusMsg = "Config saved. Restart gohome to apply changes."
 		}
-	}
-
-	if m.configOnlyMode && m.activeModal == nil {
-		return m, tea.Quit
 	}
 
 	return m, nil
@@ -641,38 +640,6 @@ func (m *Model) OpenTokensOverlay() {
 func (m *Model) ShowHelp() bool {
 	_, ok := m.activeModal.(*HelpOverlay)
 	return ok
-}
-
-// ShowConfig returns whether the config overlay is displayed (exported for tests).
-func (m *Model) ShowConfig() bool {
-	_, ok := m.activeModal.(*ConfigOverlay)
-	return ok
-}
-
-// OpenConfigOverlay opens the config overlay. Used in tests to set this state
-// synchronously without going through the slash command path.
-func (m *Model) OpenConfigOverlay(ann config.AnnotatedSettings) {
-	m.openConfigOverlayWith(ann)
-}
-
-// OpenConfigWizard opens the setup wizard modal targeting the given output
-// path. Used by the --config CLI flag when no global settings file exists.
-func (m *Model) OpenConfigWizard(outputPath string) {
-	w := NewConfigWizard(
-		func() { m.activeModal = nil },
-		func(path string) {
-			m.activeModal = nil
-			m.statusMsg = "Config saved to " + path
-		},
-	)
-	w.outputPath = outputPath
-	m.activeModal = w
-}
-
-// SetConfigOnlyMode marks the model as running in standalone config mode.
-// When true, the program quits as soon as the active modal is dismissed.
-func (m *Model) SetConfigOnlyMode(v bool) {
-	m.configOnlyMode = v
 }
 
 // OpenHelpOverlay opens the help overlay. Used in tests to set this state

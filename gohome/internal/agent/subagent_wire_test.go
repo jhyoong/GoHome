@@ -14,12 +14,12 @@ func TestRegisterSubagentTool(t *testing.T) {
 	fe := &fakeRecorder{}
 
 	a := &Agent{
-		Tools:  tools.NewRegistry(),
-		Guard:  g,
-		State:  NewSessionState(nil, nil, nil),
-		System: "sys",
+		Tools:    tools.NewRegistry(),
+		Guard:    g,
+		Frontend: fe,
+		State:    NewSessionState(nil, nil, nil),
+		System:   "sys",
 	}
-	a.SetFrontend(fe)
 
 	// Before registration, "subagent" must not exist.
 	if _, ok := a.Tools.Get("subagent"); ok {

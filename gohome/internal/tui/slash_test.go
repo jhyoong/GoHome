@@ -15,7 +15,7 @@ import (
 
 // TestSlashYoloTogglesYolo types "/yolo" then Enter and asserts yolo toggled.
 func TestSlashYoloTogglesYolo(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	// Capture initial yolo state.
 	initialYolo := m.Yolo()
 
@@ -42,7 +42,7 @@ func TestSlashYoloTogglesYolo(t *testing.T) {
 // TestSlashYoloCallbackFires asserts that SetYoloCallback is invoked when
 // /yolo is typed, receiving the new yolo value each time.
 func TestSlashYoloCallbackFires(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 
 	var recorded []bool
 	m.SetYoloCallback(func(v bool) { recorded = append(recorded, v) })
@@ -87,7 +87,7 @@ func TestSlashYoloCallbackFires(t *testing.T) {
 // TestSlashNewNotConfigured types "/new" then Enter and asserts "not configured"
 // when no NewSession callback has been registered.
 func TestSlashNewNotConfigured(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
@@ -105,7 +105,7 @@ func TestSlashNewNotConfigured(t *testing.T) {
 
 // TestSlashPaletteSuggestsCommands types "/" and asserts command suggestions appear.
 func TestSlashPaletteSuggestsCommands(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
@@ -123,7 +123,7 @@ func TestSlashPaletteSuggestsCommands(t *testing.T) {
 }
 
 func TestTabCompletesSlashCommand(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
@@ -142,7 +142,7 @@ func TestTabCompletesSlashCommand(t *testing.T) {
 }
 
 func TestTabNoMatchDoesNothing(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
@@ -160,7 +160,7 @@ func TestTabNoMatchDoesNothing(t *testing.T) {
 }
 
 func TestTabAlreadyCompleteDoesNothing(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
@@ -184,7 +184,7 @@ func TestSlashPaletteHighlightsFirstMatch(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.ANSI)
 	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
 
-	m := tui.New("")
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
@@ -202,7 +202,7 @@ func TestSlashPaletteHighlightsFirstMatch(t *testing.T) {
 }
 
 func TestTabCompletesFirstMatchFromSlash(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
@@ -222,7 +222,7 @@ func TestTabCompletesFirstMatchFromSlash(t *testing.T) {
 }
 
 func TestSlashModelNoConfigs(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
@@ -239,7 +239,7 @@ func TestSlashModelNoConfigs(t *testing.T) {
 }
 
 func TestSlashModelCallsCallback(t *testing.T) {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	m.SetSettings(config.Settings{
 		ModelConfig: map[string]config.ModelConfig{
 			"ep1": {ModelName: "model-a"},

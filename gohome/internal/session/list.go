@@ -16,7 +16,7 @@ type Listing struct {
 	ID         string    `json:"id"`
 	StartedAt  time.Time `json:"startedAt"`
 	LastActive time.Time `json:"lastActive"`
-	Title      string    `json:"title"` // first user_message text block, truncated to <=60 runes
+	Title      string    `json:"title"`
 	Depth      int       `json:"depth"`
 }
 
@@ -208,6 +208,12 @@ func cleanBlank(home, cwd string) (int, error) {
 		}
 	}
 	return removed, nil
+}
+
+// CleanBlankSessions removes all session JSONL files under home/sessions/<slug>
+// that contain no user_message events. Returns the number of files removed.
+func CleanBlankSessions(home, cwd string) (int, error) {
+	return cleanBlank(home, cwd)
 }
 
 // truncate returns s truncated to at most n runes.

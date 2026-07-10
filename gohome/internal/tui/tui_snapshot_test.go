@@ -20,7 +20,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/golden"
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
-	"github.com/jhyoong/GoHome/gohome/internal/config"
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 	"github.com/jhyoong/GoHome/gohome/internal/tui"
@@ -30,12 +29,12 @@ const snapshotW = 80
 const snapshotH = 24
 
 // apply sends msg to m synchronously and returns the updated *Model.
-var editPathRe = regexp.MustCompile(`"path":"[^"]*\.\.\.`)
+var editPathRe = regexp.MustCompile(`(> ┃edit \{"path":").*?\.\.\.`)
 
-// normEditPath replaces the edit tool path (which contains a
+// normEditPath replaces the truncated edit tool arg line (which contains a
 // machine-specific temp path) with a fixed string for golden-file stability.
 func normEditPath(s string) string {
-	return editPathRe.ReplaceAllString(s, `"path":"TEST/...`)
+	return editPathRe.ReplaceAllString(s, `${1}/tmp/test/test.go",...`)
 }
 
 func apply(m *tui.Model, msg tea.Msg) *tui.Model {
@@ -45,7 +44,7 @@ func apply(m *tui.Model, msg tea.Msg) *tui.Model {
 
 // newSized builds a Model already sized to 80x24.
 func newSized() *tui.Model {
-	m := tui.New("")
+	m := tui.New(nil, "")
 	m = apply(m, tea.WindowSizeMsg{Width: snapshotW, Height: snapshotH})
 	return m
 }
@@ -83,6 +82,7 @@ func TestSnapshots(t *testing.T) {
 	// (d) With an approval prompt active.
 	t.Run("with_approval_prompt", func(t *testing.T) {
 		m := newSized()
+		reply := make(chan guard.ApprovalDecision, 1)
 		m = apply(m, tui.ApprovalReqMsg{
 			Req: guard.ApprovalRequest{
 				SessionID:        "main",
@@ -90,7 +90,7 @@ func TestSnapshots(t *testing.T) {
 				Input:            []byte(`{"command":"ls -la"}`),
 				SuggestedPattern: "ls*",
 			},
-			Resolve: func(guard.ApprovalDecision) {},
+			Reply: reply,
 		})
 		golden.RequireEqual(t, []byte(m.View()))
 	})
@@ -119,7 +119,7 @@ func TestSnapshots(t *testing.T) {
 			SessionID:     "sub-1",
 			ThinkingDelta: "Let me investigate...",
 		}})
-		// Thinking ends (no-op, content remains visible inline).
+		// Thinking ends (collapses block).
 		m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
 			Kind:      agent.EventThinkingDone,
 			SessionID: "sub-1",
@@ -317,55 +317,6 @@ func TestSnapshots(t *testing.T) {
 			Result:    &agent.ToolResult{Content: "denied", IsError: true},
 		}})
 		golden.RequireEqual(t, []byte(normEditPath(m.View())))
-	})
-
-	t.Run("config_overlay_populated", func(t *testing.T) {
-		m := newSized()
-		ann := config.AnnotatedSettings{
-			Settings: config.Settings{
-				DefaultModel:  "claude",
-				BashTimeoutMs: 120000,
-				ModelConfig: map[string]config.ModelConfig{
-					"claude": {
-						Wire:      config.WireAnthropic,
-						BaseURL:   "https://api.anthropic.com",
-						ModelName: "claude-sonnet-4-20250514",
-					},
-				},
-			},
-			GlobalPath:  "~/.gohome/settings.json",
-			ProjectPath: "./.gohome/settings.json",
-			Sources: map[string]config.Source{
-				"defaultModel":     config.SourceGlobal,
-				"bashTimeoutMs":    config.SourceGlobal,
-				"maxBashTimeoutMs": config.SourceDefault,
-				"contextWarnPct":   config.SourceDefault,
-				"contextCritPct":   config.SourceDefault,
-				"systemPrompt":     config.SourceDefault,
-				"retryBackoffMs":   config.SourceDefault,
-				"renderThrottleMs": config.SourceDefault,
-			},
-			ModelSources: map[string]config.Source{
-				"claude": config.SourceGlobal,
-			},
-		}
-		m.OpenConfigOverlay(ann)
-		golden.RequireEqual(t, []byte(m.View()))
-	})
-
-	t.Run("config_overlay_empty", func(t *testing.T) {
-		m := newSized()
-		ann := config.AnnotatedSettings{
-			Settings: config.Settings{
-				ModelConfig: map[string]config.ModelConfig{},
-			},
-			GlobalPath:   "~/.gohome/settings.json",
-			ProjectPath:  "./.gohome/settings.json",
-			Sources:      map[string]config.Source{},
-			ModelSources: map[string]config.Source{},
-		}
-		m.OpenConfigOverlay(ann)
-		golden.RequireEqual(t, []byte(m.View()))
 	})
 
 	t.Run("subagent_shadow_entries", func(t *testing.T) {
@@ -816,7 +767,6 @@ func TestToggleExpansion_PreservesScrollPosition(t *testing.T) {
 	viewAfter := m.View()
 
 	// The tool entry should still be visible after expansion (not scrolled away).
-	// With the contextual format, bash shows as "$ ls" instead of "[tool] bash".
 	if !strings.Contains(viewAfter, "$ ls") {
 		t.Errorf("tool entry should remain visible after expansion.\nBefore:\n%s\nAfter:\n%s", viewBefore, viewAfter)
 	}

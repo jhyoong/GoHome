@@ -109,7 +109,7 @@ func TestConfigOverlay_EnterSelectsAction(t *testing.T) {
 }
 
 func TestSlashConfig_OpensOverlay(t *testing.T) {
-	m := New("")
+	m := New(nil, "")
 	m.SetSettings(config.Settings{
 		ModelConfig: map[string]config.ModelConfig{
 			"test": {Wire: config.WireAnthropic, ModelName: "m"},
@@ -122,7 +122,7 @@ func TestSlashConfig_OpensOverlay(t *testing.T) {
 		},
 	})
 	m.handleSlashCommand("/config")
-	if !m.ShowConfig() {
+	if m.activeModal == nil {
 		t.Fatal("expected config overlay to be open after /config")
 	}
 }

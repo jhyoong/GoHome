@@ -110,7 +110,7 @@ func TestFileSearchPopup_SelectedPath(t *testing.T) {
 }
 
 func TestReplaceAtQuery_RetainsAtPrefix(t *testing.T) {
-	m := New("")
+	m := New(nil, "")
 	m.editor.SetValue("please read @mod")
 	m.replaceAtQuery("src/model.go")
 	got := m.editor.Value()
@@ -125,7 +125,7 @@ func TestReplaceAtQuery_RetainsAtPrefix(t *testing.T) {
 }
 
 func TestReplaceAtQuery_TrailingSpacePreventsRetrigger(t *testing.T) {
-	m := New("")
+	m := New(nil, "")
 	m.editor.SetValue("@mod")
 	m.replaceAtQuery("model.go")
 	// After replacement, extractAtQuery should return false because of trailing space.
@@ -136,7 +136,7 @@ func TestReplaceAtQuery_TrailingSpacePreventsRetrigger(t *testing.T) {
 }
 
 func TestConfirmFileSearch_Tab(t *testing.T) {
-	m := New("")
+	m := New(nil, "")
 	m.editor.SetValue("@main")
 	m.fileSearching = true
 	m.fileSearch.query = "main"

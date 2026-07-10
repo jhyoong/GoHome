@@ -52,11 +52,11 @@ func newTestAgent(t *testing.T, client common.Client, fe Frontend) (*Agent, *ses
 
 	sess := session.NewSession("sess-test", dir, "claude-3-5-haiku", "anthropic")
 	a := &Agent{
-		Tools:  tools.NewRegistry(),
-		State:  NewSessionState(sess, w, client),
-		System: "you are a test assistant",
+		Tools:    tools.NewRegistry(),
+		Frontend: fe,
+		State:    NewSessionState(sess, w, client),
+		System:   "you are a test assistant",
 	}
-	a.SetFrontend(fe)
 	return a, sess, w
 }
 
@@ -113,11 +113,11 @@ func TestTurn_TextDeltaAndTurnDone(t *testing.T) {
 
 	sess := session.NewSession("sess-test", dir, "claude-3-5-haiku", "anthropic")
 	a := &Agent{
-		Tools:  tools.NewRegistry(),
-		State:  NewSessionState(sess, w, client),
-		System: "system prompt",
+		Tools:    tools.NewRegistry(),
+		Frontend: fe,
+		State:    NewSessionState(sess, w, client),
+		System:   "system prompt",
 	}
-	a.SetFrontend(fe)
 
 	stopReason, err := a.Turn(context.Background(), sess)
 	if err != nil {

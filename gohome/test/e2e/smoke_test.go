@@ -105,16 +105,15 @@ func TestE2ESmokeRoundtrip(t *testing.T) {
 		},
 	}
 
-	state := agent.NewSessionState(sess, w, client)
-
 	a := &agent.Agent{
+		Client:    client,
 		Tools:     reg,
 		Guard:     g,
-		State:     state,
+		Frontend:  fe,
+		Writer:    w,
 		System:    "You are a helpful assistant.",
 		MaxTokens: 64,
 	}
-	a.SetFrontend(fe)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()

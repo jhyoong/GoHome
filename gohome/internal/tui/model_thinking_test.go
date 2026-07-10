@@ -7,11 +7,11 @@ import (
 )
 
 func TestHandleAgentEvent_ThinkingDoneIsNoOp(t *testing.T) {
-	m := New("sess-1")
+	m := New(nil, "sess-1")
 	m.winW = 80
 	m.winH = 40
 
-	// Simulate a thinking delta arriving (creates a thinking entry).
+	// Simulate a thinking delta arriving (creates an expanded thinking entry).
 	m.handleAgentEvent(AgentEventMsg{
 		SessionID: "sess-1",
 		Ev: agent.Event{
@@ -31,13 +31,14 @@ func TestHandleAgentEvent_ThinkingDoneIsNoOp(t *testing.T) {
 		t.Fatal("thinking entry should be expanded during streaming")
 	}
 
-	// Simulate thinking done -- should be a no-op, entry stays expanded.
+	// Simulate thinking done -- this is now a no-op; entries stay visible inline.
 	m.handleAgentEvent(AgentEventMsg{
 		SessionID: "sess-1",
 		Ev:        agent.Event{Kind: agent.EventThinkingDone},
 	})
 
+	// The entry should remain expanded (thinking done no longer collapses).
 	if !sv.Timeline[0].Expanded {
-		t.Error("thinking entry should remain expanded after EventThinkingDone (no-op)")
+		t.Error("thinking entry should remain expanded after EventThinkingDone")
 	}
 }

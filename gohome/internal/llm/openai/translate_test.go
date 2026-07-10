@@ -210,39 +210,6 @@ func TestTranslateEvents_UsageOnTurnDone(t *testing.T) {
 	}
 }
 
-func TestTranslateEvents_UsageOnContentChunk(t *testing.T) {
-	// Many OpenAI-compatible providers attach usage to the last content chunk
-	// instead of sending a separate usage-only chunk.
-	frames := []sseFrame{
-		{data: `{"choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}`},
-		{data: `{"choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":42,"completion_tokens":7}}`},
-		{done: true},
-	}
-
-	events := collectEvents(translateEvents(context.Background(), makeFrames(frames)))
-
-	var turnDone *common.StreamEvent
-	for _, e := range events {
-		if e.Kind == common.EventTurnDone {
-			cp := e
-			turnDone = &cp
-		}
-	}
-
-	if turnDone == nil {
-		t.Fatal("no EventTurnDone")
-	}
-	if turnDone.Usage == nil {
-		t.Fatal("Usage is nil — usage on content chunk was not captured")
-	}
-	if turnDone.Usage.InputTokens != 42 {
-		t.Errorf("InputTokens: got %d, want 42", turnDone.Usage.InputTokens)
-	}
-	if turnDone.Usage.OutputTokens != 7 {
-		t.Errorf("OutputTokens: got %d, want 7", turnDone.Usage.OutputTokens)
-	}
-}
-
 func TestTranslateEvents_TurnDoneWithoutUsageChunk(t *testing.T) {
 	// If no usage chunk arrives before [DONE], TurnDone.Usage should be nil.
 	frames := []sseFrame{
