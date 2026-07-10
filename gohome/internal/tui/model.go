@@ -389,18 +389,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "project":
 				return mdl, openConfigEditor(m.configProjectPath, scope)
 			case "wizard":
-				globalPath, _ := config.DefaultGlobalPath()
-				w := NewConfigWizard(
+				m.activeModal = NewConfigWizard(
 					func() { m.activeModal = nil },
 					func(path string) {
 						m.activeModal = nil
-						m.statusMsg = "Config saved to " + path + ". Restart gohome to apply."
+						m.statusMsg = "Config saved. Restart gohome to apply changes."
 					},
 				)
-				w.outputPath = globalPath
-				m.activeModal = w
-				return mdl, nil
 			}
+			return mdl, cmd
 		}
 		return mdl, cmd
 
@@ -451,10 +448,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.statusMsg = "Config saved. Restart gohome to apply changes."
 		}
-	}
-
-	if m.configOnlyMode && m.activeModal == nil {
-		return m, tea.Quit
 	}
 
 	return m, nil

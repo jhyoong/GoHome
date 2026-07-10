@@ -1,0 +1,3 @@
+1. Investigate subagent - sub1 is running persistent even though completed.
+2. Completed subagent session still allowing input - but placed on Queue. Should be disabled.
+3. To test - show tool prompt from subagent session on the main session chat - for ease so user don't need to switch sessions.
