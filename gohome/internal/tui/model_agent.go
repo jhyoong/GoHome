@@ -112,6 +112,13 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 			m.updateShadowResult(msg.SessionID, content, isErr)
 		}
 
+	case agent.EventToolDenied:
+		sv.Timeline = append(sv.Timeline, TimelineEntry{
+			Kind: KindNotice,
+			Text: "Tool call denied. Waiting for your input.",
+		})
+		sv.InFlight = false
+
 	case agent.EventUsageUpdated:
 		if ev.Usage != nil {
 			sv.Usage = *ev.Usage
@@ -207,7 +214,7 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 		} else {
 			m.spinner.SetMessage("Generating...")
 		}
-	case agent.EventTurnDone, agent.EventSessionEnded, agent.EventError:
+	case agent.EventTurnDone, agent.EventSessionEnded, agent.EventError, agent.EventToolDenied:
 		if !sv.InFlight {
 			m.spinner.Stop()
 		}
