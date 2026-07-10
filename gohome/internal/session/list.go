@@ -210,6 +210,12 @@ func cleanBlank(home, cwd string) (int, error) {
 	return removed, nil
 }
 
+// CleanBlankSessions removes all session JSONL files under home/sessions/<slug>
+// that contain no user_message events. Returns the number of files removed.
+func CleanBlankSessions(home, cwd string) (int, error) {
+	return cleanBlank(home, cwd)
+}
+
 // truncate returns s truncated to at most n runes.
 func truncate(s string, n int) string {
 	runes := []rune(s)

@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log/slog"
 	"net"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -32,9 +34,18 @@ var (
 	yolo        = flag.Bool("yolo", false, "disable all approval prompts")
 	resume      = flag.Bool("resume", false, "resume a past session")
 	showVersion = flag.Bool("version", false, "print version and exit")
-	stopFlag    = flag.Bool("stop", false, "stop the running daemon and exit")
-	configFlag  = flag.Bool("config", false, "open config manager and exit")
+	showConfig  = flag.Bool("config", false, "print merged configuration and exit")
 )
+
+// gitBranch returns the current git branch for the given directory, or "" on error.
+func gitBranch(dir string) string {
+	cmd := exec.Command("git", "-C", dir, "rev-parse", "--abbrev-ref", "HEAD")
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
 
 // setupLogging configures the global slog logger to write JSON to
 // <home>/.gohome/logs/<YYYY-MM-DD>.log. Returns the open log file so the
@@ -153,12 +164,8 @@ func runLoop(
 func main() {
 	flag.Parse()
 
-	if *showVersion {
-		fmt.Println("gohome " + version)
-		return
-	}
-
-	// Resolve home and cwd before anything else.
+	// Resolve home and cwd before any flag checks so they are available for
+	// both --version (trivial) and --config (needs cwd for project settings).
 	userHome, err := os.UserHomeDir()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "gohome: cannot determine home directory: %v\n", err)
@@ -172,7 +179,26 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Structured logging.
+	if *showVersion {
+		fmt.Println("gohome " + version)
+		return
+	}
+
+	if *showConfig {
+		globalPath, _ := config.DefaultGlobalPath()
+		projectPath := config.DefaultProjectPath(cwd)
+		cfgSettings, err := config.Load(globalPath, projectPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "gohome: %v\n", err)
+			os.Exit(1)
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(cfgSettings)
+		os.Exit(0)
+	}
+
+	// Structured logging (Task 12.4).
 	logFile, err := setupLogging(home)
 	if err != nil {
 		// Non-fatal: fall back to stderr and continue.
@@ -389,13 +415,10 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		systemPrompt = settings.SystemPrompt
 	}
 
-	maxTokens := mc.MaxTokens
-	if maxTokens <= 0 {
-		maxTokens = config.DefaultMaxTokens
-	}
-	thinkingBudget := mc.ThinkingBudget
-	if thinkingBudget <= 0 {
-		thinkingBudget = config.DefaultThinkingBudget
+	if sess == nil {
+		// Fresh session.
+		sess = session.NewSession(session.NewID(), cwd, mc.ModelName, cfgName)
+		writerPath = session.SessionPath(home, cwd, sess.ID, time.Now().UTC())
 	}
 
 	reasoningEffort := mc.ReasoningEffort
@@ -504,6 +527,19 @@ func runClient(sockPath string, settings config.Settings, mc config.ModelConfig,
 	m.SetContextThresholds(warnPct, critPct)
 	m.SetRenderThrottleMs(settings.RenderThrottleMs)
 	m.SetSettings(settings)
+	m.SetGitBranch(gitBranch(cwd))
+	m.SetProjectDir(filepath.Base(cwd))
+	m.SetConfigName(cfgName)
+
+	// If no model configs exist and this looks interactive, show the setup wizard.
+	if len(settings.ModelConfig) == 0 {
+		m.ShowStartupWizard(func(path string) {
+			// Reload settings after the wizard saves a new config.
+			if reloaded, err := config.Load(globalCfgPath, config.DefaultProjectPath(cwd)); err == nil {
+				settings = reloaded
+			}
+		})
+	}
 
 	// Detect git context for the status bar.
 	if branch, err := detectGitBranch(); err == nil {
@@ -519,7 +555,35 @@ func runClient(sockPath string, settings config.Settings, mc config.ModelConfig,
 		m.SetGitContext(dir, branch)
 	}
 
-	// Wire slash command callbacks to send RPC requests to the daemon.
+	maxTokens := mc.MaxTokens
+	if maxTokens <= 0 {
+		maxTokens = config.DefaultMaxTokens
+	}
+	thinkingBudget := mc.ThinkingBudget
+	if thinkingBudget <= 0 {
+		thinkingBudget = config.DefaultThinkingBudget
+	}
+
+	state := agent.NewSessionState(sess, writer, client)
+
+	a := &agent.Agent{
+		Tools:           registry,
+		Guard:           g,
+		Frontend:        fe,
+		State:           state,
+		System:          systemPrompt,
+		MaxTokens:       maxTokens,
+		ThinkingBudget:  thinkingBudget,
+		ReasoningEffort: mc.ReasoningEffort,
+		Home:            home,
+	}
+	a.RegisterSubagentTool()
+
+	var (
+		turnMu     sync.Mutex
+		turnCancel context.CancelFunc
+	)
+
 	m.SetSlashCallbacks(tui.SlashCallbacks{
 		ListSessions: func() ([]session.Listing, error) {
 			return session.List(home, cwd)
@@ -562,7 +626,7 @@ func runClient(sockPath string, settings config.Settings, mc config.ModelConfig,
 			return resolvedID, history, nil
 		},
 		NewSession: func() (string, error) {
-			id := newSessionID()
+			id := session.NewID()
 			currentModel := state.Model()
 			currentCfg := state.ModelConfig()
 			newSess := session.NewSession(id, cwd, currentModel, currentCfg)
@@ -590,8 +654,33 @@ func runClient(sockPath string, settings config.Settings, mc config.ModelConfig,
 			}
 			return id, nil
 		},
-		ResumeSession: func(id string) (string, []common.Message, error) {
-			return cfe.SendSessionResume(id)
+		SetModel: func(name string) (string, int, error) {
+			cfg, ok := settings.ModelConfig[name]
+			if !ok {
+				return "", 0, fmt.Errorf("model config %q not found", name)
+			}
+			apiKey, err := config.ResolveAPIKey(cfg)
+			if err != nil {
+				return "", 0, fmt.Errorf("no API key for model config %q", name)
+			}
+			newClient, err := llm.New(cfg, apiKey)
+			if err != nil {
+				return "", 0, fmt.Errorf("create client for %q: %w", name, err)
+			}
+			state.SetClient(newClient)
+			state.SetModel(cfg.ModelName)
+			state.SetModelConfig(name)
+			a.MaxTokens = cfg.MaxTokens
+			a.ThinkingBudget = cfg.ThinkingBudget
+			a.ReasoningEffort = cfg.ReasoningEffort
+			ctxWin := cfg.ContextWindow
+			if ctxWin <= 0 {
+				ctxWin = config.DefaultContextWindow
+			}
+			return cfg.ModelName, ctxWin, nil
+		},
+		OpenConfig: func() (config.AnnotatedSettings, error) {
+			return config.LoadAnnotated(globalCfgPath, config.DefaultProjectPath(cwd))
 		},
 		CancelSession: func(id string) {
 			go func() { _ = cfe.SendCancel(id) }()
@@ -638,7 +727,11 @@ func runClient(sockPath string, settings config.Settings, mc config.ModelConfig,
 		slog.Error("writer close error", "err", err)
 	}
 
-	// TODO(task8): blank session cleanup moved to session-internal; re-add in main rewrite.
+	if n, err := session.CleanBlankSessions(home, cwd); err != nil {
+		slog.Warn("blank session cleanup failed", "err", err)
+	} else if n > 0 {
+		slog.Info("removed blank sessions", "count", n)
+	}
 
 	if logFile != nil {
 		slog.Info("gohome exiting")

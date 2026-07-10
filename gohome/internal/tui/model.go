@@ -248,6 +248,20 @@ func (m *Model) SetSettings(s config.Settings)         { m.settings = s }
 func (m *Model) SetRenderThrottleMs(ms int)            { m.renderThrottleMs = ms }
 func (m *Model) SetClientFrontend(cfe *ClientFrontend) { m.cfe = cfe }
 
+// ShowStartupWizard opens the config wizard as a modal overlay. Called from
+// main.go when no model configs exist and the user needs guided setup.
+func (m *Model) ShowStartupWizard(onSave func(path string)) {
+	m.activeModal = NewConfigWizard(
+		func() { m.activeModal = nil },
+		func(path string) {
+			m.activeModal = nil
+			if onSave != nil {
+				onSave(path)
+			}
+		},
+	)
+}
+
 // SetContextWindow sets the total context window size used in the token bar.
 // If size <= 0 the default is used.
 func (m *Model) SetContextWindow(size int) {
