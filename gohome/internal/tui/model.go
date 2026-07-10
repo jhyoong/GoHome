@@ -584,7 +584,7 @@ func (m *Model) View() string {
 
 	// Input region (swappable slot).
 	if m.activeApproval != nil {
-		sections = append(sections, renderApprovalOverlay(m.activeApproval, m.winW))
+		sections = append(sections, renderApprovalOverlay(m.activeApproval, m.winW, m.focused))
 	} else if m.activeModal != nil {
 		modalLines := m.activeModal.Render(m.winW)
 		sections = append(sections, strings.Join(modalLines, "\n"))

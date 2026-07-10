@@ -59,12 +59,16 @@ func newApprovalPrompt(req guard.ApprovalRequest, reply chan guard.ApprovalDecis
 
 // approvalSummaryLine builds a single contextual line describing the tool call
 // (e.g. "bash: git status", "read: path/to/file").
-func approvalSummaryLine(ap *approvalPrompt) string {
+func approvalSummaryLine(ap *approvalPrompt, focusedSessionID string) string {
 	arg := extractToolArg(ap.req.Tool, string(ap.req.Input))
-	if arg != "" {
-		return fmt.Sprintf("%s: %s", ap.req.Tool, arg)
+	var prefix string
+	if ap.req.SessionID != focusedSessionID {
+		prefix = fmt.Sprintf("[%s] ", ap.req.SessionID)
 	}
-	return ap.req.Tool
+	if arg != "" {
+		return fmt.Sprintf("%s%s: %s", prefix, ap.req.Tool, arg)
+	}
+	return prefix + ap.req.Tool
 }
 
 var approvalBoxStyle = lipgloss.NewStyle().
@@ -73,10 +77,10 @@ var approvalBoxStyle = lipgloss.NewStyle().
 	BorderForeground(lipgloss.Color("3"))
 
 // renderApprovalOverlay renders the approval prompt box for the given prompt.
-func renderApprovalOverlay(ap *approvalPrompt, width int) string {
+func renderApprovalOverlay(ap *approvalPrompt, width int, focusedSessionID string) string {
 	var sb strings.Builder
 
-	sb.WriteString(approvalSummaryLine(ap))
+	sb.WriteString(approvalSummaryLine(ap, focusedSessionID))
 	sb.WriteString("\n")
 
 	if ap.steering {
