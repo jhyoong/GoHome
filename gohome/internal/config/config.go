@@ -35,15 +35,15 @@ type ModelConfig struct {
 
 // Settings is the top-level configuration structure.
 type Settings struct {
-	ModelConfig      map[string]ModelConfig `json:"modelConfig"`
-	DefaultModel     string                 `json:"defaultModel"`
-	SystemPrompt     string                 `json:"systemPrompt,omitempty"`
+	ModelConfig       map[string]ModelConfig `json:"modelConfig"`
+	DefaultModel      string                 `json:"defaultModel"`
+	SystemPrompt      string                 `json:"systemPrompt,omitempty"`
 	ShellTimeoutMs    int                    `json:"shellTimeoutMs,omitempty"`
 	MaxShellTimeoutMs int                    `json:"maxShellTimeoutMs,omitempty"`
-	ContextWarnPct   float64                `json:"contextWarnPct,omitempty"`
-	ContextCritPct   float64                `json:"contextCritPct,omitempty"`
-	RetryBackoffMs   []int                  `json:"retryBackoffMs,omitempty"`
-	RenderThrottleMs int                    `json:"renderThrottleMs,omitempty"`
+	ContextWarnPct    float64                `json:"contextWarnPct,omitempty"`
+	ContextCritPct    float64                `json:"contextCritPct,omitempty"`
+	RetryBackoffMs    []int                  `json:"retryBackoffMs,omitempty"`
+	RenderThrottleMs  int                    `json:"renderThrottleMs,omitempty"`
 }
 
 // load reads and decodes a Settings file at path.
@@ -72,14 +72,14 @@ func Load(globalPath, projectPath string) (Settings, error) {
 	project := load(projectPath)
 
 	merged := Settings{
-		ModelConfig:      make(map[string]ModelConfig),
-		DefaultModel:     global.DefaultModel,
+		ModelConfig:       make(map[string]ModelConfig),
+		DefaultModel:      global.DefaultModel,
 		ShellTimeoutMs:    global.ShellTimeoutMs,
 		MaxShellTimeoutMs: global.MaxShellTimeoutMs,
-		ContextWarnPct:   global.ContextWarnPct,
-		ContextCritPct:   global.ContextCritPct,
-		RetryBackoffMs:   global.RetryBackoffMs,
-		RenderThrottleMs: global.RenderThrottleMs,
+		ContextWarnPct:    global.ContextWarnPct,
+		ContextCritPct:    global.ContextCritPct,
+		RetryBackoffMs:    global.RetryBackoffMs,
+		RenderThrottleMs:  global.RenderThrottleMs,
 	}
 
 	for k, v := range global.ModelConfig {
@@ -182,14 +182,14 @@ func LoadAnnotated(globalPath, projectPath string) (AnnotatedSettings, error) {
 	}
 
 	sources := map[string]Source{
-		"defaultModel":     SourceDefault,
-		"systemPrompt":     SourceDefault,
+		"defaultModel":      SourceDefault,
+		"systemPrompt":      SourceDefault,
 		"shellTimeoutMs":    SourceDefault,
 		"maxShellTimeoutMs": SourceDefault,
-		"contextWarnPct":   SourceDefault,
-		"contextCritPct":   SourceDefault,
-		"retryBackoffMs":   SourceDefault,
-		"renderThrottleMs": SourceDefault,
+		"contextWarnPct":    SourceDefault,
+		"contextCritPct":    SourceDefault,
+		"retryBackoffMs":    SourceDefault,
+		"renderThrottleMs":  SourceDefault,
 	}
 
 	if global.DefaultModel != "" {

@@ -11,7 +11,7 @@ import (
 func sampleAnnotated() config.AnnotatedSettings {
 	return config.AnnotatedSettings{
 		Settings: config.Settings{
-			DefaultModel:  "my-model",
+			DefaultModel:   "my-model",
 			ShellTimeoutMs: 60000,
 			ModelConfig: map[string]config.ModelConfig{
 				"my-model": {
@@ -24,14 +24,14 @@ func sampleAnnotated() config.AnnotatedSettings {
 		GlobalPath:  "~/.gohome/settings.json",
 		ProjectPath: "./.gohome/settings.json",
 		Sources: map[string]config.Source{
-			"defaultModel":     config.SourceGlobal,
+			"defaultModel":      config.SourceGlobal,
 			"shellTimeoutMs":    config.SourceGlobal,
 			"maxShellTimeoutMs": config.SourceDefault,
-			"contextWarnPct":   config.SourceDefault,
-			"contextCritPct":   config.SourceDefault,
-			"systemPrompt":     config.SourceDefault,
-			"retryBackoffMs":   config.SourceDefault,
-			"renderThrottleMs": config.SourceDefault,
+			"contextWarnPct":    config.SourceDefault,
+			"contextCritPct":    config.SourceDefault,
+			"systemPrompt":      config.SourceDefault,
+			"retryBackoffMs":    config.SourceDefault,
+			"renderThrottleMs":  config.SourceDefault,
 		},
 		ModelSources: map[string]config.Source{
 			"my-model": config.SourceGlobal,
