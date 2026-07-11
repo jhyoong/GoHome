@@ -228,8 +228,8 @@ func TestDefaultProjectPath(t *testing.T) {
 func TestLoad_MergesNewSettingsFields(t *testing.T) {
 	dir := t.TempDir()
 
-	global := Settings{BashTimeoutMs: 60000, ContextWarnPct: 0.70}
-	project := Settings{BashTimeoutMs: 90000}
+	global := Settings{ShellTimeoutMs: 60000, ContextWarnPct: 0.70}
+	project := Settings{ShellTimeoutMs: 90000}
 
 	gPath := writeJSON(t, dir, "global.json", global)
 	pPath := writeJSON(t, dir, "project.json", project)
@@ -238,8 +238,8 @@ func TestLoad_MergesNewSettingsFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if merged.BashTimeoutMs != 90000 {
-		t.Errorf("BashTimeoutMs: got %d, want 90000", merged.BashTimeoutMs)
+	if merged.ShellTimeoutMs != 90000 {
+		t.Errorf("ShellTimeoutMs: got %d, want 90000", merged.ShellTimeoutMs)
 	}
 	if merged.ContextWarnPct != 0.70 {
 		t.Errorf("ContextWarnPct: got %v, want 0.70", merged.ContextWarnPct)

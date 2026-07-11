@@ -7,8 +7,8 @@ Model Configs:
 
 Settings:
   defaultModel                      [default]
-  bashTimeoutMs        0            [default]
-  maxBashTimeoutMs     0            [default]
+  shellTimeoutMs       0            [default]
+  maxShellTimeoutMs    0            [default]
   contextWarnPct       0            [default]
   contextCritPct       0            [default]
   renderThrottleMs     0            [default]

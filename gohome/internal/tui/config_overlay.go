@@ -86,8 +86,8 @@ func (co *ConfigOverlay) Render(width int) []string {
 	}
 
 	writeField("defaultModel", co.ann.DefaultModel)
-	writeField("bashTimeoutMs", co.ann.BashTimeoutMs)
-	writeField("maxBashTimeoutMs", co.ann.MaxBashTimeoutMs)
+	writeField("shellTimeoutMs", co.ann.ShellTimeoutMs)
+	writeField("maxShellTimeoutMs", co.ann.MaxShellTimeoutMs)
 	writeField("contextWarnPct", co.ann.ContextWarnPct)
 	writeField("contextCritPct", co.ann.ContextCritPct)
 	writeField("renderThrottleMs", co.ann.RenderThrottleMs)

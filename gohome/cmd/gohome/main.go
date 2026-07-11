@@ -272,8 +272,8 @@ func main() {
 	registry.Register(tools.WriteTool{})
 	registry.Register(tools.EditTool{})
 	registry.Register(tools.ShellTool{
-		DefaultTimeoutMs: settings.BashTimeoutMs,
-		MaxTimeoutMs:     settings.MaxBashTimeoutMs,
+		DefaultTimeoutMs: settings.ShellTimeoutMs,
+		MaxTimeoutMs:     settings.MaxShellTimeoutMs,
 	})
 
 	// Build or resume session.

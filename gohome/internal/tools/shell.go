@@ -65,11 +65,11 @@ func (s ShellTool) Execute(ctx context.Context, in json.RawMessage, sink Progres
 
 	defaultTimeout := s.DefaultTimeoutMs
 	if defaultTimeout <= 0 {
-		defaultTimeout = config.DefaultBashTimeoutMs
+		defaultTimeout = config.DefaultShellTimeoutMs
 	}
 	maxTimeout := s.MaxTimeoutMs
 	if maxTimeout <= 0 {
-		maxTimeout = config.DefaultMaxBashTimeoutMs
+		maxTimeout = config.DefaultMaxShellTimeoutMs
 	}
 
 	timeoutMs := defaultTimeout
