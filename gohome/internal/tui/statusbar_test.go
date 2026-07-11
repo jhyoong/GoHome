@@ -88,6 +88,23 @@ func TestStatusBarModelUnknown(t *testing.T) {
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
 
+// TestStatusBarShowsCWD verifies that the status bar includes the shortened CWD.
+func TestStatusBarShowsCWD(t *testing.T) {
+	m := tui.New(nil, "")
+	m.SetModelName("opus")
+	m.SetHomeDir("/Users/testuser")
+	m.SetCWD("/Users/testuser/projects/myapp")
+
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(120, 24))
+	t.Cleanup(func() {
+		_ = tm.Quit()
+	})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("~/projects/myapp"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
+
 // TestStatusBarCumulativeTokens verifies that multiple usage events accumulate
 // rather than replacing each other.
 func TestStatusBarCumulativeTokens(t *testing.T) {
