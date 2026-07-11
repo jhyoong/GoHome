@@ -25,7 +25,7 @@ Pre-built binaries are attached to each [GitHub release](https://github.com/jhyo
 
 ```sh
 # Download (replace the URL with the latest release and your platform)
-curl -L -o gohome https://github.com/jhyoong/GoHome/releases/download/v0.3.1/gohome-darwin-arm64
+curl -L -o gohome https://github.com/jhyoong/GoHome/releases/download/v0.4.0/gohome-darwin-arm64
 
 # Make it executable
 chmod +x gohome
@@ -50,7 +50,7 @@ The source tree lives under `gohome/` at the repo root. Because the module layou
 ```sh
 git clone https://github.com/jhyoong/GoHome
 cd GoHome
-go build -ldflags "-X main.version=v0.3.1" -o bin/gohome ./gohome/cmd/gohome
+go build -ldflags "-X main.version=v0.4.0" -o bin/gohome ./gohome/cmd/gohome
 ```
 
 ### Run
@@ -66,7 +66,6 @@ go build -ldflags "-X main.version=v0.3.1" -o bin/gohome ./gohome/cmd/gohome
 | `--model <name>` | Select a configured model config by name |
 | `--yolo` | Start with all approval prompts disabled |
 | `--resume` | Resume the most recent session for the current working directory |
-| `--stop` | Shut down a running daemon for the current working directory |
 | `--config` | Print merged configuration and exit |
 | `--version` | Print version and exit |
 
@@ -204,8 +203,6 @@ When the input editor is empty, `Up` and `Down` arrow keys move a `>` cursor thr
   whitelist.json         # global auto-approve rules
   sessions/              # JSONL session transcripts, grouped by project
   logs/                  # structured log files (one per day)
-  daemon.sock            # Unix socket for daemon communication
-
 ./.gohome/               # project-level overrides (in the working directory)
   settings.json          # project model config overrides
   whitelist.json         # project whitelist; "Allow always" entries land here
