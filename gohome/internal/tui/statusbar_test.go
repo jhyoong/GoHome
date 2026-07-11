@@ -105,9 +105,10 @@ func TestStatusBarShowsCWD(t *testing.T) {
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
 
-// TestStatusBarCumulativeTokens verifies that multiple usage events accumulate
-// rather than replacing each other.
-func TestStatusBarCumulativeTokens(t *testing.T) {
+// TestStatusBarReplacesUsagePerTurn verifies that each usage event replaces the
+// previous one rather than accumulating, since the LLM reports total context
+// usage per turn (input_tokens already includes the full conversation history).
+func TestStatusBarReplacesUsagePerTurn(t *testing.T) {
 	m := tui.New(nil, "")
 	m.SetModelName("opus")
 	m.SetContextWindow(200000)
@@ -129,20 +130,20 @@ func TestStatusBarCumulativeTokens(t *testing.T) {
 		},
 	})
 
-	// Second turn: 2000 input + 1000 output = 3000.
-	// Cumulative: 7000 input + 4000 output = 11000 = "11.0k".
+	// Second turn: input grew to 6000 (includes prior history), output 1000.
+	// Display should show 7000 = "7.0k", NOT accumulated 12000.
 	tm.Send(tui.AgentEventMsg{
 		SessionID: "main",
 		Ev: agent.Event{
 			Kind: agent.EventUsageUpdated,
 			Usage: &common.Usage{
-				InputTokens:  2000,
+				InputTokens:  6000,
 				OutputTokens: 1000,
 			},
 		},
 	})
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("11.0k"))
+		return bytes.Contains(out, []byte("7.0k"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }

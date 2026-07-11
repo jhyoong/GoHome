@@ -121,10 +121,7 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 
 	case agent.EventUsageUpdated:
 		if ev.Usage != nil {
-			sv.Usage.InputTokens += ev.Usage.InputTokens
-			sv.Usage.OutputTokens += ev.Usage.OutputTokens
-			sv.Usage.CacheReadTokens += ev.Usage.CacheReadTokens
-			sv.Usage.CacheWriteTokens += ev.Usage.CacheWriteTokens
+			sv.Usage = *ev.Usage
 			m.checkContextWarnings(sv)
 		}
 
@@ -203,8 +200,15 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 		sv.InFlight = false
 	}
 
-	// Spinner: start on thinking/token delta, stop on completion/error.
+	// Spinner: start on sending/thinking/token delta, stop on completion/error.
 	switch ev.Kind {
+	case agent.EventSending:
+		if !m.spinner.Active() {
+			m.spinner.Start("Sending...")
+			m.spinner.SetOnCancel(m.cancelFocusedSession)
+		} else {
+			m.spinner.SetMessage("Sending...")
+		}
 	case agent.EventThinkingDelta:
 		if !m.spinner.Active() {
 			m.spinner.Start("Thinking...")
@@ -258,7 +262,7 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 	if dequeuedCmd != nil {
 		return dequeuedCmd
 	}
-	if (ev.Kind == agent.EventTokenDelta || ev.Kind == agent.EventThinkingDelta) && m.spinner.Active() {
+	if (ev.Kind == agent.EventSending || ev.Kind == agent.EventTokenDelta || ev.Kind == agent.EventThinkingDelta) && m.spinner.Active() {
 		return SpinnerTickCmd()
 	}
 	return nil
