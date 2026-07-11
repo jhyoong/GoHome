@@ -5,13 +5,12 @@ design preserves so the feature can be added later without a rewrite.
 
 ---
 
-**Daemon mode**
-Run the agent as a background process, with a thin TUI client connecting over
-a Unix socket or stdin/stdout JSON-RPC.
-Seam: `agent.Frontend` is a pure interface. A second implementation that
-serialises all three methods (`Emit`, `RequestApproval`, `AwaitUserInput`)
-to JSON-RPC gives daemon mode without touching `internal/agent`,
-`internal/llm`, `internal/tools`, `internal/guard`, or `internal/session`.
+**Daemon mode** -- TRIED in v0.3.0, REVERTED in v0.4.0
+Implemented as a background daemon with JSON-RPC over Unix socket in v0.3.0.
+Reverted in v0.4.0 due to 8+ critical bugs (concurrency races, channel stalls,
+goroutine leaks, Ctrl+C hangs), broken Windows support, and unnecessary complexity
+for a single-user CLI tool. The in-process architecture was restored with all
+non-daemon features ported forward.
 
 **Context compaction**
 Automatic or manual compaction of long conversation histories to stay within

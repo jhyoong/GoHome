@@ -2,14 +2,28 @@
 
 ## v0.4.0
 
+### Added
+
+- **Unified FIFO approval queue** -- Subagent tool approvals now surface in the main session without requiring session switching. A flat FIFO queue replaces the per-session pending map, with session labels on cross-session approval overlays (#30).
+- **Denial return-to-user flow** -- Tool denial now returns control to the user instead of immediately sending the denial back to the LLM. New `ErrToolDenied` sentinel and `EventToolDenied` event, with a "Tool call denied" notice in the TUI (#31).
+- **TUI spinner states** -- Spinner now transitions through Sending, Thinking, and Processing states for clearer feedback during LLM turns (#32).
+
+### Fixed
+
+- **Token tracking** -- Token counts are now replaced per-turn instead of accumulated, matching how Anthropic and OpenAI report total input tokens (#32).
+- **OpenAI adapter usage capture** -- Usage data is now captured from non-empty-choices chunks, fixing missing token counts for OpenAI-wire endpoints (#32).
+- **CWD in statusbar** -- The current working directory and git branch are now shown in the status bar (#32).
+- **Windows clipboard null-byte stripping** -- Null bytes from Windows clipboard paste are now stripped (#28).
+- **Scroll line counter** -- Scroll position now tracks cursor position correctly and reaches 100% (#28).
+
 ### Changed
 
-- **Architecture: restored in-process** -- Removed the daemon-client model introduced in v0.3.0. The agent now runs in the same process as the TUI with direct channel communication, eliminating Unix socket dependency, RPC serialization overhead, and associated concurrency bugs. Windows support is restored.
+- **Architecture: restored in-process** -- Removed the daemon-client model introduced in v0.3.0. The agent now runs in the same process as the TUI with direct channel communication, eliminating Unix socket dependency, RPC serialization overhead, and associated concurrency bugs. Windows support is restored (#29).
 - **In-process model switching** -- /model command rebuilds the LLM client directly in-process instead of routing through daemon RPC. Agent params (maxTokens, thinkingBudget, reasoningEffort) are updated immediately.
 
 ### Removed
 
-- **Daemon mode** -- Removed daemon server, JSON-RPC protocol, Unix socket communication, RPCFrontend, ClientFrontend, and --stop CLI flag.
+- **Daemon mode** -- Removed daemon server, JSON-RPC protocol, Unix socket communication, RPCFrontend, ClientFrontend, and --stop CLI flag (~3,085 LOC removed, net -4,127 LOC) (#29).
 - **--stop CLI flag** -- No daemon to stop.
 
 ## v0.2.5
