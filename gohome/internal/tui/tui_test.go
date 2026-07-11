@@ -199,6 +199,32 @@ func TestPendingQueue_DequeueOnTurnDone(t *testing.T) {
 	}
 }
 
+// TestSpinnerStartsOnSend verifies the spinner shows "Sending..." immediately
+// after submitting a message, before any streaming events arrive.
+func TestSpinnerStartsOnSend(t *testing.T) {
+	fe := tui.NewFrontend()
+	m := tui.New(fe, "")
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() {
+		_ = tm.Quit()
+	})
+
+	// Drain the input channel so sendInputCmd does not block.
+	go func() {
+		for range fe.InputCh() {
+		}
+	}()
+
+	// Type a message and press Enter.
+	tm.Type("hello")
+	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// The spinner should appear with "Sending..." before any streaming events.
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Sending..."))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
+
 func TestViewportScrollback(t *testing.T) {
 	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))

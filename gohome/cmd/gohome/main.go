@@ -353,6 +353,8 @@ func main() {
 	m.SetSettings(settings)
 	m.SetGitBranch(gitBranch(cwd))
 	m.SetProjectDir(filepath.Base(cwd))
+	m.SetCWD(cwd)
+	m.SetHomeDir(userHome)
 	m.SetConfigName(cfgName)
 
 	// If no model configs exist and this looks interactive, show the setup wizard.

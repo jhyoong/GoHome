@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
@@ -27,6 +28,14 @@ func formatTokens(n int) string {
 // reflects new work sent to the model in this session.
 func usedTokens(u common.Usage) int {
 	return u.InputTokens + u.OutputTokens
+}
+
+// shortenPath replaces a leading home directory prefix with "~".
+func shortenPath(path, home string) string {
+	if home != "" && strings.HasPrefix(path, home) {
+		return "~" + path[len(home):]
+	}
+	return path
 }
 
 // statusBar renders the one-line bottom status bar for the given model state.
@@ -68,14 +77,20 @@ func (m *Model) statusBar() string {
 		project += " (" + m.gitBranch + ")"
 	}
 
-	line := fmt.Sprintf("%s · %s · %s %s/%s (%d%%)",
-		project,
-		modelDisplay,
-		bar,
-		formatTokens(used),
-		formatTokens(total),
-		pct,
-	)
+	cwdDisplay := ""
+	if m.cwd != "" {
+		cwdDisplay = shortenPath(m.cwd, m.homeDir)
+	}
+
+	var segments []string
+	segments = append(segments, project)
+	if cwdDisplay != "" {
+		segments = append(segments, cwdDisplay)
+	}
+	segments = append(segments, modelDisplay)
+	segments = append(segments, fmt.Sprintf("%s %s/%s (%d%%)", bar, formatTokens(used), formatTokens(total), pct))
+
+	line := strings.Join(segments, " · ")
 
 	if m.yolo {
 		line += " · " + yoloStyle.Render("[YOLO]")

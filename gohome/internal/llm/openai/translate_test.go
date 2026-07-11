@@ -236,6 +236,40 @@ func TestTranslateEvents_TurnDoneWithoutUsageChunk(t *testing.T) {
 	}
 }
 
+// TestTranslateEvents_UsageWithNonEmptyChoices covers servers (e.g. LiteLLM)
+// that send usage alongside a non-empty choices array in the final chunk.
+func TestTranslateEvents_UsageWithNonEmptyChoices(t *testing.T) {
+	frames := []sseFrame{
+		{data: `{"choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}`},
+		{data: `{"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`},
+		{data: `{"choices":[{"index":0,"delta":{}}],"usage":{"prompt_tokens":18,"completion_tokens":50,"total_tokens":68}}`},
+		{done: true},
+	}
+
+	events := collectEvents(translateEvents(context.Background(), makeFrames(frames)))
+
+	var turnDone *common.StreamEvent
+	for _, e := range events {
+		if e.Kind == common.EventTurnDone {
+			cp := e
+			turnDone = &cp
+		}
+	}
+
+	if turnDone == nil {
+		t.Fatal("no EventTurnDone")
+	}
+	if turnDone.Usage == nil {
+		t.Fatal("Usage is nil -- server sent usage with non-empty choices and it was not captured")
+	}
+	if turnDone.Usage.InputTokens != 18 {
+		t.Errorf("InputTokens: got %d, want 18", turnDone.Usage.InputTokens)
+	}
+	if turnDone.Usage.OutputTokens != 50 {
+		t.Errorf("OutputTokens: got %d, want 50", turnDone.Usage.OutputTokens)
+	}
+}
+
 // --- Reasoning content (thinking) ---
 
 func TestTranslateEvents_ReasoningThenContent(t *testing.T) {

@@ -87,3 +87,63 @@ func TestStatusBarModelUnknown(t *testing.T) {
 		return bytes.Contains(out, []byte("?"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
+
+// TestStatusBarShowsCWD verifies that the status bar includes the shortened CWD.
+func TestStatusBarShowsCWD(t *testing.T) {
+	m := tui.New(nil, "")
+	m.SetModelName("opus")
+	m.SetHomeDir("/Users/testuser")
+	m.SetCWD("/Users/testuser/projects/myapp")
+
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(120, 24))
+	t.Cleanup(func() {
+		_ = tm.Quit()
+	})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("~/projects/myapp"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
+
+// TestStatusBarReplacesUsagePerTurn verifies that each usage event replaces the
+// previous one rather than accumulating, since the LLM reports total context
+// usage per turn (input_tokens already includes the full conversation history).
+func TestStatusBarReplacesUsagePerTurn(t *testing.T) {
+	m := tui.New(nil, "")
+	m.SetModelName("opus")
+	m.SetContextWindow(200000)
+
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(120, 24))
+	t.Cleanup(func() {
+		_ = tm.Quit()
+	})
+
+	// First turn: 5000 input + 3000 output = 8000.
+	tm.Send(tui.AgentEventMsg{
+		SessionID: "main",
+		Ev: agent.Event{
+			Kind: agent.EventUsageUpdated,
+			Usage: &common.Usage{
+				InputTokens:  5000,
+				OutputTokens: 3000,
+			},
+		},
+	})
+
+	// Second turn: input grew to 6000 (includes prior history), output 1000.
+	// Display should show 7000 = "7.0k", NOT accumulated 12000.
+	tm.Send(tui.AgentEventMsg{
+		SessionID: "main",
+		Ev: agent.Event{
+			Kind: agent.EventUsageUpdated,
+			Usage: &common.Usage{
+				InputTokens:  6000,
+				OutputTokens: 1000,
+			},
+		},
+	})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("7.0k"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}

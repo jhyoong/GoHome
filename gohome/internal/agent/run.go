@@ -25,6 +25,10 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 	tctx := tools.WithSession(ctx, sess)
 
 	for {
+		a.Frontend.Emit(sess.ID, Event{
+			Kind:      EventSending,
+			SessionID: sess.ID,
+		})
 		_, err := a.Turn(tctx, sess)
 		if err != nil {
 			if ctx.Err() != nil {

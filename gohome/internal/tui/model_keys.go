@@ -40,9 +40,9 @@ func (m *Model) handleCtrlC() (tea.Model, tea.Cmd) {
 	}
 
 	if m.activeApproval != nil {
-		m.resolveApproval(guard.ApprovalDecision{Outcome: guard.Deny})
+		cmd := m.resolveApproval(guard.ApprovalDecision{Outcome: guard.Deny})
 		m.statusMsg = "Approval dismissed"
-		return m, nil
+		return m, cmd
 	}
 
 	sv := m.sessions[m.focused]
@@ -147,6 +147,9 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.statusMsg = ""
 					m.cursor = len(sv.Timeline) - 1
 					m.rebuildViewport()
+					m.spinner.Start("Sending...")
+					m.spinner.SetOnCancel(m.cancelFocusedSession)
+					cmds = append(cmds, SpinnerTickCmd())
 					cmds = append(cmds, m.sendInputCmd(text))
 				}
 			}

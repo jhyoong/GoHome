@@ -20,6 +20,7 @@ const (
 	EventSessionEnded   EventKind = "session_ended"
 	EventSessionSwapped EventKind = "session_swapped"
 	EventError          EventKind = "error"
+	EventSending        EventKind = "sending"
 	EventThinkingDelta  EventKind = "thinking_delta"
 	EventThinkingDone   EventKind = "thinking_done"
 	EventToolDenied     EventKind = "tool_denied"

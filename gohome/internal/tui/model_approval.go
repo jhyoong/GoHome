@@ -31,10 +31,10 @@ func (m *Model) handleApprovalKey(msg tea.KeyMsg) tea.Cmd {
 		switch msg.Type {
 		case tea.KeyEnter:
 			steer := strings.TrimSpace(ap.steerInput.Value())
-			m.resolveApproval(guard.ApprovalDecision{
+			cmds = append(cmds, m.resolveApproval(guard.ApprovalDecision{
 				Outcome:      guard.DenySteer,
 				SteerMessage: steer,
-			})
+			}))
 		case tea.KeyEsc:
 			// Cancel steer, return to approval menu.
 			ap.steering = false
@@ -82,29 +82,29 @@ func (m *Model) handleApprovalKey(msg tea.KeyMsg) tea.Cmd {
 	case msg.Type == tea.KeyEnter:
 		switch ap.selected {
 		case 0:
-			m.resolveApproval(guard.ApprovalDecision{Outcome: guard.AllowOnce})
+			cmds = append(cmds, m.resolveApproval(guard.ApprovalDecision{Outcome: guard.AllowOnce}))
 		case 1:
-			m.resolveApproval(guard.ApprovalDecision{
+			cmds = append(cmds, m.resolveApproval(guard.ApprovalDecision{
 				Outcome:      guard.AllowAlways,
 				SavedPattern: ap.pattern,
-			})
+			}))
 		case 2:
-			m.resolveApproval(guard.ApprovalDecision{Outcome: guard.Deny})
+			cmds = append(cmds, m.resolveApproval(guard.ApprovalDecision{Outcome: guard.Deny}))
 		case 3:
 			ap.steering = true
 			ap.steerInput.Focus()
 		}
 	case msg.Type == tea.KeyEsc:
-		m.resolveApproval(guard.ApprovalDecision{Outcome: guard.Deny})
+		cmds = append(cmds, m.resolveApproval(guard.ApprovalDecision{Outcome: guard.Deny}))
 	case keyRune(msg) == '1':
-		m.resolveApproval(guard.ApprovalDecision{Outcome: guard.AllowOnce})
+		cmds = append(cmds, m.resolveApproval(guard.ApprovalDecision{Outcome: guard.AllowOnce}))
 	case keyRune(msg) == '2':
-		m.resolveApproval(guard.ApprovalDecision{
+		cmds = append(cmds, m.resolveApproval(guard.ApprovalDecision{
 			Outcome:      guard.AllowAlways,
 			SavedPattern: ap.pattern,
-		})
+		}))
 	case keyRune(msg) == '3':
-		m.resolveApproval(guard.ApprovalDecision{Outcome: guard.Deny})
+		cmds = append(cmds, m.resolveApproval(guard.ApprovalDecision{Outcome: guard.Deny}))
 	case keyRune(msg) == '4':
 		ap.steering = true
 		ap.steerInput.Focus()
@@ -119,13 +119,20 @@ func (m *Model) handleApprovalKey(msg tea.KeyMsg) tea.Cmd {
 
 // resolveApproval sends dec on the active approval's reply channel and clears
 // the active approval. The next queued approval (if any) is promoted to active.
-func (m *Model) resolveApproval(dec guard.ApprovalDecision) {
+func (m *Model) resolveApproval(dec guard.ApprovalDecision) tea.Cmd {
 	if m.activeApproval == nil {
-		return
+		return nil
 	}
 	m.activeApproval.reply <- dec
 	m.activeApproval = nil
 	m.promoteApproval()
+
+	if m.activeApproval == nil && (dec.Outcome == guard.AllowOnce || dec.Outcome == guard.AllowAlways) {
+		m.spinner.Start("Processing...")
+		m.spinner.SetOnCancel(m.cancelFocusedSession)
+		return SpinnerTickCmd()
+	}
+	return nil
 }
 
 // promoteApproval pops the next approval from the FIFO queue (if any) and
