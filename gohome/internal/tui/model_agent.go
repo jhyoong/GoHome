@@ -209,6 +209,8 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 		if !m.spinner.Active() {
 			m.spinner.Start("Thinking...")
 			m.spinner.SetOnCancel(m.cancelFocusedSession)
+		} else {
+			m.spinner.SetMessage("Thinking...")
 		}
 	case agent.EventTokenDelta:
 		if !m.spinner.Active() {
