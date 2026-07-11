@@ -102,8 +102,8 @@ go build -ldflags "-X main.version=v0.4.0" -o bin/gohome ./gohome/cmd/gohome
   },
   "defaultModel": "local-anthropic",
   "systemPrompt": "You are a helpful coding assistant.",
-  "bashTimeoutMs": 120000,
-  "maxBashTimeoutMs": 600000,
+  "shellTimeoutMs": 120000,
+  "maxShellTimeoutMs": 600000,
   "contextWarnPct": 0.80,
   "contextCritPct": 0.95,
   "retryBackoffMs": [250, 1000, 2000]
@@ -133,8 +133,8 @@ Both `"anthropic"` and `"openai"` wires are supported. Set `apiKey` for a litera
 |---|---|---|
 | `defaultModel` | — | Name of the model config used when `--model` is not passed |
 | `systemPrompt` | — | Custom system prompt sent to the LLM. Overrides the built-in default when set |
-| `bashTimeoutMs` | `120000` | Default bash command timeout in milliseconds |
-| `maxBashTimeoutMs` | `600000` | Maximum bash command timeout in milliseconds |
+| `shellTimeoutMs` | `120000` | Default shell command timeout in milliseconds |
+| `maxShellTimeoutMs` | `600000` | Maximum shell command timeout in milliseconds |
 | `contextWarnPct` | `0.80` | Context window usage ratio at which a warning is shown (must be < `contextCritPct`) |
 | `contextCritPct` | `0.95` | Context window usage ratio at which a critical warning is shown (must be > `contextWarnPct` and <= 1.0) |
 | `renderThrottleMs` | `0` | Minimum interval in milliseconds between TUI redraws during token streaming. `0` (default) renders every token; higher values reduce terminal flicker on slow connections |
@@ -171,7 +171,7 @@ If `contextWarnPct` >= `contextCritPct`, or either value is outside the (0, 1] r
 | `/` | Open slash command with inline autocomplete |
 | `Tab` | Confirm file search selection |
 | `1`–`4` | Pick option in approval prompt |
-| `e` | Edit suggested bash pattern in approval prompt |
+| `e` | Edit suggested shell pattern in approval prompt |
 | `Esc` | Deny / close overlay / dismiss file search |
 
 ### Timeline cursor
