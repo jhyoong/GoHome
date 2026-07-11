@@ -5,12 +5,12 @@ import (
 	"strings"
 )
 
-// Suggest returns a suggested whitelist bash pattern for a given tool call,
-// or "" for non-bash tools or unparseable input.
+// Suggest returns a suggested whitelist shell pattern for a given tool call,
+// or "" for non-shell tools or unparseable input.
 //
 // Pattern construction rule (applied after tokenizing the command on whitespace):
 //
-//  1. Non-bash tool -> "".
+//  1. Non-shell tool -> "".
 //  2. Empty command -> "".
 //  3. Tokens[0] in {npm, pnpm, yarn} AND len>=2 AND tokens[1]=="run":
 //     take first 3 tokens (e.g. "npm run build").
@@ -24,7 +24,7 @@ import (
 //
 // The result is always prefixed with "^".
 func Suggest(tool string, inputJSON []byte) string {
-	if tool != "bash" {
+	if tool != "shell" {
 		return ""
 	}
 
@@ -44,7 +44,7 @@ func Suggest(tool string, inputJSON []byte) string {
 	return "^" + prefix
 }
 
-// buildPrefix selects the appropriate token prefix for a bash command.
+// buildPrefix selects the appropriate token prefix for a shell command.
 func buildPrefix(tokens []string) string {
 	cmd := tokens[0]
 

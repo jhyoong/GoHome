@@ -8,10 +8,10 @@ import (
 	"strings"
 )
 
-// AddProject persists a new tool or bash pattern into the project whitelist file
+// AddProject persists a new tool or shell pattern into the project whitelist file
 // and updates the in-memory Whitelist atomically.
 //
-// For tool == "bash": pattern is appended to the bash list (no-op if already present).
+// For tool == "shell": pattern is appended to the shell list (no-op if already present).
 // For any other tool: tool is appended to the tools list (no-op if already present).
 //
 // The in-process sync.Mutex (w.mu) guards the whole read-modify-write together with
@@ -25,14 +25,14 @@ func (w *Whitelist) AddProject(tool, pattern string) error {
 	defer w.mu.Unlock()
 
 	// --- update in-memory state first ---
-	if tool == "bash" {
+	if tool == "shell" {
 		anchored := pattern
 		if !strings.HasPrefix(anchored, "^") {
 			anchored = "^" + anchored
 		}
 		// Only add if not already matched by an existing pattern.
 		alreadyPresent := false
-		for _, re := range w.bash {
+		for _, re := range w.shell {
 			if re.String() == anchored {
 				alreadyPresent = true
 				break
@@ -41,7 +41,7 @@ func (w *Whitelist) AddProject(tool, pattern string) error {
 		if !alreadyPresent {
 			re, err := regexp.Compile(anchored)
 			if err == nil {
-				w.bash = append(w.bash, re)
+				w.shell = append(w.shell, re)
 			}
 		}
 	} else {
@@ -91,9 +91,9 @@ func (w *Whitelist) persistToFile(tool, pattern string) error {
 	}
 
 	// Merge new entry (idempotent).
-	if tool == "bash" {
-		if !containsStr(wf.Bash, pattern) {
-			wf.Bash = append(wf.Bash, pattern)
+	if tool == "shell" {
+		if !containsStr(wf.Shell, pattern) {
+			wf.Shell = append(wf.Shell, pattern)
 		}
 	} else {
 		if !containsStr(wf.Tools, tool) {

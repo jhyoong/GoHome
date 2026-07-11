@@ -17,13 +17,13 @@ func TestAddProject_BashPattern(t *testing.T) {
 		t.Fatalf("Compile: %v", err)
 	}
 
-	if err := wl.AddProject("bash", "^git status"); err != nil {
-		t.Fatalf("AddProject bash: %v", err)
+	if err := wl.AddProject("shell", "^git status"); err != nil {
+		t.Fatalf("AddProject shell: %v", err)
 	}
 
 	// In-memory: should now allow "git status"
 	input, _ := json.Marshal(map[string]string{"command": "git status"})
-	if !wl.Allows("bash", input) {
+	if !wl.Allows("shell", input) {
 		t.Error("expected in-memory to allow 'git status' after AddProject")
 	}
 
@@ -36,8 +36,8 @@ func TestAddProject_BashPattern(t *testing.T) {
 	if err := json.Unmarshal(data, &wf); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
-	if !containsStr(wf.Bash, "^git status") {
-		t.Errorf("disk: expected ^git status in bash list, got %v", wf.Bash)
+	if !containsStr(wf.Shell, "^git status") {
+		t.Errorf("disk: expected ^git status in shell list, got %v", wf.Shell)
 	}
 }
 
@@ -83,8 +83,8 @@ func TestAddProject_Idempotent(t *testing.T) {
 	}
 
 	// Add the same pattern twice.
-	_ = wl.AddProject("bash", "^ls")
-	_ = wl.AddProject("bash", "^ls")
+	_ = wl.AddProject("shell", "^ls")
+	_ = wl.AddProject("shell", "^ls")
 
 	data, err := os.ReadFile(projPath)
 	if err != nil {
@@ -96,7 +96,7 @@ func TestAddProject_Idempotent(t *testing.T) {
 	}
 
 	count := 0
-	for _, p := range wf.Bash {
+	for _, p := range wf.Shell {
 		if p == "^ls" {
 			count++
 		}
@@ -116,7 +116,7 @@ func TestAddProject_MissingFile_Created(t *testing.T) {
 		t.Fatalf("Compile: %v", err)
 	}
 
-	if err := wl.AddProject("bash", "^make build"); err != nil {
+	if err := wl.AddProject("shell", "^make build"); err != nil {
 		t.Fatalf("AddProject with missing file: %v", err)
 	}
 
@@ -126,7 +126,7 @@ func TestAddProject_MissingFile_Created(t *testing.T) {
 }
 
 func TestAddProject_ConcurrentBashPatterns(t *testing.T) {
-	// N goroutines each add a distinct bash pattern concurrently.
+	// N goroutines each add a distinct shell pattern concurrently.
 	// After all complete, every pattern must appear in the file exactly once.
 	const N = 20
 
@@ -145,7 +145,7 @@ func TestAddProject_ConcurrentBashPatterns(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			pat := fmt.Sprintf("^pattern-%d", i)
-			if err := wl.AddProject("bash", pat); err != nil {
+			if err := wl.AddProject("shell", pat); err != nil {
 				t.Errorf("goroutine %d AddProject: %v", i, err)
 			}
 		}()
@@ -161,13 +161,13 @@ func TestAddProject_ConcurrentBashPatterns(t *testing.T) {
 		t.Fatalf("Unmarshal: %v", err)
 	}
 
-	if len(wf.Bash) != N {
-		t.Errorf("expected %d bash patterns on disk, got %d: %v", N, len(wf.Bash), wf.Bash)
+	if len(wf.Shell) != N {
+		t.Errorf("expected %d shell patterns on disk, got %d: %v", N, len(wf.Shell), wf.Shell)
 	}
 
 	// Verify no duplicates and all patterns present.
 	seen := make(map[string]int)
-	for _, p := range wf.Bash {
+	for _, p := range wf.Shell {
 		seen[p]++
 	}
 	for i := 0; i < N; i++ {
@@ -185,12 +185,12 @@ func TestAddProject_NoPath_InMemoryOnly(t *testing.T) {
 		t.Fatalf("Compile: %v", err)
 	}
 
-	if err := wl.AddProject("bash", "^echo"); err != nil {
+	if err := wl.AddProject("shell", "^echo"); err != nil {
 		t.Fatalf("AddProject with no path: %v", err)
 	}
 
 	input, _ := json.Marshal(map[string]string{"command": "echo hello"})
-	if !wl.Allows("bash", input) {
+	if !wl.Allows("shell", input) {
 		t.Error("expected 'echo hello' to be allowed in-memory when no projectPath set")
 	}
 }

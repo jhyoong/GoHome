@@ -33,9 +33,9 @@ func emptyWhitelist(t *testing.T) *Whitelist {
 	return wl
 }
 
-func whitelistWith(t *testing.T, tools []string, bash []string) *Whitelist {
+func whitelistWith(t *testing.T, tools []string, shell []string) *Whitelist {
 	t.Helper()
-	wl, err := Compile(WhitelistFile{Tools: tools, Bash: bash}, WhitelistFile{}, "")
+	wl, err := Compile(WhitelistFile{Tools: tools, Shell: shell}, WhitelistFile{}, "")
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestCheck_Yolo_NoFrontendCall(t *testing.T) {
 	g := newTestGuard(emptyWhitelist(t), fe)
 	g.SetYolo(true)
 
-	dec, err := g.Check(context.Background(), "sess1", "bash", bashCmd("rm -rf /"))
+	dec, err := g.Check(context.Background(), "sess1", "shell", bashCmd("rm -rf /"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestCheck_AllowAlways(t *testing.T) {
 	}
 	g := NewGuard(wl, fe)
 
-	dec, err := g.Check(context.Background(), "sess1", "bash", bashCmd("git status"))
+	dec, err := g.Check(context.Background(), "sess1", "shell", bashCmd("git status"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestCheck_AllowAlways(t *testing.T) {
 	// Pattern should now be persisted; a second call should be whitelisted.
 	fe2 := &fakeFrontend{}
 	g2 := NewGuard(wl, fe2)
-	dec2, err := g2.Check(context.Background(), "sess1", "bash", bashCmd("git status"))
+	dec2, err := g2.Check(context.Background(), "sess1", "shell", bashCmd("git status"))
 	if err != nil {
 		t.Fatalf("unexpected error on second call: %v", err)
 	}
@@ -176,7 +176,7 @@ func TestCheck_AllowAlways_SavedPattern(t *testing.T) {
 	}
 	g := NewGuard(wl, fe)
 
-	dec, err := g.Check(context.Background(), "sess1", "bash", bashCmd("git log"))
+	dec, err := g.Check(context.Background(), "sess1", "shell", bashCmd("git log"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -197,7 +197,7 @@ func TestCheck_Deny(t *testing.T) {
 	}
 	g := newTestGuard(emptyWhitelist(t), fe)
 
-	dec, err := g.Check(context.Background(), "sess1", "bash", bashCmd("rm -rf /"))
+	dec, err := g.Check(context.Background(), "sess1", "shell", bashCmd("rm -rf /"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -218,7 +218,7 @@ func TestCheck_DenySteer(t *testing.T) {
 	}
 	g := newTestGuard(emptyWhitelist(t), fe)
 
-	dec, err := g.Check(context.Background(), "sess1", "bash", bashCmd("rm -rf /"))
+	dec, err := g.Check(context.Background(), "sess1", "shell", bashCmd("rm -rf /"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -239,10 +239,10 @@ func TestCheck_ApprovalRequest_Summary(t *testing.T) {
 	}
 	g := newTestGuard(emptyWhitelist(t), fe)
 
-	// For bash, summary should be the command.
-	_, _ = g.Check(context.Background(), "sess1", "bash", bashCmd("git status"))
+	// For shell, summary should be the command.
+	_, _ = g.Check(context.Background(), "sess1", "shell", bashCmd("git status"))
 	if fe.lastReq.Summary != "git status" {
-		t.Errorf("bash summary: got %q, want %q", fe.lastReq.Summary, "git status")
+		t.Errorf("shell summary: got %q, want %q", fe.lastReq.Summary, "git status")
 	}
 
 	fe2 := &fakeFrontend{
@@ -251,6 +251,6 @@ func TestCheck_ApprovalRequest_Summary(t *testing.T) {
 	g2 := newTestGuard(emptyWhitelist(t), fe2)
 	_, _ = g2.Check(context.Background(), "sess1", "write", json.RawMessage(`{}`))
 	if fe2.lastReq.Summary != "write" {
-		t.Errorf("non-bash summary: got %q, want %q", fe2.lastReq.Summary, "write")
+		t.Errorf("non-shell summary: got %q, want %q", fe2.lastReq.Summary, "write")
 	}
 }
