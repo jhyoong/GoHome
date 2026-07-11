@@ -271,7 +271,7 @@ func main() {
 	registry.Register(tools.ReadTool{})
 	registry.Register(tools.WriteTool{})
 	registry.Register(tools.EditTool{})
-	registry.Register(tools.BashTool{
+	registry.Register(tools.ShellTool{
 		DefaultTimeoutMs: settings.BashTimeoutMs,
 		MaxTimeoutMs:     settings.MaxBashTimeoutMs,
 	})
