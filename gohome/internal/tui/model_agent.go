@@ -121,7 +121,10 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 
 	case agent.EventUsageUpdated:
 		if ev.Usage != nil {
-			sv.Usage = *ev.Usage
+			sv.Usage.InputTokens += ev.Usage.InputTokens
+			sv.Usage.OutputTokens += ev.Usage.OutputTokens
+			sv.Usage.CacheReadTokens += ev.Usage.CacheReadTokens
+			sv.Usage.CacheWriteTokens += ev.Usage.CacheWriteTokens
 			m.checkContextWarnings(sv)
 		}
 

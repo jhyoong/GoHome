@@ -87,3 +87,45 @@ func TestStatusBarModelUnknown(t *testing.T) {
 		return bytes.Contains(out, []byte("?"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
+
+// TestStatusBarCumulativeTokens verifies that multiple usage events accumulate
+// rather than replacing each other.
+func TestStatusBarCumulativeTokens(t *testing.T) {
+	m := tui.New(nil, "")
+	m.SetModelName("opus")
+	m.SetContextWindow(200000)
+
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(120, 24))
+	t.Cleanup(func() {
+		_ = tm.Quit()
+	})
+
+	// First turn: 5000 input + 3000 output = 8000.
+	tm.Send(tui.AgentEventMsg{
+		SessionID: "main",
+		Ev: agent.Event{
+			Kind: agent.EventUsageUpdated,
+			Usage: &common.Usage{
+				InputTokens:  5000,
+				OutputTokens: 3000,
+			},
+		},
+	})
+
+	// Second turn: 2000 input + 1000 output = 3000.
+	// Cumulative: 7000 input + 4000 output = 11000 = "11.0k".
+	tm.Send(tui.AgentEventMsg{
+		SessionID: "main",
+		Ev: agent.Event{
+			Kind: agent.EventUsageUpdated,
+			Usage: &common.Usage{
+				InputTokens:  2000,
+				OutputTokens: 1000,
+			},
+		},
+	})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("11.0k"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
