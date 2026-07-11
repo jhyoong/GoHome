@@ -178,13 +178,14 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 				return
 			}
 
-			// Usage chunk: choices is empty, usage is non-nil.
-			if len(c.Choices) == 0 && c.Usage != nil {
+			// Capture usage from any chunk that includes it.
+			// Some servers send usage in a dedicated empty-choices chunk;
+			// others (e.g. LiteLLM) include it alongside a non-empty choices array.
+			if c.Usage != nil {
 				usage = &common.Usage{
 					InputTokens:  c.Usage.PromptTokens,
 					OutputTokens: c.Usage.CompletionTokens,
 				}
-				continue
 			}
 
 			// Process each choice.
