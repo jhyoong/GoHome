@@ -40,9 +40,9 @@ func (m *Model) handleCtrlC() (tea.Model, tea.Cmd) {
 	}
 
 	if m.activeApproval != nil {
-		m.resolveApproval(guard.ApprovalDecision{Outcome: guard.Deny})
+		cmd := m.resolveApproval(guard.ApprovalDecision{Outcome: guard.Deny})
 		m.statusMsg = "Approval dismissed"
-		return m, nil
+		return m, cmd
 	}
 
 	sv := m.sessions[m.focused]
