@@ -40,7 +40,7 @@ func TestLoad(t *testing.T) {
 	w.Emit(AssistantMessage{
 		Content: []common.Block{
 			{Kind: common.BlockText, Text: "I will call a tool"},
-			{Kind: common.BlockToolUse, ToolUseID: "tu1", ToolName: "bash", InputJSON: `{"cmd":"ls"}`},
+			{Kind: common.BlockToolUse, ToolUseID: "tu1", ToolName: "shell", InputJSON: `{"cmd":"ls"}`},
 		},
 		StopReason: "tool_use",
 		Usage:      &common.Usage{InputTokens: 10, OutputTokens: 5},
