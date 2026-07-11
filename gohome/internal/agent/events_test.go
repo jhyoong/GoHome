@@ -15,6 +15,7 @@ var _ Frontend = (*fakeRecorder)(nil)
 type fakeRecorder struct {
 	events       []Event
 	approval     guard.ApprovalDecision
+	approvalFunc func(context.Context, guard.ApprovalRequest) (guard.ApprovalDecision, error)
 	approvalErr  error
 	userInput    string
 	userInputErr error
@@ -24,7 +25,10 @@ func (f *fakeRecorder) Emit(_ string, ev Event) {
 	f.events = append(f.events, ev)
 }
 
-func (f *fakeRecorder) RequestApproval(_ context.Context, _ guard.ApprovalRequest) (guard.ApprovalDecision, error) {
+func (f *fakeRecorder) RequestApproval(ctx context.Context, req guard.ApprovalRequest) (guard.ApprovalDecision, error) {
+	if f.approvalFunc != nil {
+		return f.approvalFunc(ctx, req)
+	}
 	return f.approval, f.approvalErr
 }
 
@@ -48,6 +52,7 @@ func TestEventKindConstants(t *testing.T) {
 		{EventError, "error"},
 		{EventThinkingDelta, "thinking_delta"},
 		{EventThinkingDone, "thinking_done"},
+		{EventToolDenied, "tool_denied"},
 	}
 	for _, tc := range cases {
 		if string(tc.kind) != tc.want {

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -138,6 +139,10 @@ func runLoop(
 		*turnCancel = nil
 		turnMu.Unlock()
 		cancel()
+
+		if errors.Is(runErr, agent.ErrToolDenied) {
+			continue
+		}
 
 		if runErr != nil {
 			slog.Error("agent run failed", "err", runErr)

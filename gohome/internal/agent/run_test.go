@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -155,41 +156,32 @@ func TestRun_ToolDispatch(t *testing.T) {
 }
 
 // TestRun_DeniedTool verifies that when the guard denies, the tool is NOT
-// executed and an IsError tool result is appended.
+// executed, an IsError tool result is appended, and Run returns ErrToolDenied.
 func TestRun_DeniedTool(t *testing.T) {
 	turn1 := []common.StreamEvent{
 		{Kind: common.EventToolCallDone, ToolCallID: "tc-deny", ToolName: "fake", InputJSON: `{}`},
 		{Kind: common.EventTurnDone, StopReason: "tool_use"},
 	}
-	// After the denied tool result, the LLM should get another turn with end_turn.
-	turn2 := []common.StreamEvent{
-		{Kind: common.EventTurnDone, StopReason: "end_turn"},
-	}
-	client := &fakeClient{sequences: [][]common.StreamEvent{turn1, turn2}}
+	// No turn2 needed: Run should return ErrToolDenied before calling Stream again.
+	client := &fakeClient{sequences: [][]common.StreamEvent{turn1}}
 
 	executed := false
+	tracked := &trackingTool{
+		fakeTool: &fakeTool{name: "fake", content: "should-not-run"},
+		executed: &executed,
+	}
 	reg := tools.NewRegistry()
-	reg.Register(&fakeTool{name: "fake", content: "should-not-run"})
-
-	// Override Execute to detect if tool is called.
-	// (We do this by checking executed stays false.)
-	// Use a wrapper that tracks execution.
-	tracked := &trackingTool{fakeTool: &fakeTool{name: "fake", content: "should-not-run"}, executed: &executed}
-	reg2 := tools.NewRegistry()
-	reg2.Register(tracked)
+	reg.Register(tracked)
 
 	fe := &fakeRecorder{
-		// Outcome "" -> unknown_outcome -> deny in guard
 		approval: guard.ApprovalDecision{Outcome: ""},
 	}
 	g := compileDenyGuard(t, fe)
+	a, sess := newTestAgentWithGuard(t, client, fe, g, reg)
 
-	// Use a fresh fakeRecorder for the agent frontend (same object suffices since
-	// the guard frontend and agent frontend can be the same here).
-	a, sess := newTestAgentWithGuard(t, client, fe, g, reg2)
-
-	if err := a.Run(context.Background(), sess); err != nil {
-		t.Fatalf("Run: %v", err)
+	err := a.Run(context.Background(), sess)
+	if !errors.Is(err, ErrToolDenied) {
+		t.Fatalf("Run: got %v, want ErrToolDenied", err)
 	}
 
 	if executed {
@@ -210,6 +202,22 @@ func TestRun_DeniedTool(t *testing.T) {
 	}
 	if !foundToolMsg {
 		t.Errorf("no RoleTool message in history after denial")
+	}
+
+	// Verify Run only called Stream once (did not proceed to a second turn).
+	if client.callCount != 1 {
+		t.Errorf("Stream call count: got %d, want 1", client.callCount)
+	}
+
+	// Frontend should have seen EventToolDenied.
+	var sawDenied bool
+	for _, ev := range fe.events {
+		if ev.Kind == EventToolDenied {
+			sawDenied = true
+		}
+	}
+	if !sawDenied {
+		t.Errorf("no EventToolDenied in frontend events")
 	}
 }
 
@@ -297,6 +305,93 @@ func TestRun_DenySteer(t *testing.T) {
 	// Verify Run called Stream twice (second turn end_turn).
 	if client.callCount != 2 {
 		t.Errorf("Stream call count: got %d, want 2", client.callCount)
+	}
+}
+
+// TestRun_MixedBatch verifies that when a batch has one approved and one
+// plain-denied tool call, Run returns ErrToolDenied but the approved tool
+// still executes and both results appear in history.
+func TestRun_MixedBatch(t *testing.T) {
+	turn1 := []common.StreamEvent{
+		{Kind: common.EventToolCallDone, ToolCallID: "tc-ok", ToolName: "allowed", InputJSON: `{}`},
+		{Kind: common.EventToolCallDone, ToolCallID: "tc-no", ToolName: "denied", InputJSON: `{}`},
+		{Kind: common.EventTurnDone, StopReason: "tool_use"},
+	}
+	client := &fakeClient{sequences: [][]common.StreamEvent{turn1}}
+
+	executedAllowed := false
+	executedDenied := false
+
+	reg := tools.NewRegistry()
+	reg.Register(&trackingTool{
+		fakeTool: &fakeTool{name: "allowed", content: "ok"},
+		executed: &executedAllowed,
+	})
+	reg.Register(&trackingTool{
+		fakeTool: &fakeTool{name: "denied", content: "should-not-run"},
+		executed: &executedDenied,
+	})
+
+	callCount := 0
+	fe := &fakeRecorder{
+		approvalFunc: func(_ context.Context, req guard.ApprovalRequest) (guard.ApprovalDecision, error) {
+			callCount++
+			if req.Tool == "allowed" {
+				return guard.ApprovalDecision{Outcome: guard.AllowOnce}, nil
+			}
+			return guard.ApprovalDecision{Outcome: guard.Deny}, nil
+		},
+	}
+
+	wl, err := guard.Compile(guard.WhitelistFile{}, guard.WhitelistFile{}, "")
+	if err != nil {
+		t.Fatalf("guard.Compile: %v", err)
+	}
+	gfe := &guardFE{fe: fe}
+	g := guard.NewGuard(wl, gfe)
+
+	a, sess := newTestAgentWithGuard(t, client, fe, g, reg)
+
+	runErr := a.Run(context.Background(), sess)
+	if !errors.Is(runErr, ErrToolDenied) {
+		t.Fatalf("Run: got %v, want ErrToolDenied", runErr)
+	}
+
+	if !executedAllowed {
+		t.Error("allowed tool was not executed")
+	}
+	if executedDenied {
+		t.Error("denied tool was executed")
+	}
+
+	// History should have: assistant (turn1) + tool results.
+	// The RoleTool message should have 2 blocks.
+	var toolMsg *common.Message
+	for i := range sess.History {
+		if sess.History[i].Role == common.RoleTool {
+			toolMsg = &sess.History[i]
+			break
+		}
+	}
+	if toolMsg == nil {
+		t.Fatal("no RoleTool message in history")
+	}
+	if len(toolMsg.Content) != 2 {
+		t.Fatalf("RoleTool blocks: got %d, want 2", len(toolMsg.Content))
+	}
+
+	// First block (allowed) should not be error.
+	if toolMsg.Content[0].IsError {
+		t.Errorf("allowed tool result should not be IsError")
+	}
+	// Second block (denied) should be error.
+	if !toolMsg.Content[1].IsError {
+		t.Errorf("denied tool result should be IsError")
+	}
+
+	// Run should NOT have called Stream a second time.
+	if client.callCount != 1 {
+		t.Errorf("Stream call count: got %d, want 1", client.callCount)
 	}
 }
 
