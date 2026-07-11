@@ -49,7 +49,7 @@ func TestToolCallExpansionToggle(t *testing.T) {
 	tm.Send(tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
 		Kind:      agent.EventToolCallDone,
 		SessionID: "main",
-		ToolName:  "bash",
+		ToolName:  "shell",
 		InputJSON: `{"command": "ls -la"}`,
 	}})
 	tm.Send(tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{

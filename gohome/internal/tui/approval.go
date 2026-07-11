@@ -58,7 +58,7 @@ func newApprovalPrompt(req guard.ApprovalRequest, reply chan guard.ApprovalDecis
 }
 
 // approvalSummaryLine builds a single contextual line describing the tool call
-// (e.g. "bash: git status", "read: path/to/file").
+// (e.g. "shell: git status", "read: path/to/file").
 func approvalSummaryLine(ap *approvalPrompt, focusedSessionID string) string {
 	arg := extractToolArg(ap.req.Tool, string(ap.req.Input))
 	var prefix string

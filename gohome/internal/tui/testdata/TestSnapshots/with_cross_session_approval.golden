@@ -1,6 +1,6 @@
 Session:  main done 
 ╭────────────────────────────────────────────────────────────────────────────╮
-│ [sub-1] bash: git status                                                   │
+│ [sub-1] shell: git status                                                  │
 │                                                                            │
 │ > [1] Allow once                                                           │
 │   [2] Allow always  git*  (e edit)                                         │

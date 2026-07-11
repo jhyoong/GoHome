@@ -46,7 +46,7 @@ func TestHistoryToTimeline_AssistantTextAndThinking(t *testing.T) {
 func TestHistoryToTimeline_ToolUseAndResult(t *testing.T) {
 	msgs := []common.Message{
 		{Role: common.RoleAssistant, Content: []common.Block{
-			{Kind: common.BlockToolUse, ToolName: "bash", ToolUseID: "t1", InputJSON: `{"cmd":"ls"}`},
+			{Kind: common.BlockToolUse, ToolName: "shell", ToolUseID: "t1", InputJSON: `{"cmd":"ls"}`},
 		}},
 		{Role: common.RoleTool, Content: []common.Block{
 			{Kind: common.BlockToolResult, ToolUseID: "t1", ResultText: "file.go", IsError: false},
@@ -56,7 +56,7 @@ func TestHistoryToTimeline_ToolUseAndResult(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("len = %d, want 1 (tool use + result merged)", len(got))
 	}
-	if got[0].Kind != KindTool || got[0].ToolName != "bash" {
+	if got[0].Kind != KindTool || got[0].ToolName != "shell" {
 		t.Errorf("tool entry: %+v", got[0])
 	}
 	if got[0].Text != `{"cmd":"ls"}` {
@@ -73,7 +73,7 @@ func TestHistoryToTimeline_ToolUseAndResult(t *testing.T) {
 func TestHistoryToTimeline_ToolError(t *testing.T) {
 	msgs := []common.Message{
 		{Role: common.RoleAssistant, Content: []common.Block{
-			{Kind: common.BlockToolUse, ToolName: "bash", ToolUseID: "t2", InputJSON: `{"cmd":"fail"}`},
+			{Kind: common.BlockToolUse, ToolName: "shell", ToolUseID: "t2", InputJSON: `{"cmd":"fail"}`},
 		}},
 		{Role: common.RoleTool, Content: []common.Block{
 			{Kind: common.BlockToolResult, ToolUseID: "t2", ResultText: "command not found", IsError: true},

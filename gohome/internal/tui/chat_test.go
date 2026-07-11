@@ -33,7 +33,7 @@ func TestChatRenderAssistantMarkdown(t *testing.T) {
 }
 
 func TestChatRenderToolCollapsed(t *testing.T) {
-	entries := []TimelineEntry{{Kind: KindTool, ToolName: "bash", Text: `{"command":"ls"}`, ToolResult: "file.txt"}}
+	entries := []TimelineEntry{{Kind: KindTool, ToolName: "shell", Text: `{"command":"ls"}`, ToolResult: "file.txt"}}
 	c := NewChat(&entries, 20)
 	lines := c.Render(80)
 	joined := StripAnsi(strings.Join(lines, "\n"))
@@ -66,7 +66,7 @@ func TestChatScrolling(t *testing.T) {
 func TestToolStatusPending(t *testing.T) {
 	entries := []TimelineEntry{{
 		Kind:     KindTool,
-		ToolName: "bash",
+		ToolName: "shell",
 		Text:     `{"command":"ls"}`,
 		Status:   "pending",
 	}}
@@ -81,7 +81,7 @@ func TestToolStatusPending(t *testing.T) {
 func TestToolStatusSuccess(t *testing.T) {
 	entries := []TimelineEntry{{
 		Kind:       KindTool,
-		ToolName:   "bash",
+		ToolName:   "shell",
 		Text:       `{"command":"ls"}`,
 		ToolResult: "file.txt",
 		Status:     "success",
@@ -97,7 +97,7 @@ func TestToolStatusSuccess(t *testing.T) {
 func TestToolStatusError(t *testing.T) {
 	entries := []TimelineEntry{{
 		Kind:       KindTool,
-		ToolName:   "bash",
+		ToolName:   "shell",
 		Text:       `{"command":"rm /"}`,
 		ToolResult: "permission denied",
 		Status:     "error",
@@ -137,7 +137,7 @@ func TestChatRenderThinkingExpanded(t *testing.T) {
 func TestChatRenderToolExpanded_HasBackground(t *testing.T) {
 	entries := []TimelineEntry{{
 		Kind:       KindTool,
-		ToolName:   "bash",
+		ToolName:   "shell",
 		Text:       `{"command":"ls"}`,
 		ToolResult: "file.txt",
 		Status:     "success",
