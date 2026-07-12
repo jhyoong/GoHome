@@ -196,7 +196,7 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.chat.EnsureCursorVisible(m.winW)
 				} else if m.cursor == 0 {
 					sv, ok := m.sessions[m.focused]
-					if ok && m.chat.entryLineCount(&sv.Timeline[0], m.winW) > m.chat.maxHeight {
+					if ok && len(sv.Timeline) > 0 && m.chat.entryLineCount(&sv.Timeline[0], m.winW) > m.chat.maxHeight {
 						m.chat.ScrollUp(1)
 					}
 				}
