@@ -36,12 +36,12 @@ func TestApprovalOverlayShowsAndAllowOnce(t *testing.T) {
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
-	msg, ch := makeApprovalReq("main", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
+	msg, ch := makeApprovalReq("main", "shell", "^ls", json.RawMessage(`{"command":"ls"}`))
 	tm.Send(msg)
 
 	// Wait for the overlay to appear.
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("bash: ls"))
+		return bytes.Contains(out, []byte("shell: ls"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
 	// Press '1' -> AllowOnce.
@@ -63,11 +63,11 @@ func TestApprovalOverlayEscDenies(t *testing.T) {
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
-	msg, ch := makeApprovalReq("main", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
+	msg, ch := makeApprovalReq("main", "shell", "^ls", json.RawMessage(`{"command":"ls"}`))
 	tm.Send(msg)
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("bash: ls"))
+		return bytes.Contains(out, []byte("shell: ls"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyEsc})
@@ -87,11 +87,11 @@ func TestApprovalOverlayKey3Denies(t *testing.T) {
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
-	msg, ch := makeApprovalReq("main", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
+	msg, ch := makeApprovalReq("main", "shell", "^ls", json.RawMessage(`{"command":"ls"}`))
 	tm.Send(msg)
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("bash: ls"))
+		return bytes.Contains(out, []byte("shell: ls"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}})
@@ -113,11 +113,11 @@ func TestApprovalAllowAlwaysDefaultPattern(t *testing.T) {
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
-	msg, ch := makeApprovalReq("main", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
+	msg, ch := makeApprovalReq("main", "shell", "^ls", json.RawMessage(`{"command":"ls"}`))
 	tm.Send(msg)
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("bash: ls"))
+		return bytes.Contains(out, []byte("shell: ls"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
 	// Press '2' without editing -> AllowAlways with the original pattern.
@@ -141,11 +141,11 @@ func TestApprovalEditPatternThenAllowAlways(t *testing.T) {
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
-	msg, ch := makeApprovalReq("main", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
+	msg, ch := makeApprovalReq("main", "shell", "^ls", json.RawMessage(`{"command":"ls"}`))
 	tm.Send(msg)
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("bash: ls"))
+		return bytes.Contains(out, []byte("shell: ls"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
 	// Press 'e' to enter edit mode.
@@ -176,11 +176,11 @@ func TestApprovalEditPatternEscReverts(t *testing.T) {
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
-	msg, ch := makeApprovalReq("main", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
+	msg, ch := makeApprovalReq("main", "shell", "^ls", json.RawMessage(`{"command":"ls"}`))
 	tm.Send(msg)
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("bash: ls"))
+		return bytes.Contains(out, []byte("shell: ls"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
 	// Enter edit mode, type something, then Esc to revert.
@@ -210,11 +210,11 @@ func TestApprovalDenySteer(t *testing.T) {
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
-	msg, ch := makeApprovalReq("main", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
+	msg, ch := makeApprovalReq("main", "shell", "^ls", json.RawMessage(`{"command":"ls"}`))
 	tm.Send(msg)
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("bash: ls"))
+		return bytes.Contains(out, []byte("shell: ls"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
 	// Press '4' to enter steer mode.
@@ -240,11 +240,11 @@ func TestApprovalDenySteerEscCancels(t *testing.T) {
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
-	msg, ch := makeApprovalReq("main", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
+	msg, ch := makeApprovalReq("main", "shell", "^ls", json.RawMessage(`{"command":"ls"}`))
 	tm.Send(msg)
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("bash: ls"))
+		return bytes.Contains(out, []byte("shell: ls"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
 	// Enter steer mode, then Esc -> should return to menu without resolving.
@@ -273,7 +273,7 @@ func TestApprovalArrowRenderShowsMarker(t *testing.T) {
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
-	msg, _ := makeApprovalReq("main", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
+	msg, _ := makeApprovalReq("main", "shell", "^ls", json.RawMessage(`{"command":"ls"}`))
 	tm.Send(msg)
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
@@ -286,7 +286,7 @@ func TestApprovalArrowDownChangesSelection(t *testing.T) {
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
-	msg, _ := makeApprovalReq("main", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
+	msg, _ := makeApprovalReq("main", "shell", "^ls", json.RawMessage(`{"command":"ls"}`))
 	tm.Send(msg)
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
@@ -305,7 +305,7 @@ func TestApprovalEnterDispatchesAllowOnce(t *testing.T) {
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
-	msg, ch := makeApprovalReq("main", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
+	msg, ch := makeApprovalReq("main", "shell", "^ls", json.RawMessage(`{"command":"ls"}`))
 	tm.Send(msg)
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
@@ -330,7 +330,7 @@ func TestApprovalArrowDownDownEnterDenies(t *testing.T) {
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
-	msg, ch := makeApprovalReq("main", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
+	msg, ch := makeApprovalReq("main", "shell", "^ls", json.RawMessage(`{"command":"ls"}`))
 	tm.Send(msg)
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
@@ -362,7 +362,7 @@ func TestApprovalArrowUpClampsAtZero(t *testing.T) {
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
-	msg, _ := makeApprovalReq("main", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
+	msg, _ := makeApprovalReq("main", "shell", "^ls", json.RawMessage(`{"command":"ls"}`))
 	tm.Send(msg)
 
 	// Wait for initial state: selected=0, showing "> [1]".
@@ -387,7 +387,7 @@ func TestApprovalArrowDownEnterAllowAlways(t *testing.T) {
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
-	msg, ch := makeApprovalReq("main", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
+	msg, ch := makeApprovalReq("main", "shell", "^ls", json.RawMessage(`{"command":"ls"}`))
 	tm.Send(msg)
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
@@ -421,7 +421,7 @@ func TestApprovalArrowToSteerEntersSteerMode(t *testing.T) {
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 	t.Cleanup(func() { _ = tm.Quit() })
 
-	msg, ch := makeApprovalReq("main", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
+	msg, ch := makeApprovalReq("main", "shell", "^ls", json.RawMessage(`{"command":"ls"}`))
 	tm.Send(msg)
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
@@ -481,13 +481,13 @@ func TestCrossSessionApprovalShowsLabel(t *testing.T) {
 	// Send an approval for "sub-1" while focused on "main".
 	// With the unified FIFO queue, the approval shows immediately as an overlay
 	// with a [sub-1] session label prefix.
-	subMsg, _ := makeApprovalReq("sub-1", "bash", "^ls", json.RawMessage(`{"command":"ls"}`))
+	subMsg, _ := makeApprovalReq("sub-1", "shell", "^ls", json.RawMessage(`{"command":"ls"}`))
 	tm.Send(subMsg)
 
 	// The overlay IS visible and contains the [sub-1] label and tool summary.
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		hasLabel := bytes.Contains(out, []byte("[sub-1]"))
-		hasOverlay := bytes.Contains(out, []byte("bash: ls"))
+		hasOverlay := bytes.Contains(out, []byte("shell: ls"))
 		return hasLabel && hasOverlay
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }

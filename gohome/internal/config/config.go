@@ -35,15 +35,15 @@ type ModelConfig struct {
 
 // Settings is the top-level configuration structure.
 type Settings struct {
-	ModelConfig      map[string]ModelConfig `json:"modelConfig"`
-	DefaultModel     string                 `json:"defaultModel"`
-	SystemPrompt     string                 `json:"systemPrompt,omitempty"`
-	BashTimeoutMs    int                    `json:"bashTimeoutMs,omitempty"`
-	MaxBashTimeoutMs int                    `json:"maxBashTimeoutMs,omitempty"`
-	ContextWarnPct   float64                `json:"contextWarnPct,omitempty"`
-	ContextCritPct   float64                `json:"contextCritPct,omitempty"`
-	RetryBackoffMs   []int                  `json:"retryBackoffMs,omitempty"`
-	RenderThrottleMs int                    `json:"renderThrottleMs,omitempty"`
+	ModelConfig       map[string]ModelConfig `json:"modelConfig"`
+	DefaultModel      string                 `json:"defaultModel"`
+	SystemPrompt      string                 `json:"systemPrompt,omitempty"`
+	ShellTimeoutMs    int                    `json:"shellTimeoutMs,omitempty"`
+	MaxShellTimeoutMs int                    `json:"maxShellTimeoutMs,omitempty"`
+	ContextWarnPct    float64                `json:"contextWarnPct,omitempty"`
+	ContextCritPct    float64                `json:"contextCritPct,omitempty"`
+	RetryBackoffMs    []int                  `json:"retryBackoffMs,omitempty"`
+	RenderThrottleMs  int                    `json:"renderThrottleMs,omitempty"`
 }
 
 // load reads and decodes a Settings file at path.
@@ -72,14 +72,14 @@ func Load(globalPath, projectPath string) (Settings, error) {
 	project := load(projectPath)
 
 	merged := Settings{
-		ModelConfig:      make(map[string]ModelConfig),
-		DefaultModel:     global.DefaultModel,
-		BashTimeoutMs:    global.BashTimeoutMs,
-		MaxBashTimeoutMs: global.MaxBashTimeoutMs,
-		ContextWarnPct:   global.ContextWarnPct,
-		ContextCritPct:   global.ContextCritPct,
-		RetryBackoffMs:   global.RetryBackoffMs,
-		RenderThrottleMs: global.RenderThrottleMs,
+		ModelConfig:       make(map[string]ModelConfig),
+		DefaultModel:      global.DefaultModel,
+		ShellTimeoutMs:    global.ShellTimeoutMs,
+		MaxShellTimeoutMs: global.MaxShellTimeoutMs,
+		ContextWarnPct:    global.ContextWarnPct,
+		ContextCritPct:    global.ContextCritPct,
+		RetryBackoffMs:    global.RetryBackoffMs,
+		RenderThrottleMs:  global.RenderThrottleMs,
 	}
 
 	for k, v := range global.ModelConfig {
@@ -98,11 +98,11 @@ func Load(globalPath, projectPath string) (Settings, error) {
 	if project.SystemPrompt != "" {
 		merged.SystemPrompt = project.SystemPrompt
 	}
-	if project.BashTimeoutMs != 0 {
-		merged.BashTimeoutMs = project.BashTimeoutMs
+	if project.ShellTimeoutMs != 0 {
+		merged.ShellTimeoutMs = project.ShellTimeoutMs
 	}
-	if project.MaxBashTimeoutMs != 0 {
-		merged.MaxBashTimeoutMs = project.MaxBashTimeoutMs
+	if project.MaxShellTimeoutMs != 0 {
+		merged.MaxShellTimeoutMs = project.MaxShellTimeoutMs
 	}
 	if project.ContextWarnPct != 0 {
 		merged.ContextWarnPct = project.ContextWarnPct
@@ -182,14 +182,14 @@ func LoadAnnotated(globalPath, projectPath string) (AnnotatedSettings, error) {
 	}
 
 	sources := map[string]Source{
-		"defaultModel":     SourceDefault,
-		"systemPrompt":     SourceDefault,
-		"bashTimeoutMs":    SourceDefault,
-		"maxBashTimeoutMs": SourceDefault,
-		"contextWarnPct":   SourceDefault,
-		"contextCritPct":   SourceDefault,
-		"retryBackoffMs":   SourceDefault,
-		"renderThrottleMs": SourceDefault,
+		"defaultModel":      SourceDefault,
+		"systemPrompt":      SourceDefault,
+		"shellTimeoutMs":    SourceDefault,
+		"maxShellTimeoutMs": SourceDefault,
+		"contextWarnPct":    SourceDefault,
+		"contextCritPct":    SourceDefault,
+		"retryBackoffMs":    SourceDefault,
+		"renderThrottleMs":  SourceDefault,
 	}
 
 	if global.DefaultModel != "" {
@@ -206,18 +206,18 @@ func LoadAnnotated(globalPath, projectPath string) (AnnotatedSettings, error) {
 		sources["systemPrompt"] = SourceProject
 	}
 
-	if global.BashTimeoutMs != 0 {
-		sources["bashTimeoutMs"] = SourceGlobal
+	if global.ShellTimeoutMs != 0 {
+		sources["shellTimeoutMs"] = SourceGlobal
 	}
-	if project.BashTimeoutMs != 0 {
-		sources["bashTimeoutMs"] = SourceProject
+	if project.ShellTimeoutMs != 0 {
+		sources["shellTimeoutMs"] = SourceProject
 	}
 
-	if global.MaxBashTimeoutMs != 0 {
-		sources["maxBashTimeoutMs"] = SourceGlobal
+	if global.MaxShellTimeoutMs != 0 {
+		sources["maxShellTimeoutMs"] = SourceGlobal
 	}
-	if project.MaxBashTimeoutMs != 0 {
-		sources["maxBashTimeoutMs"] = SourceProject
+	if project.MaxShellTimeoutMs != 0 {
+		sources["maxShellTimeoutMs"] = SourceProject
 	}
 
 	if global.ContextWarnPct != 0 {

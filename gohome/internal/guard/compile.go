@@ -11,14 +11,14 @@ import (
 // Whitelist is the compiled, in-memory representation of merged global + project whitelists.
 type Whitelist struct {
 	tools       map[string]struct{}
-	bash        []*regexp.Regexp
+	shell       []*regexp.Regexp
 	projectPath string
 	mu          sync.Mutex
 }
 
 // Compile merges global and project WhitelistFiles into a ready-to-use Whitelist.
 // project entries are additive (union) on top of global entries.
-// Every bash pattern is auto-anchored: a leading ^ is prepended when absent.
+// Every shell pattern is auto-anchored: a leading ^ is prepended when absent.
 // Invalid regex patterns are logged via slog.Warn and skipped; Compile never returns a
 // non-nil error (signature kept for forward-compatibility and clarity).
 func Compile(global, project WhitelistFile, projectPath string) (*Whitelist, error) {
@@ -35,10 +35,10 @@ func Compile(global, project WhitelistFile, projectPath string) (*Whitelist, err
 		wl.tools[t] = struct{}{}
 	}
 
-	// Merge bash patterns (global then project).
-	allPatterns := make([]string, 0, len(global.Bash)+len(project.Bash))
-	allPatterns = append(allPatterns, global.Bash...)
-	allPatterns = append(allPatterns, project.Bash...)
+	// Merge shell patterns (global then project).
+	allPatterns := make([]string, 0, len(global.Shell)+len(project.Shell))
+	allPatterns = append(allPatterns, global.Shell...)
+	allPatterns = append(allPatterns, project.Shell...)
 
 	for _, pat := range allPatterns {
 		anchored := pat
@@ -47,21 +47,21 @@ func Compile(global, project WhitelistFile, projectPath string) (*Whitelist, err
 		}
 		re, err := regexp.Compile(anchored)
 		if err != nil {
-			slog.Warn("guard: skipping invalid bash pattern", "pattern", pat, "error", err)
+			slog.Warn("guard: skipping invalid shell pattern", "pattern", pat, "error", err)
 			continue
 		}
-		wl.bash = append(wl.bash, re)
+		wl.shell = append(wl.shell, re)
 	}
 
 	return wl, nil
 }
 
 // Allows reports whether the given tool call is permitted by the whitelist.
-// For tool == "bash", inputJSON must contain {"command": "..."} and the command is
-// matched against compiled bash regexes.
+// For tool == "shell", inputJSON must contain {"command": "..."} and the command is
+// matched against compiled shell regexes.
 // For any other tool, the tool name is looked up in the tools set.
 func (w *Whitelist) Allows(tool string, inputJSON []byte) bool {
-	if tool == "bash" {
+	if tool == "shell" {
 		var args struct {
 			Command string `json:"command"`
 		}
@@ -69,7 +69,7 @@ func (w *Whitelist) Allows(tool string, inputJSON []byte) bool {
 			return false
 		}
 		w.mu.Lock()
-		patterns := w.bash
+		patterns := w.shell
 		w.mu.Unlock()
 		for _, re := range patterns {
 			if re.MatchString(args.Command) {

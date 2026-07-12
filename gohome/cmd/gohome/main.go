@@ -271,9 +271,9 @@ func main() {
 	registry.Register(tools.ReadTool{})
 	registry.Register(tools.WriteTool{})
 	registry.Register(tools.EditTool{})
-	registry.Register(tools.BashTool{
-		DefaultTimeoutMs: settings.BashTimeoutMs,
-		MaxTimeoutMs:     settings.MaxBashTimeoutMs,
+	registry.Register(tools.ShellTool{
+		DefaultTimeoutMs: settings.ShellTimeoutMs,
+		MaxTimeoutMs:     settings.MaxShellTimeoutMs,
 	})
 
 	// Build or resume session.
@@ -373,7 +373,7 @@ func main() {
 
 	// Build agent.
 	systemPrompt := `You are gohome, an AI coding assistant. You help users with software development tasks.
-You have access to tools for reading and writing files, running bash commands, and spawning subagents for parallel work.
+You have access to tools for reading and writing files, running shell commands, and spawning subagents for parallel work.
 Be concise and precise. Ask for clarification when requirements are ambiguous.`
 	if settings.SystemPrompt != "" {
 		systemPrompt = settings.SystemPrompt

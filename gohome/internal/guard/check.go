@@ -83,9 +83,9 @@ func (g *Guard) Check(ctx context.Context, sessionID, tool string, input json.Ra
 }
 
 // summaryFor builds a short human-readable summary of a tool call.
-// For bash it returns the command string; for other tools it returns the tool name.
+// For shell it returns the command string; for other tools it returns the tool name.
 func summaryFor(tool string, input json.RawMessage) string {
-	if tool == "bash" {
+	if tool == "shell" {
 		var args struct {
 			Command string `json:"command"`
 		}

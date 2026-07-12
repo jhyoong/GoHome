@@ -9,8 +9,8 @@ Model Configs:
 
 Settings:
   defaultModel         claude       [global]
-  bashTimeoutMs        120000       [global]
-  maxBashTimeoutMs     0            [default]
+  shellTimeoutMs       120000       [global]
+  maxShellTimeoutMs    0            [default]
   contextWarnPct       0            [default]
   contextCritPct       0            [default]
   renderThrottleMs     0            [default]

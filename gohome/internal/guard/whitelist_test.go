@@ -8,7 +8,7 @@ import (
 func TestWhitelistFileRoundtrip(t *testing.T) {
 	original := WhitelistFile{
 		Tools: []string{"read", "write", "edit"},
-		Bash:  []string{"^git status", "^ls"},
+		Shell: []string{"^git status", "^ls"},
 	}
 
 	data, err := json.Marshal(original)
@@ -30,12 +30,12 @@ func TestWhitelistFileRoundtrip(t *testing.T) {
 		}
 	}
 
-	if len(got.Bash) != len(original.Bash) {
-		t.Fatalf("bash length: want %d got %d", len(original.Bash), len(got.Bash))
+	if len(got.Shell) != len(original.Shell) {
+		t.Fatalf("shell length: want %d got %d", len(original.Shell), len(got.Shell))
 	}
-	for i, pat := range original.Bash {
-		if got.Bash[i] != pat {
-			t.Errorf("bash[%d]: want %q got %q", i, pat, got.Bash[i])
+	for i, pat := range original.Shell {
+		if got.Shell[i] != pat {
+			t.Errorf("shell[%d]: want %q got %q", i, pat, got.Shell[i])
 		}
 	}
 }
@@ -49,7 +49,7 @@ func TestWhitelistFileEmptyFields(t *testing.T) {
 	if len(wf.Tools) != 0 {
 		t.Errorf("expected empty tools, got %v", wf.Tools)
 	}
-	if len(wf.Bash) != 0 {
-		t.Errorf("expected empty bash, got %v", wf.Bash)
+	if len(wf.Shell) != 0 {
+		t.Errorf("expected empty shell, got %v", wf.Shell)
 	}
 }

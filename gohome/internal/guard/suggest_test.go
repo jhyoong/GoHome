@@ -11,7 +11,7 @@ func bashInput(cmd string) []byte {
 }
 
 func TestSuggest_NonBash(t *testing.T) {
-	// Non-bash tool always returns ""
+	// Non-shell tool always returns ""
 	if got := Suggest("read", nil); got != "" {
 		t.Errorf("Suggest(read) = %q, want %q", got, "")
 	}
@@ -21,7 +21,7 @@ func TestSuggest_NonBash(t *testing.T) {
 }
 
 func TestSuggest_GitStatus(t *testing.T) {
-	got := Suggest("bash", bashInput("git status -sb"))
+	got := Suggest("shell", bashInput("git status -sb"))
 	want := "^git status"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
@@ -30,7 +30,7 @@ func TestSuggest_GitStatus(t *testing.T) {
 
 func TestSuggest_NpmRunBuild(t *testing.T) {
 	// npm + run => take 3 tokens
-	got := Suggest("bash", bashInput("npm run build foo"))
+	got := Suggest("shell", bashInput("npm run build foo"))
 	want := "^npm run build"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
@@ -39,7 +39,7 @@ func TestSuggest_NpmRunBuild(t *testing.T) {
 
 func TestSuggest_NpmInstall(t *testing.T) {
 	// npm without "run" => take 2 tokens
-	got := Suggest("bash", bashInput("npm install lodash"))
+	got := Suggest("shell", bashInput("npm install lodash"))
 	want := "^npm install"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
@@ -48,7 +48,7 @@ func TestSuggest_NpmInstall(t *testing.T) {
 
 func TestSuggest_LsUnlisted(t *testing.T) {
 	// ls is not in the known set => take 1 token only
-	got := Suggest("bash", bashInput("ls -la /tmp"))
+	got := Suggest("shell", bashInput("ls -la /tmp"))
 	want := "^ls"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
@@ -57,7 +57,7 @@ func TestSuggest_LsUnlisted(t *testing.T) {
 
 func TestSuggest_PythonModuleRun(t *testing.T) {
 	// python -m => take 3 tokens
-	got := Suggest("bash", bashInput("python -m pytest tests/"))
+	got := Suggest("shell", bashInput("python -m pytest tests/"))
 	want := "^python -m pytest"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
@@ -66,7 +66,7 @@ func TestSuggest_PythonModuleRun(t *testing.T) {
 
 func TestSuggest_PythonNoModule(t *testing.T) {
 	// python without -m => take 2 tokens
-	got := Suggest("bash", bashInput("python script.py arg"))
+	got := Suggest("shell", bashInput("python script.py arg"))
 	want := "^python script.py"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
@@ -75,13 +75,13 @@ func TestSuggest_PythonNoModule(t *testing.T) {
 
 func TestSuggest_EmptyCommand(t *testing.T) {
 	// Empty or whitespace-only command => ""
-	if got := Suggest("bash", bashInput("")); got != "" {
+	if got := Suggest("shell", bashInput("")); got != "" {
 		t.Errorf("empty command: got %q, want %q", got, "")
 	}
 }
 
 func TestSuggest_PnpmRunDev(t *testing.T) {
-	got := Suggest("bash", bashInput("pnpm run dev"))
+	got := Suggest("shell", bashInput("pnpm run dev"))
 	want := "^pnpm run dev"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
@@ -89,7 +89,7 @@ func TestSuggest_PnpmRunDev(t *testing.T) {
 }
 
 func TestSuggest_GoTest(t *testing.T) {
-	got := Suggest("bash", bashInput("go test ./..."))
+	got := Suggest("shell", bashInput("go test ./..."))
 	want := "^go test"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)

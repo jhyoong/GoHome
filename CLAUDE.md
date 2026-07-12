@@ -50,7 +50,7 @@ All source lives under `gohome/`. Entry point: `gohome/cmd/gohome/main.go`.
 
 - **`internal/agent`** -- Drives the agentic loop. `Agent.Run()` repeatedly calls `Turn()` (one LLM request), dispatches tool calls through the guard, and feeds results back. Owns the `Frontend` interface that the TUI implements. Spawns child subagents via `Spawn()`.
 - **`internal/tui`** -- Bubble Tea TUI. `Model` is the root `tea.Model`. Receives events from the agent via `agentEventMsg` and renders timeline entries (user, assistant, thinking, tool, notice). Handles approval prompts, slash commands, file search, session browsing, and overlays.
-- **`internal/tools`** -- Tool interface and registry. Each tool (bash, read, write, edit, subagent, session) implements `tools.Tool`. The registry provides JSON schemas to the LLM and dispatches calls.
+- **`internal/tools`** -- Tool interface and registry. Each tool (shell, read, write, edit, subagent, session) implements `tools.Tool`. The registry provides JSON schemas to the LLM and dispatches calls.
 - **`internal/guard`** -- Whitelist-based approval system. `Guard.Check()` matches tool calls against compiled whitelist rules; if no rule matches, it calls `Frontend.RequestApproval()` to pause for user input. Supports yolo mode (skip all prompts).
 - **`internal/llm`** -- LLM client factory. `llm.New()` returns a `common.Client` for either Anthropic or OpenAI wire format. Each wire adapter lives in its own subpackage (`anthropic/`, `openai/`).
 - **`internal/config`** -- Settings loading and merging. Global (`~/.gohome/settings.json`) is merged with project-level (`./.gohome/settings.json`). Defaults live in `defaults.go`.

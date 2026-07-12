@@ -708,7 +708,7 @@ func formatTurnStats(s *TurnStatsData) string {
 }
 
 // extractToolArg parses the JSON input for a tool call and returns the most
-// relevant argument for display. Known fields: "command" (bash), "file_path"
+// relevant argument for display. Known fields: "command" (shell), "file_path"
 // (read/write/edit), "prompt" (subagent). Falls back to shortSummary on parse
 // failure or unknown tools.
 func extractToolArg(toolName, inputJSON string) string {
@@ -719,7 +719,7 @@ func extractToolArg(toolName, inputJSON string) string {
 
 	var key string
 	switch toolName {
-	case "bash":
+	case "shell":
 		key = "command"
 	case "read":
 		key = "file_path"
@@ -748,7 +748,7 @@ func extractToolArg(toolName, inputJSON string) string {
 }
 
 // renderToolSummary builds the collapsed single-line representation of a tool entry
-// using contextual display (e.g. "$ cmd" for bash, file paths for read/edit/write).
+// using contextual display (e.g. "$ cmd" for shell, file paths for read/edit/write).
 func renderToolSummary(e TimelineEntry, maxWidth int) string {
 	arg := extractToolArg(e.ToolName, e.Text)
 	result := shortSummary(e.ToolResult)
@@ -766,7 +766,7 @@ func renderToolSummary(e TimelineEntry, maxWidth int) string {
 	// Build the contextual prefix based on tool type.
 	var prefix string
 	switch e.ToolName {
-	case "bash":
+	case "shell":
 		prefix = "$ " + arg
 	case "read":
 		prefix = arg

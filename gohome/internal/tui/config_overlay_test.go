@@ -11,8 +11,8 @@ import (
 func sampleAnnotated() config.AnnotatedSettings {
 	return config.AnnotatedSettings{
 		Settings: config.Settings{
-			DefaultModel:  "my-model",
-			BashTimeoutMs: 60000,
+			DefaultModel:   "my-model",
+			ShellTimeoutMs: 60000,
 			ModelConfig: map[string]config.ModelConfig{
 				"my-model": {
 					Wire:      config.WireAnthropic,
@@ -24,14 +24,14 @@ func sampleAnnotated() config.AnnotatedSettings {
 		GlobalPath:  "~/.gohome/settings.json",
 		ProjectPath: "./.gohome/settings.json",
 		Sources: map[string]config.Source{
-			"defaultModel":     config.SourceGlobal,
-			"bashTimeoutMs":    config.SourceGlobal,
-			"maxBashTimeoutMs": config.SourceDefault,
-			"contextWarnPct":   config.SourceDefault,
-			"contextCritPct":   config.SourceDefault,
-			"systemPrompt":     config.SourceDefault,
-			"retryBackoffMs":   config.SourceDefault,
-			"renderThrottleMs": config.SourceDefault,
+			"defaultModel":      config.SourceGlobal,
+			"shellTimeoutMs":    config.SourceGlobal,
+			"maxShellTimeoutMs": config.SourceDefault,
+			"contextWarnPct":    config.SourceDefault,
+			"contextCritPct":    config.SourceDefault,
+			"systemPrompt":      config.SourceDefault,
+			"retryBackoffMs":    config.SourceDefault,
+			"renderThrottleMs":  config.SourceDefault,
 		},
 		ModelSources: map[string]config.Source{
 			"my-model": config.SourceGlobal,
@@ -48,7 +48,7 @@ func TestConfigOverlay_Render_ShowsSettings(t *testing.T) {
 		t.Error("expected model name in render output")
 	}
 	if !strings.Contains(joined, "60000") {
-		t.Error("expected bashTimeoutMs value in render output")
+		t.Error("expected shellTimeoutMs value in render output")
 	}
 	if !strings.Contains(joined, "global") {
 		t.Error("expected source annotation in render output")

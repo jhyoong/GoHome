@@ -1,7 +1,7 @@
 Session:  main done 
 > ┃$ find . -name '*.go' -> 6 lines                                            
   ┃  [2minternal/tui/chat.go[0m                                                      
-  ┃  [2minternal/tools/bash.go[0m                                                    
+  ┃  [2minternal/tools/shell.go[0m                                                   
   ┃  [2minternal/guard/guard.go[0m                                                   
   ┃  [2m... (3 earlier lines, enter to expand)[0m                                    
 ────────────────────────────────────────────────────────────────────────────────

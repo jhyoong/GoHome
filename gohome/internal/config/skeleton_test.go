@@ -24,7 +24,7 @@ func TestSkeletonJSON_ContainsAllTopLevelFields(t *testing.T) {
 
 	required := []string{
 		"modelConfig", "defaultModel", "systemPrompt",
-		"bashTimeoutMs", "maxBashTimeoutMs",
+		"shellTimeoutMs", "maxShellTimeoutMs",
 		"contextWarnPct", "contextCritPct",
 		"retryBackoffMs", "renderThrottleMs",
 	}

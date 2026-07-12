@@ -16,15 +16,22 @@ import (
 	"github.com/jhyoong/GoHome/gohome/internal/config"
 )
 
-// BashTool implements the "bash" tool.
-type BashTool struct {
+// ShellTool implements the "shell" tool.
+type ShellTool struct {
 	DefaultTimeoutMs int
 	MaxTimeoutMs     int
 }
 
-func (b BashTool) Name() string { return "bash" }
+func (s ShellTool) Name() string { return "shell" }
 
-func (b BashTool) Description() string {
+func (s ShellTool) Description() string {
+	if runtime.GOOS == "windows" {
+		return "Execute a PowerShell command. " +
+			"Default timeout is 120 000 ms; max is 600 000 ms. " +
+			"stdout and stderr are merged. " +
+			"Non-zero exit codes are reported as normal results, not errors. " +
+			"Timeout or kill failures return IsError."
+	}
 	return "Execute a shell command. " +
 		"Default timeout is 120 000 ms; max is 600 000 ms. " +
 		"stdout and stderr are merged. " +
@@ -32,7 +39,7 @@ func (b BashTool) Description() string {
 		"Timeout or kill failures return IsError."
 }
 
-var bashSchema = json.RawMessage(`{
+var shellSchema = json.RawMessage(`{
   "type": "object",
   "properties": {
     "command":    {"type": "string",  "description": "Shell command to run"},
@@ -42,27 +49,27 @@ var bashSchema = json.RawMessage(`{
   "required": ["command"]
 }`)
 
-func (b BashTool) InputSchema() json.RawMessage { return bashSchema }
+func (s ShellTool) InputSchema() json.RawMessage { return shellSchema }
 
-type bashInput struct {
+type shellInput struct {
 	Command   string  `json:"command"`
 	TimeoutMs *int    `json:"timeout_ms"`
 	CWD       *string `json:"cwd"`
 }
 
-func (b BashTool) Execute(ctx context.Context, in json.RawMessage, sink ProgressSink) (Result, error) {
-	var inp bashInput
+func (s ShellTool) Execute(ctx context.Context, in json.RawMessage, sink ProgressSink) (Result, error) {
+	var inp shellInput
 	if err := json.Unmarshal(in, &inp); err != nil {
-		return Result{IsError: true, Content: "bash: invalid input: " + err.Error()}, nil
+		return Result{IsError: true, Content: "shell: invalid input: " + err.Error()}, nil
 	}
 
-	defaultTimeout := b.DefaultTimeoutMs
+	defaultTimeout := s.DefaultTimeoutMs
 	if defaultTimeout <= 0 {
-		defaultTimeout = config.DefaultBashTimeoutMs
+		defaultTimeout = config.DefaultShellTimeoutMs
 	}
-	maxTimeout := b.MaxTimeoutMs
+	maxTimeout := s.MaxTimeoutMs
 	if maxTimeout <= 0 {
-		maxTimeout = config.DefaultMaxBashTimeoutMs
+		maxTimeout = config.DefaultMaxShellTimeoutMs
 	}
 
 	timeoutMs := defaultTimeout
@@ -78,7 +85,7 @@ func (b BashTool) Execute(ctx context.Context, in json.RawMessage, sink Progress
 
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
-		cmd = exec.CommandContext(ctx, "cmd", "/c", inp.Command)
+		cmd = exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", inp.Command)
 	} else {
 		cmd = exec.CommandContext(ctx, "/bin/sh", "-c", inp.Command)
 	}
@@ -109,7 +116,7 @@ func (b BashTool) Execute(ctx context.Context, in json.RawMessage, sink Progress
 			sink.Update(line)
 		}
 		if err := scanner.Err(); err != nil {
-			fmt.Fprintf(&captureBuf, "\n[bash: scanner error: %v]\n", err)
+			fmt.Fprintf(&captureBuf, "\n[shell: scanner error: %v]\n", err)
 		}
 	}()
 
@@ -119,12 +126,12 @@ func (b BashTool) Execute(ctx context.Context, in json.RawMessage, sink Progress
 		wg.Wait()
 		// If the context was already cancelled/timed-out before start, report that.
 		if ctx.Err() == context.DeadlineExceeded {
-			return Result{IsError: true, Content: fmt.Sprintf("bash: timed out after %dms", timeoutMs)}, nil
+			return Result{IsError: true, Content: fmt.Sprintf("shell: timed out after %dms", timeoutMs)}, nil
 		}
 		if ctx.Err() == context.Canceled {
-			return Result{IsError: true, Content: "bash: cancelled"}, nil
+			return Result{IsError: true, Content: "shell: cancelled"}, nil
 		}
-		return Result{IsError: true, Content: fmt.Sprintf("bash: failed to start: %v", startErr)}, nil
+		return Result{IsError: true, Content: fmt.Sprintf("shell: failed to start: %v", startErr)}, nil
 	}
 
 	waitErr := cmd.Wait()
@@ -133,10 +140,10 @@ func (b BashTool) Execute(ctx context.Context, in json.RawMessage, sink Progress
 
 	// Distinguish timeout/cancellation from other errors.
 	if ctx.Err() == context.DeadlineExceeded {
-		return Result{IsError: true, Content: fmt.Sprintf("bash: timed out after %dms", timeoutMs)}, nil
+		return Result{IsError: true, Content: fmt.Sprintf("shell: timed out after %dms", timeoutMs)}, nil
 	}
 	if ctx.Err() == context.Canceled {
-		return Result{IsError: true, Content: "bash: cancelled"}, nil
+		return Result{IsError: true, Content: "shell: cancelled"}, nil
 	}
 
 	// Determine exit code.
@@ -146,7 +153,7 @@ func (b BashTool) Execute(ctx context.Context, in json.RawMessage, sink Progress
 			exitCode = exitErr.ExitCode()
 		} else {
 			// Non-exit error (e.g., process killed for other reasons).
-			return Result{IsError: true, Content: fmt.Sprintf("bash: command error: %v", waitErr)}, nil
+			return Result{IsError: true, Content: fmt.Sprintf("shell: command error: %v", waitErr)}, nil
 		}
 	}
 

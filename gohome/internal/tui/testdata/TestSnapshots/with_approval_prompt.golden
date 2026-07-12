@@ -1,6 +1,6 @@
 Session:  main done 
 ╭────────────────────────────────────────────────────────────────────────────╮
-│ bash: ls -la                                                               │
+│ shell: ls -la                                                              │
 │                                                                            │
 │ > [1] Allow once                                                           │
 │   [2] Allow always  ls*  (e edit)                                          │

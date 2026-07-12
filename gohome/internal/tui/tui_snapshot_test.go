@@ -86,7 +86,7 @@ func TestSnapshots(t *testing.T) {
 		m = apply(m, tui.ApprovalReqMsg{
 			Req: guard.ApprovalRequest{
 				SessionID:        "main",
-				Tool:             "bash",
+				Tool:             "shell",
 				Input:            []byte(`{"command":"ls -la"}`),
 				SuggestedPattern: "ls*",
 			},
@@ -217,10 +217,10 @@ func TestSnapshots(t *testing.T) {
 		m := newSized()
 		m.AddTimelineEntry("main", tui.TimelineEntry{
 			Kind:     tui.KindTool,
-			ToolName: "bash",
+			ToolName: "shell",
 			Text:     `{"command":"find . -name '*.go'"}`,
 			ToolResult: "cmd/main.go\ninternal/agent/agent.go\ninternal/tui/model.go\n" +
-				"internal/tui/chat.go\ninternal/tools/bash.go\ninternal/guard/guard.go",
+				"internal/tui/chat.go\ninternal/tools/shell.go\ninternal/guard/guard.go",
 			Status: "success",
 		})
 		golden.RequireEqual(t, []byte(m.View()))
@@ -231,7 +231,7 @@ func TestSnapshots(t *testing.T) {
 		m := newSized()
 		m.AddTimelineEntry("main", tui.TimelineEntry{
 			Kind:       tui.KindTool,
-			ToolName:   "bash",
+			ToolName:   "shell",
 			Text:       `{"command":"echo hello"}`,
 			ToolResult: "hello",
 			Status:     "success",
@@ -251,7 +251,7 @@ func TestSnapshots(t *testing.T) {
 		})
 		m.AddTimelineEntry("main", tui.TimelineEntry{
 			Kind:           tui.KindTool,
-			ToolName:       "bash",
+			ToolName:       "shell",
 			Text:           `{"command":"find . -name '*.go'"}`,
 			ToolResult:     "file1.go\nfile2.go\nfile3.go\nfile4.go\nfile5.go",
 			Status:         "success",
@@ -325,7 +325,7 @@ func TestSnapshots(t *testing.T) {
 		m = apply(m, tui.ApprovalReqMsg{
 			Req: guard.ApprovalRequest{
 				SessionID:        "sub-1",
-				Tool:             "bash",
+				Tool:             "shell",
 				Input:            []byte(`{"command":"git status"}`),
 				SuggestedPattern: "git*",
 			},
@@ -345,7 +345,7 @@ func TestSnapshots(t *testing.T) {
 		})
 		m.AddTimelineEntry("main", tui.TimelineEntry{
 			Kind:           tui.KindTool,
-			ToolName:       "bash",
+			ToolName:       "shell",
 			Text:           `{"command":"ls"}`,
 			ToolResult:     "file1.go",
 			Status:         "success",
@@ -386,7 +386,7 @@ func TestCopyKey_ToolEntry_IncludesAllContent(t *testing.T) {
 	m := newSized()
 	m.AddTimelineEntry("main", tui.TimelineEntry{
 		Kind:       tui.KindTool,
-		ToolName:   "bash",
+		ToolName:   "shell",
 		Text:       `{"command":"ls"}`,
 		ToolResult: "file.go",
 		Status:     "success",
@@ -404,7 +404,7 @@ func TestCopyKey_ToolEntry_IncludesAllContent(t *testing.T) {
 func TestShadowEntryFields(t *testing.T) {
 	e := tui.TimelineEntry{
 		Kind:           tui.KindTool,
-		ToolName:       "bash",
+		ToolName:       "shell",
 		Text:           `{"command":"ls"}`,
 		Status:         "success",
 		Shadow:         true,
@@ -460,7 +460,7 @@ func TestShadowEntries_InsertedOnChildToolCall(t *testing.T) {
 	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
 		Kind:      agent.EventToolCallDone,
 		SessionID: "sub-1",
-		ToolName:  "bash",
+		ToolName:  "shell",
 		InputJSON: `{"command":"ls"}`,
 	}})
 	sv := m.Sessions()["main"]
@@ -471,8 +471,8 @@ func TestShadowEntries_InsertedOnChildToolCall(t *testing.T) {
 	if !shadow.Shadow {
 		t.Fatal("second entry should be a shadow entry")
 	}
-	if shadow.ToolName != "bash" {
-		t.Fatalf("shadow ToolName = %q, want %q", shadow.ToolName, "bash")
+	if shadow.ToolName != "shell" {
+		t.Fatalf("shadow ToolName = %q, want %q", shadow.ToolName, "shell")
 	}
 }
 
@@ -493,7 +493,7 @@ func TestShadowEntries_SlidingWindowMax3(t *testing.T) {
 		m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
 			Kind:      agent.EventToolCallDone,
 			SessionID: "sub-1",
-			ToolName:  "bash",
+			ToolName:  "shell",
 			InputJSON: fmt.Sprintf(`{"command":"cmd%d"}`, i),
 		}})
 	}
@@ -529,7 +529,7 @@ func TestShadowEntries_UpdatedOnChildToolResult(t *testing.T) {
 	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
 		Kind:      agent.EventToolCallDone,
 		SessionID: "sub-1",
-		ToolName:  "bash",
+		ToolName:  "shell",
 		InputJSON: `{"command":"ls"}`,
 	}})
 	m = apply(m, tui.AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
@@ -765,7 +765,7 @@ func TestToggleExpansion_PreservesScrollPosition(t *testing.T) {
 	// Add a tool entry at the end.
 	m.AddTimelineEntry("main", tui.TimelineEntry{
 		Kind:       tui.KindTool,
-		ToolName:   "bash",
+		ToolName:   "shell",
 		Text:       `{"command":"ls"}`,
 		ToolResult: "file1.go\nfile2.go\nfile3.go\nfile4.go\nfile5.go",
 		Status:     "success",
@@ -793,7 +793,7 @@ func TestApproval_SubagentShowsImmediately(t *testing.T) {
 	m = apply(m, tui.ApprovalReqMsg{
 		Req: guard.ApprovalRequest{
 			SessionID:        "sub-1",
-			Tool:             "bash",
+			Tool:             "shell",
 			Input:            []byte(`{"command":"git status"}`),
 			SuggestedPattern: "git*",
 		},
@@ -803,7 +803,7 @@ func TestApproval_SubagentShowsImmediately(t *testing.T) {
 	if !strings.Contains(view, "[sub-1]") {
 		t.Fatalf("expected [sub-1] label in approval overlay, got:\n%s", view)
 	}
-	if !strings.Contains(view, "bash: git status") {
+	if !strings.Contains(view, "shell: git status") {
 		t.Fatalf("expected tool summary in approval overlay, got:\n%s", view)
 	}
 }
@@ -815,7 +815,7 @@ func TestApproval_FIFOQueueOrder(t *testing.T) {
 	reply3 := make(chan guard.ApprovalDecision, 1)
 
 	m = apply(m, tui.ApprovalReqMsg{
-		Req:   guard.ApprovalRequest{SessionID: "main", Tool: "bash", Input: []byte(`{"command":"cmd1"}`)},
+		Req:   guard.ApprovalRequest{SessionID: "main", Tool: "shell", Input: []byte(`{"command":"cmd1"}`)},
 		Reply: reply1,
 	})
 	m = apply(m, tui.ApprovalReqMsg{
@@ -823,7 +823,7 @@ func TestApproval_FIFOQueueOrder(t *testing.T) {
 		Reply: reply2,
 	})
 	m = apply(m, tui.ApprovalReqMsg{
-		Req:   guard.ApprovalRequest{SessionID: "sub-1", Tool: "bash", Input: []byte(`{"command":"cmd3"}`)},
+		Req:   guard.ApprovalRequest{SessionID: "sub-1", Tool: "shell", Input: []byte(`{"command":"cmd3"}`)},
 		Reply: reply3,
 	})
 
@@ -856,7 +856,7 @@ func TestApproval_SessionSwitchPreservesActive(t *testing.T) {
 	m = apply(m, tui.ApprovalReqMsg{
 		Req: guard.ApprovalRequest{
 			SessionID: "sub-1",
-			Tool:      "bash",
+			Tool:      "shell",
 			Input:     []byte(`{"command":"ls"}`),
 		},
 		Reply: reply,
@@ -872,7 +872,7 @@ func TestApproval_SessionSwitchPreservesActive(t *testing.T) {
 	m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlRight})
 
 	view = m.View()
-	if !strings.Contains(view, "bash: ls") {
+	if !strings.Contains(view, "shell: ls") {
 		t.Fatalf("expected approval still active after Ctrl+Right, got:\n%s", view)
 	}
 	if !strings.Contains(view, "[sub-1]") {
@@ -886,11 +886,11 @@ func TestApproval_NotificationLineShowsQueueDepth(t *testing.T) {
 	reply2 := make(chan guard.ApprovalDecision, 1)
 
 	m = apply(m, tui.ApprovalReqMsg{
-		Req:   guard.ApprovalRequest{SessionID: "main", Tool: "bash", Input: []byte(`{"command":"a"}`)},
+		Req:   guard.ApprovalRequest{SessionID: "main", Tool: "shell", Input: []byte(`{"command":"a"}`)},
 		Reply: reply1,
 	})
 	m = apply(m, tui.ApprovalReqMsg{
-		Req:   guard.ApprovalRequest{SessionID: "sub-1", Tool: "bash", Input: []byte(`{"command":"b"}`)},
+		Req:   guard.ApprovalRequest{SessionID: "sub-1", Tool: "shell", Input: []byte(`{"command":"b"}`)},
 		Reply: reply2,
 	})
 

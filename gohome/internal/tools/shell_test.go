@@ -14,7 +14,7 @@ func execBash(t *testing.T, input any) Result {
 	if err != nil {
 		t.Fatalf("marshal input: %v", err)
 	}
-	bt := &BashTool{}
+	bt := &ShellTool{}
 	res, err := bt.Execute(context.Background(), raw, NullSink{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -77,7 +77,7 @@ func TestBash_SinkReceivesLines(t *testing.T) {
 	sp := &spySink{onUpdate: func(s string) { received = append(received, s) }}
 
 	raw, _ := json.Marshal(map[string]any{"command": "printf 'line1\\nline2\\nline3\\n'"})
-	bt := &BashTool{}
+	bt := &ShellTool{}
 	res, err := bt.Execute(context.Background(), raw, sp)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -101,7 +101,7 @@ func TestBash_ContextCancelled(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	bt := &BashTool{}
+	bt := &ShellTool{}
 	raw, _ := json.Marshal(map[string]any{"command": "sleep 10"})
 
 	// Cancel the context immediately after launching Execute in a goroutine.
@@ -138,9 +138,9 @@ type spySink struct {
 func (s *spySink) Update(chunk string) { s.onUpdate(chunk) }
 
 func TestBash_ToolMeta(t *testing.T) {
-	bt := &BashTool{}
-	if bt.Name() != "bash" {
-		t.Errorf("expected name 'bash', got %q", bt.Name())
+	bt := &ShellTool{}
+	if bt.Name() != "shell" {
+		t.Errorf("expected name 'shell', got %q", bt.Name())
 	}
 	if bt.Description() == "" {
 		t.Error("expected non-empty description")

@@ -33,8 +33,8 @@ func TestCompileAllows_Tool(t *testing.T) {
 }
 
 func TestCompileAllows_Bash(t *testing.T) {
-	global := WhitelistFile{Bash: []string{"^git status"}}
-	project := WhitelistFile{Bash: []string{"^ls"}}
+	global := WhitelistFile{Shell: []string{"^git status"}}
+	project := WhitelistFile{Shell: []string{"^ls"}}
 
 	wl, err := Compile(global, project, "")
 	if err != nil {
@@ -56,7 +56,7 @@ func TestCompileAllows_Bash(t *testing.T) {
 		{"git log --oneline", false}, // doesn't match ^git status
 	}
 	for _, c := range cases {
-		got := wl.Allows("bash", bashInput(c.cmd))
+		got := wl.Allows("shell", bashInput(c.cmd))
 		if got != c.want {
 			t.Errorf("Allows(bash, %q) = %v, want %v", c.cmd, got, c.want)
 		}
@@ -65,7 +65,7 @@ func TestCompileAllows_Bash(t *testing.T) {
 
 func TestCompileAutoAnchor(t *testing.T) {
 	// Pattern without ^ is auto-anchored so "ls" matches "ls -la" but NOT "pls"
-	global := WhitelistFile{Bash: []string{"ls"}} // no ^ prefix
+	global := WhitelistFile{Shell: []string{"ls"}} // no ^ prefix
 	wl, err := Compile(global, WhitelistFile{}, "")
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
@@ -76,17 +76,17 @@ func TestCompileAutoAnchor(t *testing.T) {
 		return b
 	}
 
-	if !wl.Allows("bash", bashInput("ls -la")) {
+	if !wl.Allows("shell", bashInput("ls -la")) {
 		t.Error("expected 'ls -la' to be allowed by auto-anchored 'ls' pattern")
 	}
-	if wl.Allows("bash", bashInput("pls")) {
+	if wl.Allows("shell", bashInput("pls")) {
 		t.Error("expected 'pls' to be denied by auto-anchored 'ls' pattern")
 	}
 }
 
 func TestCompileBadRegex(t *testing.T) {
 	// Bad regex should be skipped; valid entries still load
-	global := WhitelistFile{Bash: []string{"[invalid", "^git status"}}
+	global := WhitelistFile{Shell: []string{"[invalid", "^git status"}}
 	wl, err := Compile(global, WhitelistFile{}, "")
 	if err != nil {
 		t.Fatalf("Compile should not return error for bad regex, got: %v", err)
@@ -98,7 +98,7 @@ func TestCompileBadRegex(t *testing.T) {
 	}
 
 	// Good pattern still works
-	if !wl.Allows("bash", bashInput("git status")) {
+	if !wl.Allows("shell", bashInput("git status")) {
 		t.Error("expected valid pattern to still work after bad regex is skipped")
 	}
 }
