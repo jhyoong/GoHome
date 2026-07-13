@@ -31,7 +31,13 @@ func SkeletonJSON() []byte {
   "contextWarnPct": 0.0,
   "contextCritPct": 0.0,
   "retryBackoffMs": [],
-  "renderThrottleMs": 0
+  "renderThrottleMs": 0,
+  "autoCompact": false,
+  "autoCompactMode": "percentage",
+  "autoCompactPct": 0.0,
+  "autoCompactTargetPct": 0.0,
+  "autoCompactLeftover": 0,
+  "autoCompactPrompt": ""
 }
 `)
 }
