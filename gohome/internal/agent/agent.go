@@ -18,6 +18,8 @@ type Agent struct {
 	MaxTokens       int // if > 0, overrides the default 4096 per-turn token limit
 	ThinkingBudget  int // if > 0, enable extended thinking with this token budget
 	ReasoningEffort string
+	CompactCfg      CompactConfig
+	CompactPrompt   string
 
 	// Home is the gohome home directory used to compute subagent JSONL paths.
 	Home string
