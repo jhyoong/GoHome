@@ -117,6 +117,22 @@ func Load(path string) (*Session, []common.Message, error) {
 				},
 			})
 
+		case "compaction":
+			var ev struct {
+				Summary string `json:"summary"`
+			}
+			if err := json.Unmarshal([]byte(line), &ev); err != nil {
+				continue
+			}
+			history = []common.Message{
+				{
+					Role: common.RoleUser,
+					Content: []common.Block{
+						{Kind: common.BlockText, Text: "[Auto-compact summary]\n\n" + ev.Summary},
+					},
+				},
+			}
+
 			// Ignored for history reconstruction:
 			// approval, subagent_spawn, subagent_done, session_end
 		}
