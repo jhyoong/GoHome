@@ -43,13 +43,14 @@ type Settings struct {
 	ContextWarnPct    float64                `json:"contextWarnPct,omitempty"`
 	ContextCritPct    float64                `json:"contextCritPct,omitempty"`
 	RetryBackoffMs    []int                  `json:"retryBackoffMs,omitempty"`
-	RenderThrottleMs     int                    `json:"renderThrottleMs,omitempty"`
-	AutoCompact          bool                   `json:"autoCompact,omitempty"`
-	AutoCompactMode      string                 `json:"autoCompactMode,omitempty"`
-	AutoCompactPct       float64                `json:"autoCompactPct,omitempty"`
-	AutoCompactTargetPct float64                `json:"autoCompactTargetPct,omitempty"`
-	AutoCompactLeftover  int                    `json:"autoCompactLeftover,omitempty"`
-	AutoCompactPrompt    string                 `json:"autoCompactPrompt,omitempty"`
+	RenderThrottleMs  int                    `json:"renderThrottleMs,omitempty"`
+
+	AutoCompact          bool    `json:"autoCompact,omitempty"`
+	AutoCompactMode      string  `json:"autoCompactMode,omitempty"`
+	AutoCompactPct       float64 `json:"autoCompactPct,omitempty"`
+	AutoCompactTargetPct float64 `json:"autoCompactTargetPct,omitempty"`
+	AutoCompactLeftover  int     `json:"autoCompactLeftover,omitempty"`
+	AutoCompactPrompt    string  `json:"autoCompactPrompt,omitempty"`
 }
 
 // load reads and decodes a Settings file at path.
@@ -127,9 +128,6 @@ func Load(globalPath, projectPath string) (Settings, error) {
 	}
 	if project.RenderThrottleMs != 0 {
 		merged.RenderThrottleMs = project.RenderThrottleMs
-	}
-	if global.AutoCompact {
-		merged.AutoCompact = true
 	}
 	if project.AutoCompact {
 		merged.AutoCompact = true

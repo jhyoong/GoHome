@@ -19,7 +19,7 @@ const (
 
 var DefaultRetryBackoff = []time.Duration{250 * time.Millisecond, time.Second, 2 * time.Second}
 
-var DefaultAutoCompactPrompt = `You are summarizing a coding assistant conversation for context compaction.
+const DefaultAutoCompactPrompt = `You are summarizing a coding assistant conversation for context compaction.
 Produce a concise summary that preserves:
 - The user's current goal and any sub-tasks
 - Key decisions made and their reasoning
