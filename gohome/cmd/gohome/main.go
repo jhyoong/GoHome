@@ -388,6 +388,27 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		thinkingBudget = config.DefaultThinkingBudget
 	}
 
+	compactCfg := agent.CompactConfig{
+		Enabled:       settings.AutoCompact,
+		Mode:          settings.AutoCompactMode,
+		TriggerPct:    settings.AutoCompactPct,
+		TargetPct:     settings.AutoCompactTargetPct,
+		Leftover:      settings.AutoCompactLeftover,
+		ContextWindow: contextWindow,
+	}
+	if compactCfg.Mode == "" {
+		compactCfg.Mode = "percentage"
+	}
+	if compactCfg.TriggerPct <= 0 {
+		compactCfg.TriggerPct = config.DefaultAutoCompactPct
+	}
+	if compactCfg.TargetPct <= 0 {
+		compactCfg.TargetPct = config.DefaultAutoCompactTargetPct
+	}
+	if compactCfg.Leftover <= 0 {
+		compactCfg.Leftover = config.DefaultAutoCompactLeftover
+	}
+
 	state := agent.NewSessionState(sess, writer, client)
 
 	a := &agent.Agent{
@@ -399,6 +420,8 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		MaxTokens:       maxTokens,
 		ThinkingBudget:  thinkingBudget,
 		ReasoningEffort: mc.ReasoningEffort,
+		CompactCfg:      compactCfg,
+		CompactPrompt:   settings.AutoCompactPrompt,
 		Home:            home,
 	}
 	a.RegisterSubagentTool()
