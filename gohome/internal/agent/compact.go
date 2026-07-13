@@ -9,7 +9,6 @@ import (
 	"github.com/jhyoong/GoHome/gohome/internal/session"
 )
 
-
 // CompactConfig controls automatic context compaction.
 type CompactConfig struct {
 	Enabled       bool
