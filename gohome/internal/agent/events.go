@@ -24,6 +24,7 @@ const (
 	EventThinkingDelta  EventKind = "thinking_delta"
 	EventThinkingDone   EventKind = "thinking_done"
 	EventToolDenied     EventKind = "tool_denied"
+	EventCompacted      EventKind = "compacted"
 )
 
 type ToolResult struct {
@@ -56,6 +57,8 @@ type Event struct {
 	ErrMessage    string        `json:"errMessage,omitempty"`
 	ThinkingDelta string        `json:"thinkingDelta,omitempty"`
 	TurnStats     *TurnStats    `json:"turnStats,omitempty"`
+	CompactBefore int           `json:"compactBefore,omitempty"`
+	CompactAfter  int           `json:"compactAfter,omitempty"`
 }
 
 type Frontend interface {
