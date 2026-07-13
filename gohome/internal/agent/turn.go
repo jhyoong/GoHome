@@ -18,7 +18,7 @@ import (
 // Returns the stopReason string (e.g. "end_turn", "tool_use") or an error if
 // the stream failed. A cancelled context causes the event loop to stop early;
 // Run is responsible for wrapping that into the appropriate events/errors.
-func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, error) {
+func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, *common.Usage, error) {
 	maxTokens := 4096
 	if a.MaxTokens > 0 {
 		maxTokens = a.MaxTokens
@@ -36,7 +36,7 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, error)
 	start := time.Now()
 	events, err := a.State.Client().Stream(ctx, req)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	var (
@@ -52,7 +52,7 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, error)
 		select {
 		case <-ctx.Done():
 			// Cancelled mid-stream. Caller (Run) handles this.
-			return "", ctx.Err()
+			return "", nil, ctx.Err()
 
 		case ev, ok := <-events:
 			if !ok {
@@ -111,7 +111,7 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, error)
 					Err:        ev.Err,
 					ErrMessage: ev.Err.Error(),
 				})
-				return "", ev.Err
+				return "", nil, ev.Err
 
 			default:
 				// Log unknown/future event kinds so they are visible rather than
@@ -182,5 +182,5 @@ done:
 		TurnStats:  stats,
 	})
 
-	return stopReason, nil
+	return stopReason, usage, nil
 }
