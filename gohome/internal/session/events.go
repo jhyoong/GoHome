@@ -57,6 +57,8 @@ type SessionEnd struct {
 	Reason string `json:"reason"`
 }
 
+const CompactSummaryPrefix = "[Auto-compact summary]\n\n"
+
 type Compaction struct {
 	BeforeTokens int    `json:"beforeTokens"`
 	AfterTokens  int    `json:"afterTokens"`

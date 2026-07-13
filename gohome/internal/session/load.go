@@ -128,7 +128,7 @@ func Load(path string) (*Session, []common.Message, error) {
 				{
 					Role: common.RoleUser,
 					Content: []common.Block{
-						{Kind: common.BlockText, Text: "[Auto-compact summary]\n\n" + ev.Summary},
+						{Kind: common.BlockText, Text: CompactSummaryPrefix + ev.Summary},
 					},
 				},
 			}

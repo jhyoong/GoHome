@@ -3,10 +3,12 @@ package agent
 import (
 	"context"
 	"log/slog"
+	"strings"
 
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 	"github.com/jhyoong/GoHome/gohome/internal/session"
 )
+
 
 // CompactConfig controls automatic context compaction.
 type CompactConfig struct {
@@ -47,11 +49,12 @@ func (a *Agent) compact(ctx context.Context, sess *session.Session) error {
 		prompt = defaultCompactPrompt
 	}
 
-	// Rough token estimate: 1 token per 4 characters.
 	beforeTokens := 0
 	for _, msg := range sess.History {
 		for _, b := range msg.Content {
 			beforeTokens += len(b.Text) / 4
+			beforeTokens += len(b.InputJSON) / 4
+			beforeTokens += len(b.ResultText) / 4
 		}
 	}
 
@@ -67,15 +70,16 @@ func (a *Agent) compact(ctx context.Context, sess *session.Session) error {
 		return err
 	}
 
-	var summary string
+	var sb strings.Builder
 	for ev := range events {
 		switch ev.Kind {
 		case common.EventTextDelta:
-			summary += ev.TextDelta
+			sb.WriteString(ev.TextDelta)
 		case common.EventError:
 			return ev.Err
 		}
 	}
+	summary := sb.String()
 
 	if summary == "" {
 		slog.Warn("compact: LLM returned empty summary, skipping")
@@ -86,7 +90,7 @@ func (a *Agent) compact(ctx context.Context, sess *session.Session) error {
 		{
 			Role: common.RoleUser,
 			Content: []common.Block{
-				{Kind: common.BlockText, Text: "[Auto-compact summary]\n\n" + summary},
+				{Kind: common.BlockText, Text: session.CompactSummaryPrefix + summary},
 			},
 		},
 	}
