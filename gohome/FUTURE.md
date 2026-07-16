@@ -96,3 +96,4 @@ existing `_test.go` files with no structural changes.
 ## Additional findings
 - ~~Tool calls to show last 3 rows of output~~ -- DELIVERED in v0.2.5
 - ~~Edit tool to show the changes made (git diff style)~~ -- DELIVERED in v0.2.5
+- Scrolling doesn't work properly when in edit tool mode - especially when there's a big change. 

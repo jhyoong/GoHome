@@ -4,3 +4,4 @@ coverage.out
 .gohome/
 .claude/*
 docs/old/*
+scratch/*
