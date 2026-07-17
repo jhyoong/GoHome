@@ -119,7 +119,7 @@ func TestTurn_TextDeltaAndTurnDone(t *testing.T) {
 		System:   "system prompt",
 	}
 
-	stopReason, err := a.Turn(context.Background(), sess)
+	stopReason, _, err := a.Turn(context.Background(), sess)
 	if err != nil {
 		t.Fatalf("Turn: %v", err)
 	}
@@ -203,7 +203,7 @@ func TestTurn_ToolUseBlock(t *testing.T) {
 	fe := &fakeRecorder{}
 	a, sess, _ := newTestAgent(t, client, fe)
 
-	stopReason, err := a.Turn(context.Background(), sess)
+	stopReason, _, err := a.Turn(context.Background(), sess)
 	if err != nil {
 		t.Fatalf("Turn: %v", err)
 	}
@@ -259,7 +259,7 @@ func TestTurn_StreamError(t *testing.T) {
 	fe := &fakeRecorder{}
 	a, sess, _ := newTestAgent(t, client, fe)
 
-	_, err := a.Turn(context.Background(), sess)
+	_, _, err := a.Turn(context.Background(), sess)
 	if err == nil {
 		t.Fatal("expected error from Turn, got nil")
 	}
@@ -289,7 +289,7 @@ func TestTurn_ThinkingThenText(t *testing.T) {
 	fe := &fakeRecorder{}
 	a, sess, _ := newTestAgent(t, client, fe)
 
-	stopReason, err := a.Turn(context.Background(), sess)
+	stopReason, _, err := a.Turn(context.Background(), sess)
 	if err != nil {
 		t.Fatalf("Turn: %v", err)
 	}
@@ -343,7 +343,7 @@ func TestTurn_TextOnlyNoToolUse(t *testing.T) {
 	fe := &fakeRecorder{}
 	a, sess, _ := newTestAgent(t, client, fe)
 
-	_, err := a.Turn(context.Background(), sess)
+	_, _, err := a.Turn(context.Background(), sess)
 	if err != nil {
 		t.Fatalf("Turn: %v", err)
 	}
@@ -367,7 +367,7 @@ func TestTurn_ThinkingWithSignature(t *testing.T) {
 	fe := &fakeRecorder{}
 	a, sess, _ := newTestAgent(t, client, fe)
 
-	_, err := a.Turn(context.Background(), sess)
+	_, _, err := a.Turn(context.Background(), sess)
 	if err != nil {
 		t.Fatalf("Turn: %v", err)
 	}
@@ -405,7 +405,7 @@ func TestTurn_ThinkingWithoutSignature(t *testing.T) {
 	fe := &fakeRecorder{}
 	a, sess, _ := newTestAgent(t, client, fe)
 
-	_, err := a.Turn(context.Background(), sess)
+	_, _, err := a.Turn(context.Background(), sess)
 	if err != nil {
 		t.Fatalf("Turn: %v", err)
 	}

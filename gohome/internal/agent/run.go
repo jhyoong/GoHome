@@ -29,7 +29,7 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 			Kind:      EventSending,
 			SessionID: sess.ID,
 		})
-		_, err := a.Turn(tctx, sess)
+		_, usage, err := a.Turn(tctx, sess)
 		if err != nil {
 			if ctx.Err() != nil {
 				// Context was cancelled during Turn. Emit a frontend event but
@@ -42,6 +42,12 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 				return ctx.Err()
 			}
 			return err
+		}
+
+		if usage != nil && a.CompactCfg.shouldCompact(*usage) {
+			if compactErr := a.compact(tctx, sess); compactErr != nil {
+				slog.Warn("auto-compact failed, continuing with full history", "err", compactErr)
+			}
 		}
 
 		// Find the last assistant message.

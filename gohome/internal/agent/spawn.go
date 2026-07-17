@@ -86,6 +86,8 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 		MaxTokens:       a.MaxTokens,
 		ThinkingBudget:  a.ThinkingBudget,
 		ReasoningEffort: a.ReasoningEffort,
+		CompactCfg:      a.CompactCfg,
+		CompactPrompt:   a.CompactPrompt,
 		Home:            a.Home,
 	}
 

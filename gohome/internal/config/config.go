@@ -44,6 +44,13 @@ type Settings struct {
 	ContextCritPct    float64                `json:"contextCritPct,omitempty"`
 	RetryBackoffMs    []int                  `json:"retryBackoffMs,omitempty"`
 	RenderThrottleMs  int                    `json:"renderThrottleMs,omitempty"`
+
+	AutoCompact          bool    `json:"autoCompact,omitempty"`
+	AutoCompactMode      string  `json:"autoCompactMode,omitempty"`
+	AutoCompactPct       float64 `json:"autoCompactPct,omitempty"`
+	AutoCompactTargetPct float64 `json:"autoCompactTargetPct,omitempty"`
+	AutoCompactLeftover  int     `json:"autoCompactLeftover,omitempty"`
+	AutoCompactPrompt    string  `json:"autoCompactPrompt,omitempty"`
 }
 
 // load reads and decodes a Settings file at path.
@@ -72,14 +79,20 @@ func Load(globalPath, projectPath string) (Settings, error) {
 	project := load(projectPath)
 
 	merged := Settings{
-		ModelConfig:       make(map[string]ModelConfig),
-		DefaultModel:      global.DefaultModel,
-		ShellTimeoutMs:    global.ShellTimeoutMs,
-		MaxShellTimeoutMs: global.MaxShellTimeoutMs,
-		ContextWarnPct:    global.ContextWarnPct,
-		ContextCritPct:    global.ContextCritPct,
-		RetryBackoffMs:    global.RetryBackoffMs,
-		RenderThrottleMs:  global.RenderThrottleMs,
+		ModelConfig:          make(map[string]ModelConfig),
+		DefaultModel:         global.DefaultModel,
+		ShellTimeoutMs:       global.ShellTimeoutMs,
+		MaxShellTimeoutMs:    global.MaxShellTimeoutMs,
+		ContextWarnPct:       global.ContextWarnPct,
+		ContextCritPct:       global.ContextCritPct,
+		RetryBackoffMs:       global.RetryBackoffMs,
+		RenderThrottleMs:     global.RenderThrottleMs,
+		AutoCompact:          global.AutoCompact,
+		AutoCompactMode:      global.AutoCompactMode,
+		AutoCompactPct:       global.AutoCompactPct,
+		AutoCompactTargetPct: global.AutoCompactTargetPct,
+		AutoCompactLeftover:  global.AutoCompactLeftover,
+		AutoCompactPrompt:    global.AutoCompactPrompt,
 	}
 
 	for k, v := range global.ModelConfig {
@@ -115,6 +128,24 @@ func Load(globalPath, projectPath string) (Settings, error) {
 	}
 	if project.RenderThrottleMs != 0 {
 		merged.RenderThrottleMs = project.RenderThrottleMs
+	}
+	if project.AutoCompact {
+		merged.AutoCompact = true
+	}
+	if project.AutoCompactMode != "" {
+		merged.AutoCompactMode = project.AutoCompactMode
+	}
+	if project.AutoCompactPct != 0 {
+		merged.AutoCompactPct = project.AutoCompactPct
+	}
+	if project.AutoCompactTargetPct != 0 {
+		merged.AutoCompactTargetPct = project.AutoCompactTargetPct
+	}
+	if project.AutoCompactLeftover != 0 {
+		merged.AutoCompactLeftover = project.AutoCompactLeftover
+	}
+	if project.AutoCompactPrompt != "" {
+		merged.AutoCompactPrompt = project.AutoCompactPrompt
 	}
 
 	return merged, nil
@@ -182,14 +213,20 @@ func LoadAnnotated(globalPath, projectPath string) (AnnotatedSettings, error) {
 	}
 
 	sources := map[string]Source{
-		"defaultModel":      SourceDefault,
-		"systemPrompt":      SourceDefault,
-		"shellTimeoutMs":    SourceDefault,
-		"maxShellTimeoutMs": SourceDefault,
-		"contextWarnPct":    SourceDefault,
-		"contextCritPct":    SourceDefault,
-		"retryBackoffMs":    SourceDefault,
-		"renderThrottleMs":  SourceDefault,
+		"defaultModel":         SourceDefault,
+		"systemPrompt":         SourceDefault,
+		"shellTimeoutMs":       SourceDefault,
+		"maxShellTimeoutMs":    SourceDefault,
+		"contextWarnPct":       SourceDefault,
+		"contextCritPct":       SourceDefault,
+		"retryBackoffMs":       SourceDefault,
+		"renderThrottleMs":     SourceDefault,
+		"autoCompact":          SourceDefault,
+		"autoCompactMode":      SourceDefault,
+		"autoCompactPct":       SourceDefault,
+		"autoCompactTargetPct": SourceDefault,
+		"autoCompactLeftover":  SourceDefault,
+		"autoCompactPrompt":    SourceDefault,
 	}
 
 	if global.DefaultModel != "" {
@@ -246,6 +283,48 @@ func LoadAnnotated(globalPath, projectPath string) (AnnotatedSettings, error) {
 	}
 	if project.RenderThrottleMs != 0 {
 		sources["renderThrottleMs"] = SourceProject
+	}
+
+	if global.AutoCompact {
+		sources["autoCompact"] = SourceGlobal
+	}
+	if project.AutoCompact {
+		sources["autoCompact"] = SourceProject
+	}
+
+	if global.AutoCompactMode != "" {
+		sources["autoCompactMode"] = SourceGlobal
+	}
+	if project.AutoCompactMode != "" {
+		sources["autoCompactMode"] = SourceProject
+	}
+
+	if global.AutoCompactPct != 0 {
+		sources["autoCompactPct"] = SourceGlobal
+	}
+	if project.AutoCompactPct != 0 {
+		sources["autoCompactPct"] = SourceProject
+	}
+
+	if global.AutoCompactTargetPct != 0 {
+		sources["autoCompactTargetPct"] = SourceGlobal
+	}
+	if project.AutoCompactTargetPct != 0 {
+		sources["autoCompactTargetPct"] = SourceProject
+	}
+
+	if global.AutoCompactLeftover != 0 {
+		sources["autoCompactLeftover"] = SourceGlobal
+	}
+	if project.AutoCompactLeftover != 0 {
+		sources["autoCompactLeftover"] = SourceProject
+	}
+
+	if global.AutoCompactPrompt != "" {
+		sources["autoCompactPrompt"] = SourceGlobal
+	}
+	if project.AutoCompactPrompt != "" {
+		sources["autoCompactPrompt"] = SourceProject
 	}
 
 	modelSources := make(map[string]Source)

@@ -27,6 +27,9 @@ func TestSkeletonJSON_ContainsAllTopLevelFields(t *testing.T) {
 		"shellTimeoutMs", "maxShellTimeoutMs",
 		"contextWarnPct", "contextCritPct",
 		"retryBackoffMs", "renderThrottleMs",
+		"autoCompact", "autoCompactMode",
+		"autoCompactPct", "autoCompactTargetPct",
+		"autoCompactLeftover", "autoCompactPrompt",
 	}
 	for _, key := range required {
 		if _, ok := raw[key]; !ok {

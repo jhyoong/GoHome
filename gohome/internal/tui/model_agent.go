@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -124,6 +125,16 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 			sv.Usage = *ev.Usage
 			m.checkContextWarnings(sv)
 		}
+
+	case agent.EventCompacted:
+		beforeK := ev.CompactBefore / 1000
+		afterK := ev.CompactAfter / 1000
+		sv.Timeline = append(sv.Timeline, TimelineEntry{
+			Kind: KindNotice,
+			Text: fmt.Sprintf("Context compacted: %dk -> %dk tokens", beforeK, afterK),
+		})
+		sv.warned80 = false
+		sv.warned95 = false
 
 	case agent.EventTurnDone:
 		if ev.TurnStats != nil && ev.TurnStats.Elapsed > 0 {

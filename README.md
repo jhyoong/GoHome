@@ -69,6 +69,53 @@ go build -ldflags "-X main.version=v0.4.0" -o bin/gohome ./gohome/cmd/gohome
 | `--config` | Print merged configuration and exit |
 | `--version` | Print version and exit |
 
+### Auto-Compaction
+
+Auto-compaction automatically summarizes your conversation history when the context window gets full, preventing the agent from hitting token limits during long sessions.
+
+**How it works:**
+- The agent monitors token usage during its run loop
+- When usage exceeds a configured threshold, it sends the full conversation history to the LLM for summarization
+- The history is replaced with a concise summary (prefixed with `COMPACT:`) that preserves:
+  - Your current goal and sub-tasks
+  - Key decisions and reasoning
+  - File paths and code changes
+  - Pending work and unresolved issues
+  - Relevant tool results
+- A `Compaction` event is persisted to the session file, allowing resumption with the summarized context
+- The TUI displays a notice when compaction occurs
+
+**Configuration** (in `~/.gohome/settings.json` or `.gohome/settings.json`):
+
+```json
+{
+  "autoCompact": false,
+  "autoCompactMode": "percentage",
+  "autoCompactPct": 0.80,
+  "autoCompactTargetPct": 0.50,
+  "autoCompactLeftover": 32000,
+  "autoCompactPrompt": ""
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `autoCompact` | `bool` | `false` | Enable automatic compaction |
+| `autoCompactMode` | `string` | `"percentage"` | Trigger mode: `"percentage"` or `"leftover"` |
+| `autoCompactPct` | `float64` | `0.80` | For percentage mode: compaction triggers when used tokens ≥ `contextWindow × autoCompactPct` |
+| `autoCompactTargetPct` | `float64` | `0.50` | Reserved for future partial compaction |
+| `autoCompactLeftover` | `int` | `32000` | For leftover mode: compaction triggers when remaining tokens < `autoCompactLeftover` |
+| `autoCompactPrompt` | `string` | (built-in) | Custom prompt for the summarization LLM call. Empty uses the default prompt. |
+
+**Modes:**
+- **percentage** (default): Compaction triggers when used tokens reach `autoCompactPct` of the context window (e.g., 80% of 128K = 102K tokens used)
+- **leftover**: Compaction triggers when remaining tokens fall below `autoCompactLeftover` (e.g., when less than 32K tokens remain)
+
+**Example:** For a 128K context window with percentage mode at 0.80:
+- Compaction triggers at ~102K tokens used
+- The LLM summarizes the conversation into a much smaller context
+- The agent continues with the summarized history
+
 ---
 
 ## Quickstart
@@ -106,7 +153,14 @@ go build -ldflags "-X main.version=v0.4.0" -o bin/gohome ./gohome/cmd/gohome
   "maxShellTimeoutMs": 600000,
   "contextWarnPct": 0.80,
   "contextCritPct": 0.95,
-  "retryBackoffMs": [250, 1000, 2000]
+  "retryBackoffMs": [250, 1000, 2000],
+  "renderThrottleMs": 0,
+  "autoCompact": false,
+  "autoCompactMode": "percentage",
+  "autoCompactPct": 0.80,
+  "autoCompactTargetPct": 0.50,
+  "autoCompactLeftover": 32000,
+  "autoCompactPrompt": ""
 }
 ```
 

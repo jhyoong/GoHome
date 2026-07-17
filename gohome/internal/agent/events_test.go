@@ -53,6 +53,9 @@ func TestEventKindConstants(t *testing.T) {
 		{EventThinkingDelta, "thinking_delta"},
 		{EventThinkingDone, "thinking_done"},
 		{EventToolDenied, "tool_denied"},
+		{EventSessionSwapped, "session_swapped"},
+		{EventSending, "sending"},
+		{EventCompacted, "compacted"},
 	}
 	for _, tc := range cases {
 		if string(tc.kind) != tc.want {

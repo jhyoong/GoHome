@@ -148,6 +148,92 @@ func TestLoad(t *testing.T) {
 	}
 }
 
+func TestLoad_WithCompaction(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.jsonl")
+
+	w, err := OpenWriter(path)
+	if err != nil {
+		t.Fatalf("OpenWriter: %v", err)
+	}
+
+	w.Emit(SessionStart{ID: "sess-compact", CWD: "/tmp", Model: "m"})
+	w.Emit(UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: "old message 1"}}})
+	w.Emit(AssistantMessage{Content: []common.Block{{Kind: common.BlockText, Text: "old reply 1"}}})
+	w.Emit(UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: "old message 2"}}})
+	w.Emit(AssistantMessage{Content: []common.Block{{Kind: common.BlockText, Text: "old reply 2"}}})
+
+	w.Emit(Compaction{BeforeTokens: 50000, AfterTokens: 10000, Summary: "Summary of conversation so far."})
+
+	w.Emit(UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: "new message"}}})
+	w.Emit(AssistantMessage{Content: []common.Block{{Kind: common.BlockText, Text: "new reply"}}})
+
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	sess, history, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if sess.ID != "sess-compact" {
+		t.Errorf("sess.ID = %q", sess.ID)
+	}
+
+	// History should be: summary + new user + new assistant = 3
+	if len(history) != 3 {
+		t.Fatalf("len(history) = %d, want 3", len(history))
+	}
+	if history[0].Role != common.RoleUser {
+		t.Errorf("history[0].Role = %q, want user", history[0].Role)
+	}
+	if history[0].Content[0].Text != "[Auto-compact summary]\n\nSummary of conversation so far." {
+		t.Errorf("history[0] text = %q", history[0].Content[0].Text)
+	}
+	if history[1].Content[0].Text != "new message" {
+		t.Errorf("history[1] text = %q", history[1].Content[0].Text)
+	}
+	if history[2].Content[0].Text != "new reply" {
+		t.Errorf("history[2] text = %q", history[2].Content[0].Text)
+	}
+}
+
+func TestLoad_MultipleCompactions(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.jsonl")
+
+	w, err := OpenWriter(path)
+	if err != nil {
+		t.Fatalf("OpenWriter: %v", err)
+	}
+
+	w.Emit(SessionStart{ID: "sess-multi", CWD: "/tmp", Model: "m"})
+	w.Emit(UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: "old"}}})
+	w.Emit(Compaction{BeforeTokens: 50000, AfterTokens: 10000, Summary: "first summary"})
+	w.Emit(UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: "middle"}}})
+	w.Emit(Compaction{BeforeTokens: 40000, AfterTokens: 8000, Summary: "second summary"})
+	w.Emit(UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: "final"}}})
+
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	_, history, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if len(history) != 2 {
+		t.Fatalf("len(history) = %d, want 2", len(history))
+	}
+	if history[0].Content[0].Text != "[Auto-compact summary]\n\nsecond summary" {
+		t.Errorf("history[0] text = %q", history[0].Content[0].Text)
+	}
+	if history[1].Content[0].Text != "final" {
+		t.Errorf("history[1] text = %q", history[1].Content[0].Text)
+	}
+}
+
 func TestLoadMissingFile(t *testing.T) {
 	_, _, err := Load("/nonexistent/path/session.jsonl")
 	if err == nil {

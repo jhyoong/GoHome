@@ -170,6 +170,39 @@ func TestEncodeSessionEnd(t *testing.T) {
 	assertStringField(t, m, "reason", "done")
 }
 
+func TestEncodeCompaction(t *testing.T) {
+	ev := Compaction{
+		BeforeTokens: 95000,
+		AfterTokens:  40000,
+		Summary:      "The user was working on...",
+	}
+	b, err := encode(ev)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	m := decodeMap(t, b)
+	assertStringField(t, m, "type", "compaction")
+	assertTSPresent(t, m)
+
+	var beforeTokens int
+	if err := json.Unmarshal(m["beforeTokens"], &beforeTokens); err != nil {
+		t.Fatalf("beforeTokens unmarshal: %v", err)
+	}
+	if beforeTokens != 95000 {
+		t.Errorf("beforeTokens: got %d, want 95000", beforeTokens)
+	}
+
+	var afterTokens int
+	if err := json.Unmarshal(m["afterTokens"], &afterTokens); err != nil {
+		t.Fatalf("afterTokens unmarshal: %v", err)
+	}
+	if afterTokens != 40000 {
+		t.Errorf("afterTokens: got %d, want 40000", afterTokens)
+	}
+
+	assertStringField(t, m, "summary", "The user was working on...")
+}
+
 func TestEncodeUnknownType(t *testing.T) {
 	_, err := encode(struct{ X string }{X: "??"})
 	if err == nil {

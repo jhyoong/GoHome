@@ -352,3 +352,69 @@ func TestLoad_RenderThrottleMsZeroPreservesGlobal(t *testing.T) {
 		t.Errorf("RenderThrottleMs: got %d, want 50 (should preserve global)", merged.RenderThrottleMs)
 	}
 }
+
+func TestLoad_MergesAutoCompactFields(t *testing.T) {
+	dir := t.TempDir()
+
+	global := Settings{
+		AutoCompact:     true,
+		AutoCompactMode: "percentage",
+		AutoCompactPct:  0.85,
+	}
+	project := Settings{
+		AutoCompactMode:     "leftover",
+		AutoCompactLeftover: 64000,
+		AutoCompactPrompt:   "custom prompt",
+	}
+
+	gPath := writeJSON(t, dir, "global.json", global)
+	pPath := writeJSON(t, dir, "project.json", project)
+
+	merged, err := Load(gPath, pPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !merged.AutoCompact {
+		t.Error("AutoCompact: got false, want true")
+	}
+	if merged.AutoCompactMode != "leftover" {
+		t.Errorf("AutoCompactMode: got %q, want leftover", merged.AutoCompactMode)
+	}
+	if merged.AutoCompactPct != 0.85 {
+		t.Errorf("AutoCompactPct: got %v, want 0.85", merged.AutoCompactPct)
+	}
+	if merged.AutoCompactLeftover != 64000 {
+		t.Errorf("AutoCompactLeftover: got %d, want 64000", merged.AutoCompactLeftover)
+	}
+	if merged.AutoCompactPrompt != "custom prompt" {
+		t.Errorf("AutoCompactPrompt: got %q, want 'custom prompt'", merged.AutoCompactPrompt)
+	}
+}
+
+func TestLoad_AutoCompactZeroPreservesGlobal(t *testing.T) {
+	dir := t.TempDir()
+
+	global := Settings{
+		AutoCompactPct:       0.90,
+		AutoCompactTargetPct: 0.40,
+		AutoCompactLeftover:  16000,
+	}
+	project := Settings{}
+
+	gPath := writeJSON(t, dir, "global.json", global)
+	pPath := writeJSON(t, dir, "project.json", project)
+
+	merged, err := Load(gPath, pPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if merged.AutoCompactPct != 0.90 {
+		t.Errorf("AutoCompactPct: got %v, want 0.90", merged.AutoCompactPct)
+	}
+	if merged.AutoCompactTargetPct != 0.40 {
+		t.Errorf("AutoCompactTargetPct: got %v, want 0.40", merged.AutoCompactTargetPct)
+	}
+	if merged.AutoCompactLeftover != 16000 {
+		t.Errorf("AutoCompactLeftover: got %d, want 16000", merged.AutoCompactLeftover)
+	}
+}
