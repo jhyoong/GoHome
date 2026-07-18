@@ -95,6 +95,23 @@ func TestSnapshots(t *testing.T) {
 		golden.RequireEqual(t, []byte(m.View()))
 	})
 
+	// (d2) With a sudo approval prompt active (shows password field).
+	t.Run("sudo_approval_prompt", func(t *testing.T) {
+		m := newSized()
+		reply := make(chan guard.ApprovalDecision, 1)
+		m = apply(m, tui.ApprovalReqMsg{
+			Req: guard.ApprovalRequest{
+				SessionID:         "main",
+				Tool:              "shell",
+				Input:             []byte(`{"command":"sudo apt install vim"}`),
+				SuggestedPattern:  "^sudo",
+				NeedsSudoPassword: true,
+			},
+			Reply: reply,
+		})
+		golden.RequireEqual(t, []byte(m.View()))
+	})
+
 	// (e) With a subagent in the session strip.
 	t.Run("with_subagent_strip", func(t *testing.T) {
 		m := newSized()
