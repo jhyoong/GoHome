@@ -395,6 +395,76 @@ func TestRun_MixedBatch(t *testing.T) {
 	}
 }
 
+// --- spy tool that captures context -----------------------------------------
+
+type spyContextTool struct {
+	onExecute func(ctx context.Context)
+}
+
+func (s *spyContextTool) Name() string                 { return "spy" }
+func (s *spyContextTool) Description() string          { return "spy tool" }
+func (s *spyContextTool) InputSchema() json.RawMessage { return json.RawMessage(`{}`) }
+func (s *spyContextTool) Execute(ctx context.Context, in json.RawMessage, sink tools.ProgressSink) (tools.Result, error) {
+	if s.onExecute != nil {
+		s.onExecute(ctx)
+	}
+	return tools.Result{Content: "ok"}, nil
+}
+
+// TestDispatchTool_SudoPasswordInContext verifies that when the guard returns
+// a Decision with SudoPassword set, the agent injects it into the tool's
+// context so that tools.SudoPasswordFrom can retrieve it.
+func TestDispatchTool_SudoPasswordInContext(t *testing.T) {
+	// Create a spy tool that captures the context it receives.
+	var capturedCtx context.Context
+	spy := &spyContextTool{
+		onExecute: func(ctx context.Context) {
+			capturedCtx = ctx
+		},
+	}
+
+	reg := tools.NewRegistry()
+	reg.Register(spy)
+
+	// Create a guard with a frontend that returns AllowOnce + SudoPassword.
+	fe := &fakeRecorder{
+		approval: guard.ApprovalDecision{
+			Outcome:      guard.AllowOnce,
+			SudoPassword: "secret123",
+		},
+	}
+	gfe := &guardFE{fe: fe}
+	wl, err := guard.Compile(guard.WhitelistFile{}, guard.WhitelistFile{}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := guard.NewGuard(wl, gfe)
+
+	// Build a minimal agent with the spy tool and guard.
+	turn1 := []common.StreamEvent{
+		{Kind: common.EventToolCallDone, ToolCallID: "tc1", ToolName: "spy", InputJSON: `{}`},
+		{Kind: common.EventTurnDone, StopReason: "tool_use"},
+	}
+	turn2 := []common.StreamEvent{
+		{Kind: common.EventTurnDone, StopReason: "end_turn"},
+	}
+	client := &fakeClient{sequences: [][]common.StreamEvent{turn1, turn2}}
+
+	a, sess := newTestAgentWithGuard(t, client, fe, g, reg)
+
+	if err := a.Run(context.Background(), sess); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if capturedCtx == nil {
+		t.Fatal("spy tool was not executed")
+	}
+	got := tools.SudoPasswordFrom(capturedCtx)
+	if got != "secret123" {
+		t.Errorf("SudoPasswordFrom = %q, want %q", got, "secret123")
+	}
+}
+
 // TestRun_UnknownTool verifies that a tool_use for an unregistered tool name
 // produces an IsError result but does not crash Run.
 func TestRun_UnknownTool(t *testing.T) {
