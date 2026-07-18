@@ -19,6 +19,7 @@ type ApprovalRequest struct {
 	Input            json.RawMessage
 	Summary          string
 	SuggestedPattern string
+	NeedsSudoPassword bool
 }
 
 // ApprovalDecision is the response from the Frontend for a pending tool call.
@@ -26,6 +27,7 @@ type ApprovalDecision struct {
 	Outcome      ApprovalOutcome
 	SavedPattern string
 	SteerMessage string
+	SudoPassword string
 }
 
 // Decision is the final result of Guard.Check(), consumed by the agent.
@@ -34,4 +36,5 @@ type Decision struct {
 	Reason       string
 	SteerMessage string
 	SavedPattern string
+	SudoPassword string
 }

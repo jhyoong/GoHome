@@ -233,6 +233,45 @@ func TestCheck_DenySteer(t *testing.T) {
 	}
 }
 
+func TestCheck_SudoCommand_SetsNeedsSudoPassword(t *testing.T) {
+	fe := &fakeFrontend{
+		response: ApprovalDecision{Outcome: AllowOnce},
+	}
+	g := newTestGuard(emptyWhitelist(t), fe)
+
+	_, _ = g.Check(context.Background(), "sess1", "shell", bashCmd("sudo apt install vim"))
+	if !fe.lastReq.NeedsSudoPassword {
+		t.Error("expected NeedsSudoPassword=true for sudo command")
+	}
+}
+
+func TestCheck_NonSudoCommand_DoesNotSetNeedsSudoPassword(t *testing.T) {
+	fe := &fakeFrontend{
+		response: ApprovalDecision{Outcome: AllowOnce},
+	}
+	g := newTestGuard(emptyWhitelist(t), fe)
+
+	_, _ = g.Check(context.Background(), "sess1", "shell", bashCmd("ls -la"))
+	if fe.lastReq.NeedsSudoPassword {
+		t.Error("expected NeedsSudoPassword=false for non-sudo command")
+	}
+}
+
+func TestCheck_SudoPassword_ThreadedToDecision(t *testing.T) {
+	fe := &fakeFrontend{
+		response: ApprovalDecision{Outcome: AllowOnce, SudoPassword: "secret123"},
+	}
+	g := newTestGuard(emptyWhitelist(t), fe)
+
+	dec, err := g.Check(context.Background(), "sess1", "shell", bashCmd("sudo apt install vim"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if dec.SudoPassword != "secret123" {
+		t.Errorf("SudoPassword = %q, want %q", dec.SudoPassword, "secret123")
+	}
+}
+
 func TestCheck_ApprovalRequest_Summary(t *testing.T) {
 	fe := &fakeFrontend{
 		response: ApprovalDecision{Outcome: AllowOnce},
