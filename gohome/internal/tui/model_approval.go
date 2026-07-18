@@ -13,6 +13,9 @@ import (
 // the FIFO approval queue.
 func (m *Model) handleApprovalReq(msg approvalReqMsg) {
 	ap := newApprovalPrompt(msg.Req, msg.Reply)
+	if ap.needsSudo && m.sudoPasswordCache != "" {
+		ap.passwordInput.SetValue(m.sudoPasswordCache)
+	}
 	if m.activeApproval == nil {
 		m.activeApproval = ap
 	} else {
@@ -150,6 +153,9 @@ func (m *Model) buildApprovalDecision(outcome guard.ApprovalOutcome) guard.Appro
 func (m *Model) resolveApproval(dec guard.ApprovalDecision) tea.Cmd {
 	if m.activeApproval == nil {
 		return nil
+	}
+	if m.activeApproval.needsSudo && dec.SudoPassword != "" {
+		m.sudoPasswordCache = dec.SudoPassword
 	}
 	m.activeApproval.reply <- dec
 	m.activeApproval = nil

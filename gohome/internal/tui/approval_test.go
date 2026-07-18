@@ -551,6 +551,74 @@ func TestApprovalNonSudoNoPasswordField(t *testing.T) {
 	}
 }
 
+// --- Task 7: per-session sudo password caching ---
+
+func TestApprovalSudoPasswordCachedAcrossPrompts(t *testing.T) {
+	m := tui.New(nil, "")
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	// First sudo command -- user types password.
+	ch1 := make(chan guard.ApprovalDecision, 1)
+	msg1 := tui.ApprovalReqMsg{
+		Req: guard.ApprovalRequest{
+			SessionID:         "main",
+			Tool:              "shell",
+			Input:             json.RawMessage(`{"command":"sudo apt install vim"}`),
+			SuggestedPattern:  "^sudo",
+			NeedsSudoPassword: true,
+		},
+		Reply: ch1,
+	}
+	tm.Send(msg1)
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Password:"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	tm.Type("cached_pass")
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+
+	select {
+	case dec := <-ch1:
+		if dec.SudoPassword != "cached_pass" {
+			t.Fatalf("first sudo: expected password %q, got %q", "cached_pass", dec.SudoPassword)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for first decision")
+	}
+
+	// Second sudo command -- password should be pre-filled from cache.
+	ch2 := make(chan guard.ApprovalDecision, 1)
+	msg2 := tui.ApprovalReqMsg{
+		Req: guard.ApprovalRequest{
+			SessionID:         "main",
+			Tool:              "shell",
+			Input:             json.RawMessage(`{"command":"sudo systemctl restart nginx"}`),
+			SuggestedPattern:  "^sudo",
+			NeedsSudoPassword: true,
+		},
+		Reply: ch2,
+	}
+	tm.Send(msg2)
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Password:"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// Don't type anything -- just approve. The cached password should be used.
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+
+	select {
+	case dec := <-ch2:
+		if dec.SudoPassword != "cached_pass" {
+			t.Fatalf("second sudo: expected cached password %q, got %q", "cached_pass", dec.SudoPassword)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for second decision")
+	}
+}
+
 func TestCrossSessionApprovalShowsLabel(t *testing.T) {
 	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))

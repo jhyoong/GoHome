@@ -157,6 +157,8 @@ type Model struct {
 	// A second press within 500ms quits; a single press cancels the current turn.
 	lastCtrlC time.Time
 
+	sudoPasswordCache string
+
 	// slashCB holds optional callbacks wired to slash commands (/new, /resume,
 	// /model, /cancel). Set via SetSlashCallbacks.
 	slashCB SlashCallbacks
