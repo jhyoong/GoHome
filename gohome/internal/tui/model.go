@@ -383,11 +383,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.handleApprovalReq(msg)
 
 	case tea.MouseMsg:
-		switch msg.Type {
-		case tea.MouseWheelUp:
+		switch msg.Button {
+		case tea.MouseButtonWheelUp:
 			m.chat.DisableAutoScroll(m.winW)
 			m.chat.ScrollUp(3)
-		case tea.MouseWheelDown:
+		case tea.MouseButtonWheelDown:
 			m.chat.DisableAutoScroll(m.winW)
 			m.chat.ScrollDown(3)
 		}

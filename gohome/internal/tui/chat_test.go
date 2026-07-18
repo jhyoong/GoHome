@@ -346,7 +346,7 @@ func TestMouseWheelUpScrollsTimeline(t *testing.T) {
 	}
 	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 
-	m.Update(tea.MouseMsg{Type: tea.MouseWheelUp})
+	m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelUp})
 
 	if m.Chat().IsAutoScroll() {
 		t.Error("expected autoScroll to be false after mouse wheel up")
@@ -369,7 +369,7 @@ func TestMouseWheelScrollsDuringApproval(t *testing.T) {
 		Reply: ch,
 	})
 
-	m.Update(tea.MouseMsg{Type: tea.MouseWheelUp})
+	m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelUp})
 
 	if m.Chat().IsAutoScroll() {
 		t.Error("expected autoScroll to be false after mouse wheel up during approval")
