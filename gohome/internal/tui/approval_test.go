@@ -464,6 +464,93 @@ func TestApprovalArrowToSteerEntersSteerMode(t *testing.T) {
 
 // --- Task 11.12: cross-session approval shows label ---
 
+// --- Task 6: sudo password field ---
+
+func TestApprovalSudoPasswordFieldShown(t *testing.T) {
+	m := tui.New(nil, "")
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	ch := make(chan guard.ApprovalDecision, 1)
+	msg := tui.ApprovalReqMsg{
+		Req: guard.ApprovalRequest{
+			SessionID:         "main",
+			Tool:              "shell",
+			Input:             json.RawMessage(`{"command":"sudo apt install vim"}`),
+			SuggestedPattern:  "^sudo",
+			NeedsSudoPassword: true,
+		},
+		Reply: ch,
+	}
+	tm.Send(msg)
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Password:"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
+
+func TestApprovalSudoPasswordIncludedInDecision(t *testing.T) {
+	m := tui.New(nil, "")
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	ch := make(chan guard.ApprovalDecision, 1)
+	msg := tui.ApprovalReqMsg{
+		Req: guard.ApprovalRequest{
+			SessionID:         "main",
+			Tool:              "shell",
+			Input:             json.RawMessage(`{"command":"sudo apt install vim"}`),
+			SuggestedPattern:  "^sudo",
+			NeedsSudoPassword: true,
+		},
+		Reply: ch,
+	}
+	tm.Send(msg)
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Password:"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	tm.Type("mysecret")
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+
+	select {
+	case dec := <-ch:
+		if dec.Outcome != guard.AllowOnce {
+			t.Fatalf("expected AllowOnce, got %q", dec.Outcome)
+		}
+		if dec.SudoPassword != "mysecret" {
+			t.Fatalf("expected SudoPassword %q, got %q", "mysecret", dec.SudoPassword)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for decision")
+	}
+}
+
+func TestApprovalNonSudoNoPasswordField(t *testing.T) {
+	m := tui.New(nil, "")
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	msg, ch := makeApprovalReq("main", "shell", "^ls", json.RawMessage(`{"command":"ls"}`))
+	tm.Send(msg)
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("shell: ls"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+
+	select {
+	case dec := <-ch:
+		if dec.SudoPassword != "" {
+			t.Fatalf("expected empty SudoPassword for non-sudo, got %q", dec.SudoPassword)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out")
+	}
+}
+
 func TestCrossSessionApprovalShowsLabel(t *testing.T) {
 	m := tui.New(nil, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))

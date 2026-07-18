@@ -37,6 +37,10 @@ type approvalPrompt struct {
 	// steer sub-mode: user pressed '4' to deny + steer
 	steering   bool
 	steerInput textinput.Model
+
+	// sudo password sub-mode: command needs sudo password
+	needsSudo     bool
+	passwordInput textinput.Model
 }
 
 // newApprovalPrompt builds an approvalPrompt from a request.
@@ -48,12 +52,21 @@ func newApprovalPrompt(req guard.ApprovalRequest, reply chan guard.ApprovalDecis
 	si := textinput.New()
 	si.Placeholder = "steer message"
 
+	pwi := textinput.New()
+	pwi.Placeholder = ""
+	pwi.EchoMode = textinput.EchoPassword
+	if req.NeedsSudoPassword {
+		pwi.Focus()
+	}
+
 	return &approvalPrompt{
-		req:          req,
-		reply:        reply,
-		pattern:      req.SuggestedPattern,
-		patternInput: pi,
-		steerInput:   si,
+		req:           req,
+		reply:         reply,
+		pattern:       req.SuggestedPattern,
+		patternInput:  pi,
+		steerInput:    si,
+		needsSudo:     req.NeedsSudoPassword,
+		passwordInput: pwi,
 	}
 }
 
@@ -82,6 +95,12 @@ func renderApprovalOverlay(ap *approvalPrompt, width int, focusedSessionID strin
 
 	sb.WriteString(approvalSummaryLine(ap, focusedSessionID))
 	sb.WriteString("\n")
+
+	if ap.needsSudo {
+		sb.WriteString("Password: ")
+		sb.WriteString(ap.passwordInput.View())
+		sb.WriteString("\n")
+	}
 
 	if ap.steering {
 		sb.WriteString("\nSteer message (Enter to send, Esc to cancel):\n")
