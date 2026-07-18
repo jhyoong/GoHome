@@ -2,6 +2,7 @@ package session
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -134,6 +135,21 @@ func TestEncodeApproval(t *testing.T) {
 	assertStringField(t, m, "type", "approval")
 	assertStringField(t, m, "outcome", "allow")
 	// savedPattern is omitempty — may be absent
+}
+
+func TestApprovalEvent_NoPasswordField(t *testing.T) {
+	ev := Approval{
+		ToolUseID: "tu1",
+		Outcome:   "user_once",
+	}
+	data, err := encode(ev)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	lower := strings.ToLower(string(data))
+	if strings.Contains(lower, "password") {
+		t.Errorf("approval event JSON must not contain password field: %s", data)
+	}
 }
 
 func TestEncodeSubagentSpawn(t *testing.T) {
