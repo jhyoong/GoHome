@@ -336,6 +336,46 @@ func TestRenderThrottle_SkipsIntermediateRebuilds(t *testing.T) {
 	}
 }
 
+func TestMouseWheelUpScrollsTimeline(t *testing.T) {
+	m := New(nil, "main")
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	sv := m.Sessions()["main"]
+	for i := 0; i < 50; i++ {
+		sv.Timeline = append(sv.Timeline, TimelineEntry{Kind: KindUser, Text: fmt.Sprintf("msg %d", i)})
+	}
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	m.Update(tea.MouseMsg{Type: tea.MouseWheelUp})
+
+	if m.Chat().IsAutoScroll() {
+		t.Error("expected autoScroll to be false after mouse wheel up")
+	}
+}
+
+func TestMouseWheelScrollsDuringApproval(t *testing.T) {
+	m := New(nil, "main")
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	sv := m.Sessions()["main"]
+	for i := 0; i < 50; i++ {
+		sv.Timeline = append(sv.Timeline, TimelineEntry{Kind: KindUser, Text: fmt.Sprintf("msg %d", i)})
+	}
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	ch := make(chan guard.ApprovalDecision, 1)
+	m.Update(ApprovalReqMsg{
+		Req:   guard.ApprovalRequest{SessionID: "main", Tool: "shell", Input: json.RawMessage(`{"command":"ls"}`)},
+		Reply: ch,
+	})
+
+	m.Update(tea.MouseMsg{Type: tea.MouseWheelUp})
+
+	if m.Chat().IsAutoScroll() {
+		t.Error("expected autoScroll to be false after mouse wheel up during approval")
+	}
+}
+
 func TestApprovalPgUpScrollsTimeline(t *testing.T) {
 	m := New(nil, "main")
 	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})

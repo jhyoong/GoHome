@@ -382,6 +382,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case approvalReqMsg:
 		m.handleApprovalReq(msg)
 
+	case tea.MouseMsg:
+		switch msg.Type {
+		case tea.MouseWheelUp:
+			m.chat.DisableAutoScroll(m.winW)
+			m.chat.ScrollUp(3)
+		case tea.MouseWheelDown:
+			m.chat.DisableAutoScroll(m.winW)
+			m.chat.ScrollDown(3)
+		}
+
 	case tea.KeyMsg:
 		mdl, cmd := m.handleKeyMsg(msg)
 		if m.configEditScope != "" {
