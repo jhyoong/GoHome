@@ -151,6 +151,66 @@ func TestBash_ToolMeta(t *testing.T) {
 	}
 }
 
+func TestBash_SudoPasswordPipedToStdin(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix shell command")
+	}
+	ctx := WithSudoPassword(context.Background(), "testpass")
+	raw, _ := json.Marshal(map[string]any{"command": "head -1"})
+	bt := &ShellTool{}
+	res, err := bt.Execute(ctx, raw, NullSink{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("unexpected IsError: %s", res.Content)
+	}
+	if !strings.Contains(res.Content, "testpass") {
+		t.Errorf("expected stdin password in output, got %q", res.Content)
+	}
+}
+
+func TestBash_NoSudoPassword_StdinEmpty(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix shell command")
+	}
+	raw, _ := json.Marshal(map[string]any{"command": "cat"})
+	bt := &ShellTool{}
+	res, err := bt.Execute(context.Background(), raw, NullSink{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("unexpected IsError: %s", res.Content)
+	}
+	if strings.Contains(res.Content, "testpass") {
+		t.Errorf("should not contain password without context, got %q", res.Content)
+	}
+}
+
+func TestInjectSudoS(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"plain sudo", "sudo apt install vim", "sudo -S apt install vim"},
+		{"sudo already has -S", "sudo -S apt install vim", "sudo -S apt install vim"},
+		{"piped sudo", "echo foo | sudo tee /etc/bar", "echo foo | sudo -S tee /etc/bar"},
+		{"chained sudo", "cd /tmp && sudo rm -rf stuff", "cd /tmp && sudo -S rm -rf stuff"},
+		{"no sudo", "ls -la", "ls -la"},
+		{"sudo with flags", "sudo -u root ls", "sudo -S -u root ls"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := injectSudoS(tt.in)
+			if got != tt.want {
+				t.Errorf("injectSudoS(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestBash_DefaultTimeoutCapApplied(t *testing.T) {
 	// Provide a timeout larger than the cap (600000ms) and verify the tool doesn't error on construction.
 	if runtime.GOOS == "windows" {
