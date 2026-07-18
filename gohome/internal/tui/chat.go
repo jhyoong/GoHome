@@ -107,6 +107,9 @@ func (c *ChatComponent) ScrollToBottom() {
 // IsAutoScroll reports whether auto-scroll is active.
 func (c *ChatComponent) IsAutoScroll() bool { return c.autoScroll }
 
+// ScrollTop returns the current scroll offset (top visible line index).
+func (c *ChatComponent) ScrollTop() int { return c.scrollTop }
+
 // ScrollInfo returns the line position the user has reached and the total
 // line count at the given width. When the cursor is active it returns the
 // bottom line of the cursor entry; otherwise it returns the bottom line of

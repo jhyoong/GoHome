@@ -259,6 +259,38 @@ func TestCountLinesCacheBehavior(t *testing.T) {
 	}
 }
 
+func TestSmartAutoScroll_PreservesManualScroll(t *testing.T) {
+	var entries []TimelineEntry
+	for i := 0; i < 50; i++ {
+		entries = append(entries, TimelineEntry{Kind: KindUser, Text: "message"})
+	}
+	c := NewChat(&entries, 10)
+	c.Render(80) // populate state
+
+	// Simulate manual scroll up
+	c.DisableAutoScroll(80)
+	c.ScrollUp(5)
+	savedTop := c.ScrollTop()
+
+	// Simulate what rebuildViewport does: SetTimeline + SetCursor
+	// In the new behavior, this should NOT reset scroll position
+	c.SetTimeline(&entries)
+	c.SetCursor(-1)
+	// autoScroll should still be false
+	if c.IsAutoScroll() {
+		t.Error("expected autoScroll to remain false after SetTimeline/SetCursor")
+	}
+
+	lines := c.Render(80)
+	if len(lines) > 10 {
+		t.Errorf("expected max 10 lines, got %d", len(lines))
+	}
+	// scrollTop should be unchanged
+	if c.ScrollTop() != savedTop {
+		t.Errorf("scrollTop changed: got %d, want %d", c.ScrollTop(), savedTop)
+	}
+}
+
 func TestRenderThrottle_SkipsIntermediateRebuilds(t *testing.T) {
 	m := New(nil, "main")
 	m.SetRenderThrottleMs(100)

@@ -328,8 +328,10 @@ func (m *Model) syncChatHeight() {
 }
 
 // rebuildViewport refreshes the chat component state from the focused session.
-// When keepScroll is false (or omitted), the viewport scrolls to the bottom.
-func (m *Model) rebuildViewport(keepScroll ...bool) {
+// It preserves the current scroll position. Call m.chat.ScrollToBottom()
+// explicitly before rebuildViewport at call sites that should force the view
+// to the bottom (user submit, slash commands, session switching, cancel).
+func (m *Model) rebuildViewport() {
 	sv, ok := m.sessions[m.focused]
 	if !ok {
 		return
@@ -341,9 +343,6 @@ func (m *Model) rebuildViewport(keepScroll ...bool) {
 	}
 	m.chat.SetTimeline(&sv.Timeline)
 	m.chat.SetCursor(cur)
-	if len(keepScroll) == 0 || !keepScroll[0] {
-		m.chat.ScrollToBottom()
-	}
 }
 
 func (m *Model) cancelFocusedSession() {
@@ -362,6 +361,7 @@ func (m *Model) cancelFocusedSessionWith(statusMsg string) {
 	m.pendingMessages = m.pendingMessages[:0]
 	m.spinner.Stop()
 	m.statusMsg = statusMsg
+	m.chat.ScrollToBottom()
 	m.rebuildViewport()
 }
 
@@ -472,6 +472,7 @@ func (m *Model) AddTimelineEntry(sessionID string, e TimelineEntry) {
 	sv := m.getOrCreateSession(sessionID, 1)
 	sv.Timeline = append(sv.Timeline, e)
 	if sessionID == m.focused {
+		m.chat.ScrollToBottom()
 		m.rebuildViewport()
 	}
 }

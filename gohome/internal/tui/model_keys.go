@@ -115,12 +115,13 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					if entry.Kind == KindTool || entry.Kind == KindThinking {
 						m.chat.DisableAutoScroll(m.winW)
 						entry.Expanded = !entry.Expanded
-						m.rebuildViewport(true)
+						m.rebuildViewport()
 					}
 				}
 			} else if strings.HasPrefix(text, "/") {
 				cmd := m.handleSlashCommand(text)
 				m.editor.SetValue("")
+				m.chat.ScrollToBottom()
 				m.rebuildViewport()
 				if cmd != nil {
 					cmds = append(cmds, cmd)
@@ -146,6 +147,7 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.editor.SetValue("")
 					m.statusMsg = ""
 					m.cursor = len(sv.Timeline) - 1
+					m.chat.ScrollToBottom()
 					m.rebuildViewport()
 					m.spinner.Start("Sending...")
 					m.spinner.SetOnCancel(m.cancelFocusedSession)
@@ -191,7 +193,7 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if msg.Type == tea.KeyUp {
 				if m.cursor > 0 {
 					m.cursor--
-					m.rebuildViewport(true)
+					m.rebuildViewport()
 					m.syncChatHeight()
 					m.chat.EnsureCursorVisible(m.winW)
 				} else if m.cursor == 0 {
@@ -206,7 +208,7 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				sv, ok := m.sessions[m.focused]
 				if ok && m.cursor < len(sv.Timeline)-1 {
 					m.cursor++
-					m.rebuildViewport(true)
+					m.rebuildViewport()
 					m.syncChatHeight()
 					m.chat.EnsureCursorVisible(m.winW)
 				} else if ok && m.cursor >= 0 && m.cursor < len(sv.Timeline) {
