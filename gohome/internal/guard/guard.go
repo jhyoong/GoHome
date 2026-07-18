@@ -14,11 +14,11 @@ const (
 
 // ApprovalRequest is sent to the Frontend when a tool call is not whitelisted.
 type ApprovalRequest struct {
-	SessionID        string
-	Tool             string
-	Input            json.RawMessage
-	Summary          string
-	SuggestedPattern string
+	SessionID         string
+	Tool              string
+	Input             json.RawMessage
+	Summary           string
+	SuggestedPattern  string
 	NeedsSudoPassword bool
 }
 
