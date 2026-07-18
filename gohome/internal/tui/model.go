@@ -610,6 +610,9 @@ func (m *Model) View() string {
 	return strings.Join(sections, "\n")
 }
 
+// Chat returns the chat component (exported for tests).
+func (m *Model) Chat() *ChatComponent { return m.chat }
+
 // Yolo returns current yolo mode state (exported for tests).
 func (m *Model) Yolo() bool {
 	return m.yolo

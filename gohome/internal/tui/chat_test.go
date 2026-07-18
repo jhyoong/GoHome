@@ -1,11 +1,14 @@
 package tui
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
+	"github.com/jhyoong/GoHome/gohome/internal/guard"
 )
 
 func TestChatRenderUserMessage(t *testing.T) {
@@ -330,5 +333,31 @@ func TestRenderThrottle_SkipsIntermediateRebuilds(t *testing.T) {
 	last := sv.Timeline[len(sv.Timeline)-1]
 	if last.Text != "Hello world" {
 		t.Errorf("text: got %q, want %q", last.Text, "Hello world")
+	}
+}
+
+func TestApprovalPgUpScrollsTimeline(t *testing.T) {
+	m := New(nil, "main")
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	// Populate timeline with enough entries to need scrolling.
+	sv := m.Sessions()["main"]
+	for i := 0; i < 50; i++ {
+		sv.Timeline = append(sv.Timeline, TimelineEntry{Kind: KindUser, Text: fmt.Sprintf("msg %d", i)})
+	}
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24}) // trigger layout
+
+	// Activate an approval prompt.
+	ch := make(chan guard.ApprovalDecision, 1)
+	m.Update(ApprovalReqMsg{
+		Req:   guard.ApprovalRequest{SessionID: "main", Tool: "shell", Input: json.RawMessage(`{"command":"ls"}`)},
+		Reply: ch,
+	})
+
+	// PgUp should scroll the timeline, not be ignored.
+	m.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+
+	if m.Chat().IsAutoScroll() {
+		t.Error("expected autoScroll to be false after PgUp during approval")
 	}
 }

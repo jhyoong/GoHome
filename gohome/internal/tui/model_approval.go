@@ -69,6 +69,21 @@ func (m *Model) handleApprovalKey(msg tea.KeyMsg) tea.Cmd {
 		return tea.Batch(cmds...)
 	}
 
+	// PgUp/PgDown scroll the timeline even during approval.
+	if msg.Type == tea.KeyPgUp || msg.Type == tea.KeyPgDown {
+		scrollAmt := m.chat.maxHeight / 2
+		if scrollAmt < 1 {
+			scrollAmt = 1
+		}
+		m.chat.DisableAutoScroll(m.winW)
+		if msg.Type == tea.KeyPgUp {
+			m.chat.ScrollUp(scrollAmt)
+		} else {
+			m.chat.ScrollDown(scrollAmt)
+		}
+		return tea.Batch(cmds...)
+	}
+
 	// --- top-level approval menu ---
 	switch {
 	case msg.Type == tea.KeyUp:
