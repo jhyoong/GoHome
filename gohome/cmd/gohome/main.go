@@ -423,7 +423,7 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 
 		// Output final text (plain mode only).
 		if !*verbose {
-			text := hfe.FinalText()
+			text := strings.TrimLeft(hfe.FinalText(), "\n")
 			if text != "" {
 				fmt.Print(text)
 				if !strings.HasSuffix(text, "\n") {
