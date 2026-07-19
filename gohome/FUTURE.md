@@ -12,12 +12,10 @@ goroutine leaks, Ctrl+C hangs), broken Windows support, and unnecessary complexi
 for a single-user CLI tool. The in-process architecture was restored with all
 non-daemon features ported forward.
 
-**Context compaction**
-Automatic or manual compaction of long conversation histories to stay within
-the context window.
-Seam: `session.Session.History` is a plain slice owned by the agent loop.
-A compaction step can be injected at the top of `Run` before each `Turn`
-call, or as an explicit slash command that rewrites the slice in place.
+**Context compaction** -- DELIVERED in v0.4.1
+Auto-compaction summarizes conversation history when token usage approaches
+the context window limit. Configurable via percentage or leftover trigger modes.
+A `Compaction` event is persisted to the session file for resumption.
 
 **Reasoning / thinking tokens** -- DELIVERED in v0.2.1
 Thinking blocks are parsed from Anthropic SSE streams and OpenAI `reasoning_content`
@@ -96,4 +94,4 @@ existing `_test.go` files with no structural changes.
 ## Additional findings
 - ~~Tool calls to show last 3 rows of output~~ -- DELIVERED in v0.2.5
 - ~~Edit tool to show the changes made (git diff style)~~ -- DELIVERED in v0.2.5
-- Scrolling doesn't work properly when in edit tool mode - especially when there's a big change. 
+- ~~Scrolling doesn't work properly when in edit tool mode~~ -- Scrolling reworked in v0.4.1 (smart auto-scroll, mouse wheel, PgUp/PgDn during approval). Sudo cases now have dedicated approval prompts.
