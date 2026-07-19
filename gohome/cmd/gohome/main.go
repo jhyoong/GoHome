@@ -35,6 +35,8 @@ var (
 	resume      = flag.Bool("resume", false, "resume a past session")
 	showVersion = flag.Bool("version", false, "print version and exit")
 	showConfig  = flag.Bool("config", false, "print merged configuration and exit")
+	prompt      = flag.String("prompt", "", "run non-interactively with this prompt (requires --yolo)")
+	verbose     = flag.Bool("verbose", false, "emit all events as JSON lines (requires --prompt)")
 )
 
 // gitBranch returns the current git branch for the given directory, or "" on error.
@@ -200,6 +202,15 @@ func main() {
 		enc.SetIndent("", "  ")
 		_ = enc.Encode(cfgSettings)
 		os.Exit(0)
+	}
+
+	if *prompt != "" && !*yolo {
+		fmt.Fprintf(os.Stderr, "gohome: --prompt (non-interactive mode) requires --yolo\n")
+		os.Exit(1)
+	}
+	if *verbose && *prompt == "" {
+		fmt.Fprintf(os.Stderr, "gohome: --verbose requires --prompt\n")
+		os.Exit(1)
 	}
 
 	// Structured logging (Task 12.4).
