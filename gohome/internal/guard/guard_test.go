@@ -21,7 +21,7 @@ func (f *fakeFrontend) RequestApproval(_ context.Context, req ApprovalRequest) (
 }
 
 func newTestGuard(wl *Whitelist, fe Frontend) *Guard {
-	return NewGuard(wl, fe)
+	return NewGuard(wl, fe, nil)
 }
 
 func emptyWhitelist(t *testing.T) *Whitelist {
@@ -123,7 +123,7 @@ func TestCheck_AllowAlways(t *testing.T) {
 	fe := &fakefrontend_allowAlways{
 		decision: ApprovalDecision{Outcome: AllowAlways, SavedPattern: "^git status"},
 	}
-	g := NewGuard(wl, fe)
+	g := NewGuard(wl, fe, nil)
 
 	dec, err := g.Check(context.Background(), "sess1", "shell", bashCmd("git status"))
 	if err != nil {
@@ -138,7 +138,7 @@ func TestCheck_AllowAlways(t *testing.T) {
 
 	// Pattern should now be persisted; a second call should be whitelisted.
 	fe2 := &fakeFrontend{}
-	g2 := NewGuard(wl, fe2)
+	g2 := NewGuard(wl, fe2, nil)
 	dec2, err := g2.Check(context.Background(), "sess1", "shell", bashCmd("git status"))
 	if err != nil {
 		t.Fatalf("unexpected error on second call: %v", err)
@@ -174,7 +174,7 @@ func TestCheck_AllowAlways_SavedPattern(t *testing.T) {
 	fe := &fakefrontend_allowAlways{
 		decision: ApprovalDecision{Outcome: AllowAlways, SavedPattern: wantPattern},
 	}
-	g := NewGuard(wl, fe)
+	g := NewGuard(wl, fe, nil)
 
 	dec, err := g.Check(context.Background(), "sess1", "shell", bashCmd("git log"))
 	if err != nil {
@@ -302,5 +302,92 @@ func TestCheck_ApprovalRequest_Summary(t *testing.T) {
 	_, _ = g2.Check(context.Background(), "sess1", "write", json.RawMessage(`{}`))
 	if fe2.lastReq.Summary != "write" {
 		t.Errorf("non-shell summary: got %q, want %q", fe2.lastReq.Summary, "write")
+	}
+}
+
+func TestCheck_Denylist_BlocksBeforeYolo(t *testing.T) {
+	fe := &fakeFrontend{}
+	dl, _ := CompileDenylist(DenylistFile{Shell: []string{"rm -rf /"}})
+	wl := emptyWhitelist(t)
+	g := NewGuard(wl, fe, dl)
+	g.SetYolo(true)
+
+	dec, err := g.Check(context.Background(), "sess1", "shell", bashCmd("rm -rf /"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if dec.Allow {
+		t.Error("denylist: expected Allow=false even in yolo mode")
+	}
+	if dec.Reason != "denylisted" {
+		t.Errorf("denylist: expected reason 'denylisted', got %q", dec.Reason)
+	}
+	if dec.DenyInfo == "" {
+		t.Error("denylist: expected DenyInfo to be set")
+	}
+	if fe.called {
+		t.Error("denylist: frontend should not be called")
+	}
+}
+
+func TestCheck_Denylist_BlocksBeforeWhitelist(t *testing.T) {
+	fe := &fakeFrontend{}
+	dl, _ := CompileDenylist(DenylistFile{Shell: []string{"rm -rf /"}})
+	wl := whitelistWith(t, nil, []string{"^rm"})
+	g := NewGuard(wl, fe, dl)
+
+	dec, err := g.Check(context.Background(), "sess1", "shell", bashCmd("rm -rf /"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if dec.Allow {
+		t.Error("denylist: expected Allow=false even when whitelisted")
+	}
+	if dec.Reason != "denylisted" {
+		t.Errorf("denylist: expected reason 'denylisted', got %q", dec.Reason)
+	}
+}
+
+func TestCheck_Denylist_NonMatchingCommand_PassesThrough(t *testing.T) {
+	fe := &fakeFrontend{response: ApprovalDecision{Outcome: AllowOnce}}
+	dl, _ := CompileDenylist(DenylistFile{Shell: []string{"rm -rf /"}})
+	wl := emptyWhitelist(t)
+	g := NewGuard(wl, fe, dl)
+
+	dec, err := g.Check(context.Background(), "sess1", "shell", bashCmd("ls -la"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !dec.Allow {
+		t.Error("expected non-matching command to pass through")
+	}
+}
+
+func TestCheck_Denylist_NonShellTool_NotChecked(t *testing.T) {
+	fe := &fakeFrontend{response: ApprovalDecision{Outcome: AllowOnce}}
+	dl, _ := CompileDenylist(DenylistFile{Shell: []string{"rm -rf /"}})
+	wl := emptyWhitelist(t)
+	g := NewGuard(wl, fe, dl)
+
+	dec, err := g.Check(context.Background(), "sess1", "write", json.RawMessage(`{"path":"rm -rf /"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !dec.Allow {
+		t.Error("expected non-shell tool to pass through denylist")
+	}
+}
+
+func TestCheck_Denylist_Nil_NoEffect(t *testing.T) {
+	fe := &fakeFrontend{response: ApprovalDecision{Outcome: AllowOnce}}
+	wl := emptyWhitelist(t)
+	g := NewGuard(wl, fe, nil)
+
+	dec, err := g.Check(context.Background(), "sess1", "shell", bashCmd("rm -rf /"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !dec.Allow {
+		t.Error("expected nil denylist to have no effect")
 	}
 }

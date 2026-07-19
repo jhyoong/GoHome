@@ -3,47 +3,61 @@ package guard
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"sync/atomic"
 )
 
 // Frontend is the interface the guard engine calls when a tool use requires
-// human approval. It is defined locally so guard does not import agent or TUI.
+// human approval.
 type Frontend interface {
 	RequestApproval(ctx context.Context, req ApprovalRequest) (ApprovalDecision, error)
 }
 
 // Guard is the runtime guardrail engine that checks every tool call against
-// the whitelist and, when required, prompts the frontend for approval.
+// the denylist, whitelist, and when required, prompts the frontend for approval.
 type Guard struct {
+	denylist  *Denylist
 	whitelist *Whitelist
 	frontend  Frontend
 	yolo      atomic.Bool
 }
 
-// NewGuard creates a Guard backed by the given Whitelist and Frontend.
-func NewGuard(wl *Whitelist, fe Frontend) *Guard {
+// NewGuard creates a Guard backed by the given Whitelist, Frontend, and Denylist.
+// A nil denylist disables deny checking.
+func NewGuard(wl *Whitelist, fe Frontend, dl *Denylist) *Guard {
 	return &Guard{
+		denylist:  dl,
 		whitelist: wl,
 		frontend:  fe,
 	}
 }
 
 // Check decides whether the given tool call is allowed.
-// It short-circuits for yolo mode and whitelisted calls without contacting
-// the frontend. Otherwise it builds an ApprovalRequest and maps the decision.
+// Order: denylist (hard reject) -> yolo -> whitelist -> prompt user.
 func (g *Guard) Check(ctx context.Context, sessionID, tool string, input json.RawMessage) (Decision, error) {
-	// 1. Yolo: allow everything, no frontend call.
+	// 1. Denylist: reject immediately, overrides everything.
+	if g.denylist != nil {
+		if matched, pattern := g.denylist.Denies(tool, input); matched {
+			return Decision{
+				Allow:    false,
+				Reason:   "denylisted",
+				DenyInfo: fmt.Sprintf("command denied by denylist: matched pattern '%s'", pattern),
+			}, nil
+		}
+	}
+
+	// 2. Yolo: allow everything, no frontend call.
 	if g.yolo.Load() {
 		return Decision{Allow: true, Reason: "yolo"}, nil
 	}
 
-	// 2. Whitelisted: allow, no frontend call.
+	// 3. Whitelisted: allow, no frontend call.
 	if g.whitelist.Allows(tool, input) {
 		return Decision{Allow: true, Reason: "whitelisted"}, nil
 	}
 
-	// 3. Build approval request and ask the frontend.
+	// 4. Build approval request and ask the frontend.
 	summary := summaryFor(tool, input)
 	needsSudo := tool == "shell" && IsSudoCommand(summary)
 	req := ApprovalRequest{
@@ -65,10 +79,7 @@ func (g *Guard) Check(ctx context.Context, sessionID, tool string, input json.Ra
 		return Decision{Allow: true, Reason: "user_once", SudoPassword: dec.SudoPassword}, nil
 
 	case AllowAlways:
-		// Persist to the project whitelist file and update in-memory state.
 		if err := g.whitelist.AddProject(tool, dec.SavedPattern); err != nil {
-			// Log but don't fail the allow — the user said yes.
-			// Future calls will re-prompt, which is acceptable.
 			slog.Warn("whitelist persist failed", "err", err)
 		}
 		return Decision{Allow: true, Reason: "user_always", SavedPattern: dec.SavedPattern, SudoPassword: dec.SudoPassword}, nil
@@ -85,7 +96,6 @@ func (g *Guard) Check(ctx context.Context, sessionID, tool string, input json.Ra
 }
 
 // summaryFor builds a short human-readable summary of a tool call.
-// For shell it returns the command string; for other tools it returns the tool name.
 func summaryFor(tool string, input json.RawMessage) string {
 	if tool == "shell" {
 		var args struct {

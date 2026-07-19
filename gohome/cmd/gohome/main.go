@@ -335,7 +335,7 @@ func main() {
 	// Headless execution path: run agent non-interactively when --prompt is set.
 	if *prompt != "" {
 		hfe := headless.NewFrontend(*prompt, *verbose, os.Stdout)
-		g := guard.NewGuard(wl, hfe)
+		g := guard.NewGuard(wl, hfe, nil)
 		g.SetYolo(*yolo)
 
 		systemPrompt := `You are gohome, an AI coding assistant. You help users with software development tasks.
@@ -448,7 +448,7 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 
 	// Build frontend and guard (TUI path).
 	fe := tui.NewFrontend()
-	g := guard.NewGuard(wl, fe)
+	g := guard.NewGuard(wl, fe, nil)
 	g.SetYolo(*yolo)
 
 	// Build TUI model.
