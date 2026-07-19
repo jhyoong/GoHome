@@ -272,6 +272,17 @@ func TestCheck_SudoPassword_ThreadedToDecision(t *testing.T) {
 	}
 }
 
+func TestDecision_DenyInfo_Field(t *testing.T) {
+	d := Decision{
+		Allow:    false,
+		Reason:   "denylisted",
+		DenyInfo: "command denied by denylist: matched pattern 'rm -rf /'",
+	}
+	if d.DenyInfo == "" {
+		t.Error("expected DenyInfo to be set")
+	}
+}
+
 func TestCheck_ApprovalRequest_Summary(t *testing.T) {
 	fe := &fakeFrontend{
 		response: ApprovalDecision{Outcome: AllowOnce},
