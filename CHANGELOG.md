@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.4.1
+
+### Added
+
+- **Auto-compaction** -- Automatic conversation summarization when token usage approaches the context window limit. Configurable via `autoCompact`, `autoCompactMode`, `autoCompactPct`, and `autoCompactLeftover` settings. Supports percentage and leftover trigger modes (#35).
+- **Sudo password handling** -- Shell commands requiring sudo now trigger a dedicated approval prompt with password input, forwarded to the process via stdin (#36).
+- **Smart auto-scroll** -- Viewport no longer forces scroll-to-bottom on every update. Manual scroll position is preserved; auto-scroll resumes only on user submit, slash commands, session switching, or cancel (#36).
+- **PgUp/PgDown during approval prompts** -- Timeline scrolling now works while an approval prompt is active (#36).
+- **Mouse wheel scrolling** -- Mouse wheel events scroll the timeline viewport (#36).
+
+### Changed
+
+- **Shell tool (renamed from bash)** -- The tool exposed to the LLM is now named "shell". On Windows, the executor launches PowerShell instead of cmd /c, so the LLM generates native commands. Config fields renamed from `bashTimeoutMs`/`maxBashTimeoutMs` to `shellTimeoutMs`/`maxShellTimeoutMs` (#34).
+
 ## v0.4.0
 
 ### Added
