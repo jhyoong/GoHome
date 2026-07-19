@@ -42,7 +42,7 @@ func TestHeadless_EndToEnd(t *testing.T) {
 	defer func() { _ = writer.Close() }()
 
 	wl, _ := guard.LoadWhitelist("", "")
-	g := guard.NewGuard(wl, fe)
+	g := guard.NewGuard(wl, fe, nil)
 	g.SetYolo(true)
 
 	registry := tools.NewRegistry()

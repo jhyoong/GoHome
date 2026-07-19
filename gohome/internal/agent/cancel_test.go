@@ -95,7 +95,7 @@ func guardCompileEmpty(t *testing.T) (*guard.Whitelist, error) {
 }
 
 func guardNewYolo(wl *guard.Whitelist) *guard.Guard {
-	g := guard.NewGuard(wl, nil)
+	g := guard.NewGuard(wl, nil, nil)
 	g.SetYolo(true)
 	return g
 }

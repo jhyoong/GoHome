@@ -273,6 +273,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Build denylist.
+	dl, err := guard.LoadDenylist(
+		filepath.Join(home, "denylist.json"),
+		filepath.Join(cwd, ".gohome", "denylist.json"),
+	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gohome: denylist error: %v\n", err)
+		os.Exit(1)
+	}
+
 	// Build tools registry.
 	registry := tools.NewRegistry()
 	registry.Register(tools.ReadTool{})
@@ -335,7 +345,7 @@ func main() {
 	// Headless execution path: run agent non-interactively when --prompt is set.
 	if *prompt != "" {
 		hfe := headless.NewFrontend(*prompt, *verbose, os.Stdout)
-		g := guard.NewGuard(wl, hfe, nil)
+		g := guard.NewGuard(wl, hfe, dl)
 		g.SetYolo(*yolo)
 
 		systemPrompt := `You are gohome, an AI coding assistant. You help users with software development tasks.
@@ -448,7 +458,7 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 
 	// Build frontend and guard (TUI path).
 	fe := tui.NewFrontend()
-	g := guard.NewGuard(wl, fe, nil)
+	g := guard.NewGuard(wl, fe, dl)
 	g.SetYolo(*yolo)
 
 	// Build TUI model.
