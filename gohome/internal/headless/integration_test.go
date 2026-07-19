@@ -39,7 +39,7 @@ func TestHeadless_EndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer writer.Close()
+	defer func() { _ = writer.Close() }()
 
 	wl, _ := guard.LoadWhitelist("", "")
 	g := guard.NewGuard(wl, fe)

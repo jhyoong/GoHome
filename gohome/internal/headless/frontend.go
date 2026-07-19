@@ -51,8 +51,8 @@ func (f *Frontend) Emit(_ string, ev agent.Event) {
 	if f.verbose {
 		data, err := json.Marshal(ev)
 		if err == nil {
-			f.output.Write(data)
-			f.output.Write([]byte("\n"))
+			_, _ = f.output.Write(data)
+			_, _ = f.output.Write([]byte("\n"))
 		}
 		return
 	}
