@@ -1,11 +1,14 @@
 package tui
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
+	"github.com/jhyoong/GoHome/gohome/internal/guard"
 )
 
 func TestChatRenderUserMessage(t *testing.T) {
@@ -259,6 +262,38 @@ func TestCountLinesCacheBehavior(t *testing.T) {
 	}
 }
 
+func TestSmartAutoScroll_PreservesManualScroll(t *testing.T) {
+	var entries []TimelineEntry
+	for i := 0; i < 50; i++ {
+		entries = append(entries, TimelineEntry{Kind: KindUser, Text: "message"})
+	}
+	c := NewChat(&entries, 10)
+	c.Render(80) // populate state
+
+	// Simulate manual scroll up
+	c.DisableAutoScroll(80)
+	c.ScrollUp(5)
+	savedTop := c.ScrollTop()
+
+	// Simulate what rebuildViewport does: SetTimeline + SetCursor
+	// In the new behavior, this should NOT reset scroll position
+	c.SetTimeline(&entries)
+	c.SetCursor(-1)
+	// autoScroll should still be false
+	if c.IsAutoScroll() {
+		t.Error("expected autoScroll to remain false after SetTimeline/SetCursor")
+	}
+
+	lines := c.Render(80)
+	if len(lines) > 10 {
+		t.Errorf("expected max 10 lines, got %d", len(lines))
+	}
+	// scrollTop should be unchanged
+	if c.ScrollTop() != savedTop {
+		t.Errorf("scrollTop changed: got %d, want %d", c.ScrollTop(), savedTop)
+	}
+}
+
 func TestRenderThrottle_SkipsIntermediateRebuilds(t *testing.T) {
 	m := New(nil, "main")
 	m.SetRenderThrottleMs(100)
@@ -298,5 +333,71 @@ func TestRenderThrottle_SkipsIntermediateRebuilds(t *testing.T) {
 	last := sv.Timeline[len(sv.Timeline)-1]
 	if last.Text != "Hello world" {
 		t.Errorf("text: got %q, want %q", last.Text, "Hello world")
+	}
+}
+
+func TestMouseWheelUpScrollsTimeline(t *testing.T) {
+	m := New(nil, "main")
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	sv := m.Sessions()["main"]
+	for i := 0; i < 50; i++ {
+		sv.Timeline = append(sv.Timeline, TimelineEntry{Kind: KindUser, Text: fmt.Sprintf("msg %d", i)})
+	}
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelUp})
+
+	if m.Chat().IsAutoScroll() {
+		t.Error("expected autoScroll to be false after mouse wheel up")
+	}
+}
+
+func TestMouseWheelScrollsDuringApproval(t *testing.T) {
+	m := New(nil, "main")
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	sv := m.Sessions()["main"]
+	for i := 0; i < 50; i++ {
+		sv.Timeline = append(sv.Timeline, TimelineEntry{Kind: KindUser, Text: fmt.Sprintf("msg %d", i)})
+	}
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	ch := make(chan guard.ApprovalDecision, 1)
+	m.Update(ApprovalReqMsg{
+		Req:   guard.ApprovalRequest{SessionID: "main", Tool: "shell", Input: json.RawMessage(`{"command":"ls"}`)},
+		Reply: ch,
+	})
+
+	m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelUp})
+
+	if m.Chat().IsAutoScroll() {
+		t.Error("expected autoScroll to be false after mouse wheel up during approval")
+	}
+}
+
+func TestApprovalPgUpScrollsTimeline(t *testing.T) {
+	m := New(nil, "main")
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	// Populate timeline with enough entries to need scrolling.
+	sv := m.Sessions()["main"]
+	for i := 0; i < 50; i++ {
+		sv.Timeline = append(sv.Timeline, TimelineEntry{Kind: KindUser, Text: fmt.Sprintf("msg %d", i)})
+	}
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24}) // trigger layout
+
+	// Activate an approval prompt.
+	ch := make(chan guard.ApprovalDecision, 1)
+	m.Update(ApprovalReqMsg{
+		Req:   guard.ApprovalRequest{SessionID: "main", Tool: "shell", Input: json.RawMessage(`{"command":"ls"}`)},
+		Reply: ch,
+	})
+
+	// PgUp should scroll the timeline, not be ignored.
+	m.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+
+	if m.Chat().IsAutoScroll() {
+		t.Error("expected autoScroll to be false after PgUp during approval")
 	}
 }

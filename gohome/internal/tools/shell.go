@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -57,6 +58,24 @@ type shellInput struct {
 	CWD       *string `json:"cwd"`
 }
 
+// sudoWordRe matches "sudo " followed by its first argument at command
+// boundaries (start of string, or after ;, &, or | separators). The
+// non-whitespace capture after "sudo " lets us check whether -S is already
+// present.
+var sudoWordRe = regexp.MustCompile(`(^|[;&|]\s*)sudo\s+(\S*)`)
+
+// injectSudoS rewrites "sudo" to "sudo -S" at command boundaries so that
+// sudo reads the password from stdin. If -S is already present, the command
+// is returned unchanged.
+func injectSudoS(command string) string {
+	return sudoWordRe.ReplaceAllStringFunc(command, func(match string) string {
+		if strings.Contains(match, "-S") {
+			return match
+		}
+		return strings.Replace(match, "sudo ", "sudo -S ", 1)
+	})
+}
+
 func (s ShellTool) Execute(ctx context.Context, in json.RawMessage, sink ProgressSink) (Result, error) {
 	var inp shellInput
 	if err := json.Unmarshal(in, &inp); err != nil {
@@ -92,6 +111,16 @@ func (s ShellTool) Execute(ctx context.Context, in json.RawMessage, sink Progres
 
 	if inp.CWD != nil {
 		cmd.Dir = *inp.CWD
+	}
+
+	// If a sudo password is stored in the context, pipe it to stdin and
+	// ensure the command uses "sudo -S" so sudo reads from stdin.
+	sudoPassword := SudoPasswordFrom(ctx)
+	if sudoPassword != "" {
+		cmd.Stdin = strings.NewReader(sudoPassword + "\n")
+		if runtime.GOOS != "windows" {
+			cmd.Args[len(cmd.Args)-1] = injectSudoS(inp.Command)
+		}
 	}
 
 	// Pipe stdout+stderr through a reader that fans out to: sink + capture buffer.

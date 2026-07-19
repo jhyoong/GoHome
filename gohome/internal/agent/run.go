@@ -166,8 +166,13 @@ func (a *Agent) dispatchTool(
 		return fmt.Sprintf("unknown tool: %s", block.ToolName), true, 0, false
 	}
 
+	execCtx := tctx
+	if dec.SudoPassword != "" {
+		execCtx = tools.WithSudoPassword(tctx, dec.SudoPassword)
+	}
+
 	start := time.Now()
-	res, execErr := safeExecute(tctx, tool, input, tools.NullSink{})
+	res, execErr := safeExecute(execCtx, tool, input, tools.NullSink{})
 	elapsed = time.Since(start)
 	if execErr != nil {
 		slog.Debug("tool execution error", "tool", block.ToolName, "err", execErr)

@@ -45,12 +45,14 @@ func (g *Guard) Check(ctx context.Context, sessionID, tool string, input json.Ra
 
 	// 3. Build approval request and ask the frontend.
 	summary := summaryFor(tool, input)
+	needsSudo := tool == "shell" && IsSudoCommand(summary)
 	req := ApprovalRequest{
-		SessionID:        sessionID,
-		Tool:             tool,
-		Input:            input,
-		Summary:          summary,
-		SuggestedPattern: Suggest(tool, input),
+		SessionID:         sessionID,
+		Tool:              tool,
+		Input:             input,
+		Summary:           summary,
+		SuggestedPattern:  Suggest(tool, input),
+		NeedsSudoPassword: needsSudo,
 	}
 
 	dec, err := g.frontend.RequestApproval(ctx, req)
@@ -60,7 +62,7 @@ func (g *Guard) Check(ctx context.Context, sessionID, tool string, input json.Ra
 
 	switch dec.Outcome {
 	case AllowOnce:
-		return Decision{Allow: true, Reason: "user_once"}, nil
+		return Decision{Allow: true, Reason: "user_once", SudoPassword: dec.SudoPassword}, nil
 
 	case AllowAlways:
 		// Persist to the project whitelist file and update in-memory state.
@@ -69,7 +71,7 @@ func (g *Guard) Check(ctx context.Context, sessionID, tool string, input json.Ra
 			// Future calls will re-prompt, which is acceptable.
 			slog.Warn("whitelist persist failed", "err", err)
 		}
-		return Decision{Allow: true, Reason: "user_always", SavedPattern: dec.SavedPattern}, nil
+		return Decision{Allow: true, Reason: "user_always", SavedPattern: dec.SavedPattern, SudoPassword: dec.SudoPassword}, nil
 
 	case Deny:
 		return Decision{Allow: false, Reason: "user_denied"}, nil

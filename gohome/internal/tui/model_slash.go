@@ -115,6 +115,7 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 			m.focused = id
 			m.cursor = len(sv.Timeline) - 1
 			m.statusMsg = "Resumed: " + id
+			m.chat.ScrollToBottom()
 			m.rebuildViewport()
 		})
 		sb.SetOnCancel(func() {

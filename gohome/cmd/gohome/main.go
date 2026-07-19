@@ -368,7 +368,7 @@ func main() {
 	}
 
 	// Build tea program and wire frontend.
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	fe.SetProgram(p)
 
 	// Build agent.

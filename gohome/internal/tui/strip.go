@@ -49,6 +49,7 @@ func (m *Model) focusNext() {
 	}
 	idx := m.focusedIndex()
 	m.focused = m.order[(idx+1)%len(m.order)]
+	m.chat.ScrollToBottom()
 	m.rebuildViewport()
 }
 
@@ -59,6 +60,7 @@ func (m *Model) focusPrev() {
 	}
 	idx := m.focusedIndex()
 	m.focused = m.order[(idx-1+len(m.order))%len(m.order)]
+	m.chat.ScrollToBottom()
 	m.rebuildViewport()
 }
 
