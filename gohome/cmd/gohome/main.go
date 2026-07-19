@@ -20,6 +20,7 @@ import (
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
 	"github.com/jhyoong/GoHome/gohome/internal/config"
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
+	"github.com/jhyoong/GoHome/gohome/internal/headless"
 	"github.com/jhyoong/GoHome/gohome/internal/llm"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 	"github.com/jhyoong/GoHome/gohome/internal/session"
@@ -272,11 +273,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Build frontend and guard.
-	fe := tui.NewFrontend()
-	g := guard.NewGuard(wl, fe)
-	g.SetYolo(*yolo)
-
 	// Build tools registry.
 	registry := tools.NewRegistry()
 	registry.Register(tools.ReadTool{})
@@ -335,6 +331,125 @@ func main() {
 			StartedAt:   sess.StartedAt,
 		})
 	}
+
+	// Headless execution path: run agent non-interactively when --prompt is set.
+	if *prompt != "" {
+		hfe := headless.NewFrontend(*prompt, *verbose, os.Stdout)
+		g := guard.NewGuard(wl, hfe)
+		g.SetYolo(*yolo)
+
+		systemPrompt := `You are gohome, an AI coding assistant. You help users with software development tasks.
+You have access to tools for reading and writing files, running shell commands, and spawning subagents for parallel work.
+Be concise and precise. Ask for clarification when requirements are ambiguous.`
+		if settings.SystemPrompt != "" {
+			systemPrompt = settings.SystemPrompt
+		}
+
+		maxTokens := mc.MaxTokens
+		if maxTokens <= 0 {
+			maxTokens = config.DefaultMaxTokens
+		}
+		thinkingBudget := mc.ThinkingBudget
+		if thinkingBudget <= 0 {
+			thinkingBudget = config.DefaultThinkingBudget
+		}
+
+		contextWindow := mc.ContextWindow
+		if contextWindow <= 0 {
+			contextWindow = config.DefaultContextWindow
+		}
+		compactCfg := agent.CompactConfig{
+			Enabled:       settings.AutoCompact,
+			Mode:          settings.AutoCompactMode,
+			TriggerPct:    settings.AutoCompactPct,
+			TargetPct:     settings.AutoCompactTargetPct,
+			Leftover:      settings.AutoCompactLeftover,
+			ContextWindow: contextWindow,
+		}
+		if compactCfg.Mode == "" {
+			compactCfg.Mode = "percentage"
+		}
+		if compactCfg.TriggerPct <= 0 {
+			compactCfg.TriggerPct = config.DefaultAutoCompactPct
+		}
+		if compactCfg.TargetPct <= 0 {
+			compactCfg.TargetPct = config.DefaultAutoCompactTargetPct
+		}
+		if compactCfg.Leftover <= 0 {
+			compactCfg.Leftover = config.DefaultAutoCompactLeftover
+		}
+
+		state := agent.NewSessionState(sess, writer, client)
+		a := &agent.Agent{
+			Tools:           registry,
+			Guard:           g,
+			Frontend:        hfe,
+			State:           state,
+			System:          systemPrompt,
+			MaxTokens:       maxTokens,
+			ThinkingBudget:  thinkingBudget,
+			ReasoningEffort: mc.ReasoningEffort,
+			CompactCfg:      compactCfg,
+			CompactPrompt:   settings.AutoCompactPrompt,
+			Home:            home,
+		}
+		a.RegisterSubagentTool()
+
+		// Inject prompt as user message.
+		sess.History = append(sess.History, common.Message{
+			Role: common.RoleUser,
+			Content: []common.Block{
+				{Kind: common.BlockText, Text: *prompt},
+			},
+		})
+		writer.Emit(session.UserMessage{
+			Content: []common.Block{
+				{Kind: common.BlockText, Text: *prompt},
+			},
+		})
+
+		// Run agent.
+		ctx, cancel := context.WithCancel(context.Background())
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		go func() {
+			<-sigCh
+			cancel()
+		}()
+
+		runErr := a.Run(ctx, sess)
+		signal.Stop(sigCh)
+		cancel()
+
+		// Output final text (plain mode only).
+		if !*verbose {
+			text := hfe.FinalText()
+			if text != "" {
+				fmt.Print(text)
+				if !strings.HasSuffix(text, "\n") {
+					fmt.Println()
+				}
+			}
+		}
+
+		// Shutdown.
+		writer.Emit(session.SessionEnd{Reason: "prompt_done"})
+		_ = writer.Close()
+		if logFile != nil {
+			_ = logFile.Close()
+		}
+
+		if runErr != nil && runErr != context.Canceled {
+			fmt.Fprintf(os.Stderr, "gohome: agent error: %v\n", runErr)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// Build frontend and guard (TUI path).
+	fe := tui.NewFrontend()
+	g := guard.NewGuard(wl, fe)
+	g.SetYolo(*yolo)
 
 	// Build TUI model.
 	m := tui.New(fe, sess.ID)
