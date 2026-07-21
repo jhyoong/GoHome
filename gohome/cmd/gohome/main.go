@@ -235,32 +235,42 @@ func main() {
 	}
 
 	// Resolve model config.
+	// When no configs exist and we're in interactive mode, defer resolution
+	// so the setup wizard can run first.
 	cfgName := *modelFlag
 	if cfgName == "" {
 		cfgName = settings.DefaultModel
 	}
+	needsWizard := false
+	var mc config.ModelConfig
+	var client common.Client
 	mc, ok := settings.ModelConfig[cfgName]
 	if !ok {
-		if cfgName == "" {
+		if len(settings.ModelConfig) == 0 && *prompt == "" {
+			needsWizard = true
+		} else if cfgName == "" {
 			fmt.Fprintf(os.Stderr, "gohome: no model configured. Set defaultModel in ~/.gohome/settings.json or use --model.\n")
+			os.Exit(1)
 		} else {
 			fmt.Fprintf(os.Stderr, "gohome: model config %q not found. Check ~/.gohome/settings.json.\n", cfgName)
+			os.Exit(1)
 		}
-		os.Exit(1)
 	}
 
-	apiKey, err := config.ResolveAPIKey(mc)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "gohome: no API key for model config %q.\n", cfgName)
-		fmt.Fprintf(os.Stderr, "  Set apiKey in settings.json or the environment variable named by apiKeyEnv.\n")
-		os.Exit(1)
-	}
+	if !needsWizard {
+		apiKey, err := config.ResolveAPIKey(mc)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "gohome: no API key for model config %q.\n", cfgName)
+			fmt.Fprintf(os.Stderr, "  Set apiKey in settings.json or the environment variable named by apiKeyEnv.\n")
+			os.Exit(1)
+		}
 
-	// Build LLM client.
-	client, err := llm.New(mc, apiKey)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "gohome: cannot create LLM client: %v\n", err)
-		os.Exit(1)
+		// Build LLM client.
+		client, err = llm.New(mc, apiKey)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "gohome: cannot create LLM client: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	// Build whitelist.
@@ -493,16 +503,6 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 	m.SetHomeDir(userHome)
 	m.SetConfigName(cfgName)
 
-	// If no model configs exist and this looks interactive, show the setup wizard.
-	if len(settings.ModelConfig) == 0 {
-		m.ShowStartupWizard(func(path string) {
-			// Reload settings after the wizard saves a new config.
-			if reloaded, err := config.Load(globalCfgPath, config.DefaultProjectPath(cwd)); err == nil {
-				settings = reloaded
-			}
-		})
-	}
-
 	// Build tea program and wire frontend.
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	fe.SetProgram(p)
@@ -692,6 +692,43 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		cancel()
 		p.Quit()
 	}()
+
+	// If no model configs exist, show the setup wizard before starting the agent loop.
+	if needsWizard {
+		m.ShowStartupWizard(func(path string) {
+			reloaded, err := config.Load(globalCfgPath, config.DefaultProjectPath(cwd))
+			if err != nil {
+				return
+			}
+			settings = reloaded
+			name := reloaded.DefaultModel
+			cfg, ok := reloaded.ModelConfig[name]
+			if !ok {
+				return
+			}
+			key, err := config.ResolveAPIKey(cfg)
+			if err != nil {
+				return
+			}
+			newClient, err := llm.New(cfg, key)
+			if err != nil {
+				return
+			}
+			state.SetClient(newClient)
+			state.SetModel(cfg.ModelName)
+			state.SetModelConfig(name)
+			a.MaxTokens = cfg.MaxTokens
+			a.ThinkingBudget = cfg.ThinkingBudget
+			a.ReasoningEffort = cfg.ReasoningEffort
+			m.SetModelName(cfg.ModelName)
+			m.SetConfigName(name)
+			ctxWin := cfg.ContextWindow
+			if ctxWin <= 0 {
+				ctxWin = config.DefaultContextWindow
+			}
+			m.SetContextWindow(ctxWin)
+		})
+	}
 
 	// Agent driver goroutine: REPL loop awaiting user input.
 	var wg sync.WaitGroup
