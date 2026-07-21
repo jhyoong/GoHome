@@ -20,6 +20,7 @@ import (
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
 	"github.com/jhyoong/GoHome/gohome/internal/config"
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
+	"github.com/jhyoong/GoHome/gohome/internal/headless"
 	"github.com/jhyoong/GoHome/gohome/internal/llm"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 	"github.com/jhyoong/GoHome/gohome/internal/session"
@@ -35,6 +36,8 @@ var (
 	resume      = flag.Bool("resume", false, "resume a past session")
 	showVersion = flag.Bool("version", false, "print version and exit")
 	showConfig  = flag.Bool("config", false, "print merged configuration and exit")
+	prompt      = flag.String("prompt", "", "run non-interactively with this prompt (requires --yolo)")
+	verbose     = flag.Bool("verbose", false, "emit all events as JSON lines (requires --prompt)")
 )
 
 // gitBranch returns the current git branch for the given directory, or "" on error.
@@ -202,6 +205,15 @@ func main() {
 		os.Exit(0)
 	}
 
+	if *prompt != "" && !*yolo {
+		fmt.Fprintf(os.Stderr, "gohome: --prompt (non-interactive mode) requires --yolo\n")
+		os.Exit(1)
+	}
+	if *verbose && *prompt == "" {
+		fmt.Fprintf(os.Stderr, "gohome: --verbose requires --prompt\n")
+		os.Exit(1)
+	}
+
 	// Structured logging (Task 12.4).
 	logFile, err := setupLogging(home)
 	if err != nil {
@@ -223,32 +235,42 @@ func main() {
 	}
 
 	// Resolve model config.
+	// When no configs exist and we're in interactive mode, defer resolution
+	// so the setup wizard can run first.
 	cfgName := *modelFlag
 	if cfgName == "" {
 		cfgName = settings.DefaultModel
 	}
+	needsWizard := false
+	var mc config.ModelConfig
+	var client common.Client
 	mc, ok := settings.ModelConfig[cfgName]
 	if !ok {
-		if cfgName == "" {
+		if len(settings.ModelConfig) == 0 && *prompt == "" {
+			needsWizard = true
+		} else if cfgName == "" {
 			fmt.Fprintf(os.Stderr, "gohome: no model configured. Set defaultModel in ~/.gohome/settings.json or use --model.\n")
+			os.Exit(1)
 		} else {
 			fmt.Fprintf(os.Stderr, "gohome: model config %q not found. Check ~/.gohome/settings.json.\n", cfgName)
+			os.Exit(1)
 		}
-		os.Exit(1)
 	}
 
-	apiKey, err := config.ResolveAPIKey(mc)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "gohome: no API key for model config %q.\n", cfgName)
-		fmt.Fprintf(os.Stderr, "  Set apiKey in settings.json or the environment variable named by apiKeyEnv.\n")
-		os.Exit(1)
-	}
+	if !needsWizard {
+		apiKey, err := config.ResolveAPIKey(mc)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "gohome: no API key for model config %q.\n", cfgName)
+			fmt.Fprintf(os.Stderr, "  Set apiKey in settings.json or the environment variable named by apiKeyEnv.\n")
+			os.Exit(1)
+		}
 
-	// Build LLM client.
-	client, err := llm.New(mc, apiKey)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "gohome: cannot create LLM client: %v\n", err)
-		os.Exit(1)
+		// Build LLM client.
+		client, err = llm.New(mc, apiKey)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "gohome: cannot create LLM client: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	// Build whitelist.
@@ -261,10 +283,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Build frontend and guard.
-	fe := tui.NewFrontend()
-	g := guard.NewGuard(wl, fe)
-	g.SetYolo(*yolo)
+	// Build denylist.
+	dl, err := guard.LoadDenylist(
+		filepath.Join(home, "denylist.json"),
+		filepath.Join(cwd, ".gohome", "denylist.json"),
+	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gohome: denylist error: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Build tools registry.
 	registry := tools.NewRegistry()
@@ -325,6 +352,125 @@ func main() {
 		})
 	}
 
+	// Headless execution path: run agent non-interactively when --prompt is set.
+	if *prompt != "" {
+		hfe := headless.NewFrontend(*prompt, *verbose, os.Stdout)
+		g := guard.NewGuard(wl, hfe, dl)
+		g.SetYolo(*yolo)
+
+		systemPrompt := `You are gohome, an AI coding assistant. You help users with software development tasks.
+You have access to tools for reading and writing files, running shell commands, and spawning subagents for parallel work.
+Be concise and precise. Ask for clarification when requirements are ambiguous.`
+		if settings.SystemPrompt != "" {
+			systemPrompt = settings.SystemPrompt
+		}
+
+		maxTokens := mc.MaxTokens
+		if maxTokens <= 0 {
+			maxTokens = config.DefaultMaxTokens
+		}
+		thinkingBudget := mc.ThinkingBudget
+		if thinkingBudget <= 0 {
+			thinkingBudget = config.DefaultThinkingBudget
+		}
+
+		contextWindow := mc.ContextWindow
+		if contextWindow <= 0 {
+			contextWindow = config.DefaultContextWindow
+		}
+		compactCfg := agent.CompactConfig{
+			Enabled:       settings.AutoCompact,
+			Mode:          settings.AutoCompactMode,
+			TriggerPct:    settings.AutoCompactPct,
+			TargetPct:     settings.AutoCompactTargetPct,
+			Leftover:      settings.AutoCompactLeftover,
+			ContextWindow: contextWindow,
+		}
+		if compactCfg.Mode == "" {
+			compactCfg.Mode = "percentage"
+		}
+		if compactCfg.TriggerPct <= 0 {
+			compactCfg.TriggerPct = config.DefaultAutoCompactPct
+		}
+		if compactCfg.TargetPct <= 0 {
+			compactCfg.TargetPct = config.DefaultAutoCompactTargetPct
+		}
+		if compactCfg.Leftover <= 0 {
+			compactCfg.Leftover = config.DefaultAutoCompactLeftover
+		}
+
+		state := agent.NewSessionState(sess, writer, client)
+		a := &agent.Agent{
+			Tools:           registry,
+			Guard:           g,
+			Frontend:        hfe,
+			State:           state,
+			System:          systemPrompt,
+			MaxTokens:       maxTokens,
+			ThinkingBudget:  thinkingBudget,
+			ReasoningEffort: mc.ReasoningEffort,
+			CompactCfg:      compactCfg,
+			CompactPrompt:   settings.AutoCompactPrompt,
+			Home:            home,
+		}
+		a.RegisterSubagentTool()
+
+		// Inject prompt as user message.
+		sess.History = append(sess.History, common.Message{
+			Role: common.RoleUser,
+			Content: []common.Block{
+				{Kind: common.BlockText, Text: *prompt},
+			},
+		})
+		writer.Emit(session.UserMessage{
+			Content: []common.Block{
+				{Kind: common.BlockText, Text: *prompt},
+			},
+		})
+
+		// Run agent.
+		ctx, cancel := context.WithCancel(context.Background())
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		go func() {
+			<-sigCh
+			cancel()
+		}()
+
+		runErr := a.Run(ctx, sess)
+		signal.Stop(sigCh)
+		cancel()
+
+		// Output final text (plain mode only).
+		if !*verbose {
+			text := strings.TrimLeft(hfe.FinalText(), "\n")
+			if text != "" {
+				fmt.Print(text)
+				if !strings.HasSuffix(text, "\n") {
+					fmt.Println()
+				}
+			}
+		}
+
+		// Shutdown.
+		writer.Emit(session.SessionEnd{Reason: "prompt_done"})
+		_ = writer.Close()
+		if logFile != nil {
+			_ = logFile.Close()
+		}
+
+		if runErr != nil && runErr != context.Canceled {
+			fmt.Fprintf(os.Stderr, "gohome: agent error: %v\n", runErr)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// Build frontend and guard (TUI path).
+	fe := tui.NewFrontend()
+	g := guard.NewGuard(wl, fe, dl)
+	g.SetYolo(*yolo)
+
 	// Build TUI model.
 	m := tui.New(fe, sess.ID)
 	m.SetYoloCallback(g.SetYolo)
@@ -356,16 +502,6 @@ func main() {
 	m.SetCWD(cwd)
 	m.SetHomeDir(userHome)
 	m.SetConfigName(cfgName)
-
-	// If no model configs exist and this looks interactive, show the setup wizard.
-	if len(settings.ModelConfig) == 0 {
-		m.ShowStartupWizard(func(path string) {
-			// Reload settings after the wizard saves a new config.
-			if reloaded, err := config.Load(globalCfgPath, config.DefaultProjectPath(cwd)); err == nil {
-				settings = reloaded
-			}
-		})
-	}
 
 	// Build tea program and wire frontend.
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
@@ -556,6 +692,43 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		cancel()
 		p.Quit()
 	}()
+
+	// If no model configs exist, show the setup wizard before starting the agent loop.
+	if needsWizard {
+		m.ShowStartupWizard(func(path string) {
+			reloaded, err := config.Load(globalCfgPath, config.DefaultProjectPath(cwd))
+			if err != nil {
+				return
+			}
+			settings = reloaded
+			name := reloaded.DefaultModel
+			cfg, ok := reloaded.ModelConfig[name]
+			if !ok {
+				return
+			}
+			key, err := config.ResolveAPIKey(cfg)
+			if err != nil {
+				return
+			}
+			newClient, err := llm.New(cfg, key)
+			if err != nil {
+				return
+			}
+			state.SetClient(newClient)
+			state.SetModel(cfg.ModelName)
+			state.SetModelConfig(name)
+			a.MaxTokens = cfg.MaxTokens
+			a.ThinkingBudget = cfg.ThinkingBudget
+			a.ReasoningEffort = cfg.ReasoningEffort
+			m.SetModelName(cfg.ModelName)
+			m.SetConfigName(name)
+			ctxWin := cfg.ContextWindow
+			if ctxWin <= 0 {
+				ctxWin = config.DefaultContextWindow
+			}
+			m.SetContextWindow(ctxWin)
+		})
+	}
 
 	// Agent driver goroutine: REPL loop awaiting user input.
 	var wg sync.WaitGroup

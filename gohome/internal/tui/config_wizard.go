@@ -21,6 +21,8 @@ const (
 	wizardStepModelName
 	wizardStepConfigName
 	wizardStepConfirm
+	wizardStepDenylistOffer
+	wizardStepDenylistDone
 )
 
 // ConfigWizard walks the user through creating a new model configuration.
@@ -108,6 +110,27 @@ func (w *ConfigWizard) buildStep() {
 
 	case wizardStepConfirm:
 		w.rebuildConfirmStep()
+
+	case wizardStepDenylistOffer:
+		w.prompt = "Would you like to configure a shell command denylist?"
+		items := []SelectItem{
+			{Value: "yes", Label: "Yes", Description: "create ~/.gohome/denylist.json with default patterns"},
+			{Value: "no", Label: "No", Description: "skip denylist setup"},
+		}
+		w.selectList = NewSelectList(items, func(item SelectItem) {
+			if item.Value == "yes" {
+				w.scaffoldDenylist()
+			}
+			w.step = wizardStepDenylistDone
+			w.buildStep()
+		})
+		w.selectList.onCancel = func() {
+			w.step = wizardStepDenylistDone
+			w.buildStep()
+		}
+
+	case wizardStepDenylistDone:
+		w.onCancel()
 	}
 }
 
@@ -120,6 +143,8 @@ func (w *ConfigWizard) rebuildConfirmStep() {
 	w.selectList = NewSelectList(items, func(item SelectItem) {
 		if item.Value == "save" {
 			w.save()
+			w.step = wizardStepDenylistOffer
+			w.buildStep()
 		} else {
 			w.onCancel()
 		}
@@ -179,11 +204,26 @@ func (w *ConfigWizard) save() {
 	}
 }
 
+func (w *ConfigWizard) scaffoldDenylist() {
+	path := filepath.Join(filepath.Dir(w.outputPath), "denylist.json")
+	content := []byte(`{
+  "shell": [
+    "rm -rf /",
+    "mkfs",
+    ":(){ :|:& };:",
+    "regex:>\\s*/dev/sd[a-z]"
+  ]
+}
+`)
+	_ = os.MkdirAll(filepath.Dir(path), 0o755)
+	_ = os.WriteFile(path, content, 0o644)
+}
+
 // Render returns the wizard UI as lines of text.
 func (w *ConfigWizard) Render(width int) []string {
 	var lines []string
 	stepNum := int(w.step) + 1
-	lines = append(lines, fmt.Sprintf("Setup Wizard (step %d/7)", stepNum))
+	lines = append(lines, fmt.Sprintf("Setup Wizard (step %d/9)", stepNum))
 	lines = append(lines, "")
 	lines = append(lines, w.prompt)
 

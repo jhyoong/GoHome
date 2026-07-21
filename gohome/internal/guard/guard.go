@@ -37,4 +37,5 @@ type Decision struct {
 	SteerMessage string
 	SavedPattern string
 	SudoPassword string
+	DenyInfo     string
 }

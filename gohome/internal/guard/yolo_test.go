@@ -6,7 +6,7 @@ import (
 )
 
 func TestYolo_BasicToggle(t *testing.T) {
-	g := NewGuard(emptyWhitelist(t), &fakeFrontend{})
+	g := NewGuard(emptyWhitelist(t), &fakeFrontend{}, nil)
 
 	if g.Yolo() {
 		t.Error("expected yolo=false initially")
@@ -24,7 +24,7 @@ func TestYolo_BasicToggle(t *testing.T) {
 }
 
 func TestYolo_ConcurrentAccess(t *testing.T) {
-	g := NewGuard(emptyWhitelist(t), &fakeFrontend{})
+	g := NewGuard(emptyWhitelist(t), &fakeFrontend{}, nil)
 
 	const goroutines = 100
 	var wg sync.WaitGroup

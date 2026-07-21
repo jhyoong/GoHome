@@ -40,7 +40,7 @@ func compileYoloGuard(t *testing.T) *guard.Guard {
 	if err != nil {
 		t.Fatalf("guard.Compile: %v", err)
 	}
-	g := guard.NewGuard(wl, nil) // nil frontend is fine in yolo mode
+	g := guard.NewGuard(wl, nil, nil) // nil frontend is fine in yolo mode
 	g.SetYolo(true)
 	return g
 }
@@ -55,7 +55,7 @@ func compileDenyGuard(t *testing.T, fe *fakeRecorder) *guard.Guard {
 	// Wire the fakeRecorder as the guard.Frontend.
 	// fakeRecorder.approval defaults to zero value; Outcome "" maps to unknown_outcome -> deny.
 	gfe := &guardFE{fe: fe}
-	return guard.NewGuard(wl, gfe)
+	return guard.NewGuard(wl, gfe, nil)
 }
 
 // guardFE bridges fakeRecorder to guard.Frontend.
@@ -268,7 +268,7 @@ func TestRun_DenySteer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("guard.Compile: %v", err)
 	}
-	g := guard.NewGuard(wl, gfe)
+	g := guard.NewGuard(wl, gfe, nil)
 
 	a, sess := newTestAgentWithGuard(t, client, fe, g, reg)
 
@@ -348,7 +348,7 @@ func TestRun_MixedBatch(t *testing.T) {
 		t.Fatalf("guard.Compile: %v", err)
 	}
 	gfe := &guardFE{fe: fe}
-	g := guard.NewGuard(wl, gfe)
+	g := guard.NewGuard(wl, gfe, nil)
 
 	a, sess := newTestAgentWithGuard(t, client, fe, g, reg)
 
@@ -438,7 +438,7 @@ func TestDispatchTool_SudoPasswordInContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g := guard.NewGuard(wl, gfe)
+	g := guard.NewGuard(wl, gfe, nil)
 
 	// Build a minimal agent with the spy tool and guard.
 	turn1 := []common.StreamEvent{

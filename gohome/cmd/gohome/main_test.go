@@ -65,7 +65,7 @@ func TestRunLoop_CancelMidTurn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("guard compile: %v", err)
 	}
-	g := guard.NewGuard(wl, nil)
+	g := guard.NewGuard(wl, nil, nil)
 	g.SetYolo(true)
 
 	sess := session.NewSession("test-cancel", t.TempDir(), "model", "ep")
@@ -179,7 +179,7 @@ func TestConcurrentSwapAndRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("guard compile: %v", err)
 	}
-	g := guard.NewGuard(wl, nil)
+	g := guard.NewGuard(wl, nil, nil)
 	g.SetYolo(true)
 
 	sess := session.NewSession("test-race", t.TempDir(), "model", "ep")
