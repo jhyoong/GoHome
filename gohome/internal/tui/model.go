@@ -36,6 +36,7 @@ type TimelineEntry struct {
 	Kind        string // KindUser | KindAssistant | KindTool | KindNotice | KindStats
 	Text        string
 	ToolName    string
+	ToolUseID   string // LLM-assigned tool_use ID for matching results to calls
 	ToolResult  string
 	Expanded    bool
 	Status      string // "" | "pending" | "success" | "error" (tool entries only)
