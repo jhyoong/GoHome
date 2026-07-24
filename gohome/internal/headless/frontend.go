@@ -82,6 +82,7 @@ func (f *Frontend) Emit(_ string, ev agent.Event) {
 	}
 }
 
+// ctx is unused: bufio.Scanner blocks on io.Reader.Read which is not context-cancellable.
 func (f *Frontend) readStdin(_ context.Context) (string, error) {
 	for f.scanner.Scan() {
 		line := f.scanner.Text()
