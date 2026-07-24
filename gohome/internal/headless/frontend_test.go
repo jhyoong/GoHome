@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -104,5 +105,83 @@ func TestRequestApproval_ReturnsAllowOnce(t *testing.T) {
 	}
 	if dec.Outcome != guard.AllowOnce {
 		t.Errorf("outcome = %v, want AllowOnce", dec.Outcome)
+	}
+}
+
+func TestAwaitUserInput_Interactive_ReadsUserMessage(t *testing.T) {
+	input := strings.NewReader("{\"type\":\"user_message\",\"content\":\"hello world\"}\n")
+	var buf bytes.Buffer
+	fe := NewInteractiveFrontend(input, true, &buf)
+
+	text, err := fe.AwaitUserInput(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if text != "hello world" {
+		t.Errorf("got %q, want %q", text, "hello world")
+	}
+}
+
+func TestAwaitUserInput_Interactive_ExitMessage(t *testing.T) {
+	input := strings.NewReader("{\"type\":\"exit\"}\n")
+	var buf bytes.Buffer
+	fe := NewInteractiveFrontend(input, true, &buf)
+
+	_, err := fe.AwaitUserInput(context.Background())
+	if !errors.Is(err, ErrExit) {
+		t.Errorf("expected ErrExit, got %v", err)
+	}
+}
+
+func TestAwaitUserInput_Interactive_EOF(t *testing.T) {
+	input := strings.NewReader("")
+	var buf bytes.Buffer
+	fe := NewInteractiveFrontend(input, true, &buf)
+
+	_, err := fe.AwaitUserInput(context.Background())
+	if !errors.Is(err, ErrExit) {
+		t.Errorf("expected ErrExit on EOF, got %v", err)
+	}
+}
+
+func TestAwaitUserInput_Interactive_SkipsMalformedJSON(t *testing.T) {
+	input := strings.NewReader("not json\n{\"type\":\"user_message\",\"content\":\"valid\"}\n")
+	var buf bytes.Buffer
+	fe := NewInteractiveFrontend(input, true, &buf)
+
+	text, err := fe.AwaitUserInput(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if text != "valid" {
+		t.Errorf("got %q, want %q", text, "valid")
+	}
+	if !strings.Contains(buf.String(), "warning") {
+		t.Errorf("expected warning in output, got %q", buf.String())
+	}
+}
+
+func TestAwaitUserInput_Interactive_MultiTurn(t *testing.T) {
+	input := strings.NewReader(
+		"{\"type\":\"user_message\",\"content\":\"first\"}\n" +
+			"{\"type\":\"user_message\",\"content\":\"second\"}\n",
+	)
+	var buf bytes.Buffer
+	fe := NewInteractiveFrontend(input, true, &buf)
+
+	text1, err := fe.AwaitUserInput(context.Background())
+	if err != nil {
+		t.Fatalf("turn 1: unexpected error: %v", err)
+	}
+	if text1 != "first" {
+		t.Errorf("turn 1: got %q, want %q", text1, "first")
+	}
+
+	text2, err := fe.AwaitUserInput(context.Background())
+	if err != nil {
+		t.Fatalf("turn 2: unexpected error: %v", err)
+	}
+	if text2 != "second" {
+		t.Errorf("turn 2: got %q, want %q", text2, "second")
 	}
 }
