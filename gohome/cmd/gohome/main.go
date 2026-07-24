@@ -36,7 +36,7 @@ var (
 	resume      = flag.Bool("resume", false, "resume a past session")
 	showVersion = flag.Bool("version", false, "print version and exit")
 	showConfig  = flag.Bool("config", false, "print merged configuration and exit")
-	prompt      = flag.String("prompt", "", "run non-interactively with this prompt (requires --yolo)")
+	prompt      = flag.String("prompt", "", "run headless with this prompt (requires --yolo); use - for interactive JSONL mode (requires --verbose)")
 	verbose     = flag.Bool("verbose", false, "emit all events as JSON lines (requires --prompt)")
 )
 
@@ -438,9 +438,6 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 			for {
 				text, err := hfe.AwaitUserInput(ctx)
 				if err != nil {
-					if errors.Is(err, headless.ErrExit) {
-						break
-					}
 					break
 				}
 
@@ -459,7 +456,7 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 				runErr := a.Run(ctx, sess)
 				writer.Emit(session.TurnDone{SessionID: sess.ID})
 
-				if runErr != nil && runErr != context.Canceled {
+				if runErr != nil && !errors.Is(runErr, context.Canceled) {
 					if errors.Is(runErr, agent.ErrToolDenied) {
 						continue
 					}
@@ -506,7 +503,7 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 				_ = logFile.Close()
 			}
 
-			if runErr != nil && runErr != context.Canceled {
+			if runErr != nil && !errors.Is(runErr, context.Canceled) {
 				fmt.Fprintf(os.Stderr, "gohome: agent error: %v\n", runErr)
 				os.Exit(1)
 			}
