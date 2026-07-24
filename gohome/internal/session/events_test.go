@@ -219,6 +219,30 @@ func TestEncodeCompaction(t *testing.T) {
 	assertStringField(t, m, "summary", "The user was working on...")
 }
 
+func TestEncodeTurnDone(t *testing.T) {
+	ev := TurnDone{SessionID: "s1"}
+	b, err := encode(ev)
+	if err != nil {
+		t.Fatalf("Encode: %v", err)
+	}
+	m := decodeMap(t, b)
+	assertStringField(t, m, "type", "turn_done")
+	assertTSPresent(t, m)
+	assertStringField(t, m, "sessionId", "s1")
+}
+
+func TestEncodeWarning(t *testing.T) {
+	ev := Warning{Message: "bad input"}
+	b, err := encode(ev)
+	if err != nil {
+		t.Fatalf("Encode: %v", err)
+	}
+	m := decodeMap(t, b)
+	assertStringField(t, m, "type", "warning")
+	assertTSPresent(t, m)
+	assertStringField(t, m, "message", "bad input")
+}
+
 func TestEncodeUnknownType(t *testing.T) {
 	_, err := encode(struct{ X string }{X: "??"})
 	if err == nil {
