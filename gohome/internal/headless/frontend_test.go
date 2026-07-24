@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 
@@ -183,5 +184,44 @@ func TestAwaitUserInput_Interactive_MultiTurn(t *testing.T) {
 	}
 	if text2 != "second" {
 		t.Errorf("turn 2: got %q, want %q", text2, "second")
+	}
+}
+
+type errReader struct{}
+
+func (errReader) Read([]byte) (int, error) {
+	return 0, io.ErrClosedPipe
+}
+
+func TestAwaitUserInput_Interactive_ReaderError(t *testing.T) {
+	var buf bytes.Buffer
+	fe := NewInteractiveFrontend(errReader{}, true, &buf)
+
+	_, err := fe.AwaitUserInput(context.Background())
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if errors.Is(err, ErrExit) {
+		t.Error("expected IO error, not ErrExit")
+	}
+	if !strings.Contains(err.Error(), "reading stdin") {
+		t.Errorf("expected 'reading stdin' in error, got %q", err.Error())
+	}
+}
+
+func TestAwaitUserInput_Interactive_UnknownTypeWarning(t *testing.T) {
+	input := strings.NewReader("{\"type\":\"foo\"}\n{\"type\":\"user_message\",\"content\":\"ok\"}\n")
+	var buf bytes.Buffer
+	fe := NewInteractiveFrontend(input, true, &buf)
+
+	text, err := fe.AwaitUserInput(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if text != "ok" {
+		t.Errorf("got %q, want %q", text, "ok")
+	}
+	if !strings.Contains(buf.String(), "unknown input type") {
+		t.Errorf("expected unknown type warning in output, got %q", buf.String())
 	}
 }

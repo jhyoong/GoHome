@@ -108,6 +108,9 @@ func (f *Frontend) readStdin(_ context.Context) (string, error) {
 			continue
 		}
 	}
+	if err := f.scanner.Err(); err != nil {
+		return "", fmt.Errorf("reading stdin: %w", err)
+	}
 	return "", ErrExit
 }
 
