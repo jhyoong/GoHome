@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
@@ -69,5 +70,72 @@ func TestHeadless_EndToEnd(t *testing.T) {
 	got := fe.FinalText()
 	if got != "Hello!" {
 		t.Errorf("FinalText() = %q, want %q", got, "Hello!")
+	}
+}
+
+func TestHeadless_Interactive_MultiTurn(t *testing.T) {
+	input := strings.NewReader(
+		"{\"type\":\"user_message\",\"content\":\"say hello\"}\n" +
+			"{\"type\":\"user_message\",\"content\":\"say goodbye\"}\n" +
+			"{\"type\":\"exit\"}\n",
+	)
+	var buf bytes.Buffer
+	fe := headless.NewInteractiveFrontend(input, true, &buf)
+
+	client := &fakeClient{response: "Hello!"}
+	dir := t.TempDir()
+	sess := session.NewSession("test-interactive", dir, "fake-model", "fake")
+	writerPath := filepath.Join(dir, "test.jsonl")
+	writer, err := session.OpenWriter(writerPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = writer.Close() }()
+
+	wl, _ := guard.LoadWhitelist("", "")
+	g := guard.NewGuard(wl, fe, nil)
+	g.SetYolo(true)
+
+	registry := tools.NewRegistry()
+	state := agent.NewSessionState(sess, writer, client)
+
+	a := &agent.Agent{
+		Tools:    registry,
+		Guard:    g,
+		Frontend: fe,
+		State:    state,
+		System:   "You are a test agent.",
+	}
+
+	ctx := context.Background()
+	turnCount := 0
+	for {
+		text, inputErr := fe.AwaitUserInput(ctx)
+		if inputErr != nil {
+			break
+		}
+		sess.History = append(sess.History, common.Message{
+			Role:    common.RoleUser,
+			Content: []common.Block{{Kind: common.BlockText, Text: text}},
+		})
+		writer.Emit(session.UserMessage{
+			Content: []common.Block{{Kind: common.BlockText, Text: text}},
+		})
+		runErr := a.Run(ctx, sess)
+		writer.Emit(session.TurnDone{SessionID: sess.ID})
+		if runErr != nil {
+			t.Fatalf("agent.Run failed on turn %d: %v", turnCount+1, runErr)
+		}
+		turnCount++
+	}
+
+	if turnCount != 2 {
+		t.Errorf("expected 2 turns, got %d", turnCount)
+	}
+
+	output := buf.String()
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	if len(lines) < 2 {
+		t.Errorf("expected output for 2 turns, got %d lines", len(lines))
 	}
 }
