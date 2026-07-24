@@ -3,6 +3,7 @@ package headless_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -109,9 +110,11 @@ func TestHeadless_Interactive_MultiTurn(t *testing.T) {
 
 	ctx := context.Background()
 	turnCount := 0
+	var loopErr error
 	for {
 		text, inputErr := fe.AwaitUserInput(ctx)
 		if inputErr != nil {
+			loopErr = inputErr
 			break
 		}
 		sess.History = append(sess.History, common.Message{
@@ -129,13 +132,19 @@ func TestHeadless_Interactive_MultiTurn(t *testing.T) {
 		turnCount++
 	}
 
+	if !errors.Is(loopErr, headless.ErrExit) {
+		t.Fatalf("expected loop to end with ErrExit, got %v", loopErr)
+	}
 	if turnCount != 2 {
 		t.Errorf("expected 2 turns, got %d", turnCount)
 	}
 
 	output := buf.String()
 	lines := strings.Split(strings.TrimSpace(output), "\n")
-	if len(lines) < 2 {
-		t.Errorf("expected output for 2 turns, got %d lines", len(lines))
+	if len(lines) < 4 {
+		t.Errorf("expected at least 4 output lines (2 events per turn), got %d", len(lines))
+	}
+	if !strings.Contains(output, "Hello!") {
+		t.Errorf("expected output to contain agent response, got %q", output)
 	}
 }
