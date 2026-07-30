@@ -1,5 +1,7 @@
 package main
 
+//go:generate goversioninfo -o resource_windows.syso
+
 import (
 	"context"
 	"encoding/json"
