@@ -621,3 +621,71 @@ func TestE2EEditTool(t *testing.T) {
 	}
 	t.Logf("assistant replied: %q", lastText)
 }
+
+func TestE2EToolErrorRecovery(t *testing.T) {
+	cfg := loadE2EConfig(t)
+	fe := &recordingFrontend{}
+
+	tmpDir := t.TempDir()
+	badPath := filepath.Join(tmpDir, "nonexistent", "missing.txt")
+	goodPath := filepath.Join(tmpDir, "fallback.txt")
+	if err := os.WriteFile(goodPath, []byte("gohome-recovery-ok"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	prompt := fmt.Sprintf(
+		"Try to read the file at %s. It does not exist. "+
+			"When the read fails, read %s instead and tell me its content. "+
+			"Reply with just the content of the file you successfully read.",
+		badPath, goodPath,
+	)
+	history := []common.Message{
+		{
+			Role:    common.RoleUser,
+			Content: []common.Block{{Kind: common.BlockText, Text: prompt}},
+		},
+	}
+
+	a, sess := newE2EAgent(t, cfg, fe, history)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	if err := a.Run(ctx, sess); err != nil {
+		t.Fatalf("agent.Run: %v", err)
+	}
+
+	fe.mu.Lock()
+	var sawError, sawSuccess bool
+	for _, ev := range fe.events {
+		if ev.Kind == agent.EventToolResult && ev.Result != nil {
+			if ev.Result.IsError {
+				sawError = true
+			} else {
+				sawSuccess = true
+			}
+		}
+	}
+	fe.mu.Unlock()
+	if !sawError {
+		t.Error("expected at least one error tool result (failed read)")
+	}
+	if !sawSuccess {
+		t.Error("expected at least one successful tool result (recovery read)")
+	}
+
+	var lastText string
+	for _, msg := range sess.History {
+		if msg.Role == common.RoleAssistant {
+			for _, b := range msg.Content {
+				if b.Kind == common.BlockText {
+					lastText = b.Text
+				}
+			}
+		}
+	}
+	if !strings.Contains(lastText, "gohome-recovery-ok") {
+		t.Errorf("assistant reply should contain 'gohome-recovery-ok', got: %q", lastText)
+	}
+	t.Logf("assistant replied: %q", lastText)
+}
