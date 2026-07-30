@@ -18,6 +18,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,28 +31,21 @@ import (
 	"github.com/jhyoong/GoHome/gohome/internal/tools"
 )
 
-// noopFrontend is a minimal agent.Frontend for headless e2e runs.
-// It discards all events, approves every tool call with AllowOnce,
-// and returns an error on AwaitUserInput (so the agent never blocks
-// waiting for interactive input).
-type noopFrontend struct{}
-
-func (noopFrontend) Emit(_ string, _ agent.Event) {}
-
-func (noopFrontend) RequestApproval(_ context.Context, _ guard.ApprovalRequest) (guard.ApprovalDecision, error) {
-	return guard.ApprovalDecision{Outcome: guard.AllowOnce}, nil
+// e2eConfig holds the environment variables needed for E2E tests.
+type e2eConfig struct {
+	baseURL string
+	wire    config.Wire
+	model   string
+	apiKey  string
 }
 
-func (noopFrontend) AwaitUserInput(_ context.Context) (string, error) {
-	return "", errors.New("no interactive input in e2e tests")
-}
-
-func TestE2ESmokeRoundtrip(t *testing.T) {
+// loadE2EConfig reads environment variables and skips if not set.
+func loadE2EConfig(t *testing.T) e2eConfig {
+	t.Helper()
 	baseURL := os.Getenv("GOHOME_E2E_ENDPOINT")
 	if baseURL == "" {
 		t.Skip("GOHOME_E2E_ENDPOINT not set; skipping e2e test")
 	}
-
 	wire := config.Wire(os.Getenv("GOHOME_E2E_WIRE"))
 	if wire == "" {
 		wire = config.WireAnthropic
@@ -64,14 +58,38 @@ func TestE2ESmokeRoundtrip(t *testing.T) {
 	if apiKey == "" {
 		t.Fatal("GOHOME_E2E_API_KEY must be set")
 	}
+	return e2eConfig{baseURL: baseURL, wire: wire, model: model, apiKey: apiKey}
+}
 
+// recordingFrontend implements agent.Frontend and records events.
+type recordingFrontend struct {
+	mu     sync.Mutex
+	events []agent.Event
+}
+
+func (r *recordingFrontend) Emit(_ string, ev agent.Event) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.events = append(r.events, ev)
+}
+
+func (r *recordingFrontend) RequestApproval(_ context.Context, _ guard.ApprovalRequest) (guard.ApprovalDecision, error) {
+	return guard.ApprovalDecision{Outcome: guard.AllowOnce}, nil
+}
+
+func (r *recordingFrontend) AwaitUserInput(_ context.Context) (string, error) {
+	return "", errors.New("no interactive input in e2e tests")
+}
+
+// newE2EAgent creates an Agent wired up for E2E testing.
+func newE2EAgent(t *testing.T, cfg e2eConfig, fe agent.Frontend, history []common.Message) (*agent.Agent, *session.Session) {
+	t.Helper()
 	ep := config.ModelConfig{
-		Wire:      wire,
-		BaseURL:   baseURL,
-		ModelName: model,
+		Wire:      cfg.wire,
+		BaseURL:   cfg.baseURL,
+		ModelName: cfg.model,
 	}
-
-	client, err := llm.New(ep, apiKey)
+	client, err := llm.New(ep, cfg.apiKey)
 	if err != nil {
 		t.Fatalf("llm.New: %v", err)
 	}
@@ -82,8 +100,7 @@ func TestE2ESmokeRoundtrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("guard.Compile: %v", err)
 	}
-	fe := noopFrontend{}
-	g := guard.NewGuard(wl, fe)
+	g := guard.NewGuard(wl, fe, nil)
 	g.SetYolo(true)
 
 	tmpDir := t.TempDir()
@@ -94,9 +111,26 @@ func TestE2ESmokeRoundtrip(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = w.Close() })
 
-	sess := session.NewSession("e2e-smoke", tmpDir, model, string(wire))
-	// Seed with a deterministic user message.
-	sess.History = []common.Message{
+	sess := session.NewSession("e2e-test", tmpDir, cfg.model, string(cfg.wire))
+	sess.History = history
+
+	state := agent.NewSessionState(sess, w, client)
+	a := &agent.Agent{
+		Tools:     reg,
+		Guard:     g,
+		Frontend:  fe,
+		State:     state,
+		System:    "You are a helpful assistant.",
+		MaxTokens: 256,
+	}
+
+	return a, sess
+}
+
+func TestE2ESmokeRoundtrip(t *testing.T) {
+	cfg := loadE2EConfig(t)
+	fe := &recordingFrontend{}
+	history := []common.Message{
 		{
 			Role: common.RoleUser,
 			Content: []common.Block{
@@ -105,15 +139,7 @@ func TestE2ESmokeRoundtrip(t *testing.T) {
 		},
 	}
 
-	a := &agent.Agent{
-		Client:    client,
-		Tools:     reg,
-		Guard:     g,
-		Frontend:  fe,
-		Writer:    w,
-		System:    "You are a helpful assistant.",
-		MaxTokens: 64,
-	}
+	a, sess := newE2EAgent(t, cfg, fe, history)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -122,7 +148,6 @@ func TestE2ESmokeRoundtrip(t *testing.T) {
 		t.Fatalf("agent.Run: %v", err)
 	}
 
-	// Find the last assistant message and check it has non-empty text.
 	var lastAssistantText string
 	for _, msg := range sess.History {
 		if msg.Role == common.RoleAssistant {
@@ -134,7 +159,7 @@ func TestE2ESmokeRoundtrip(t *testing.T) {
 		}
 	}
 	if lastAssistantText == "" {
-		t.Error("last assistant message text is empty; expected a non-empty reply")
+		t.Error("last assistant message text is empty")
 	}
 	t.Logf("assistant replied: %q", lastAssistantText)
 }
