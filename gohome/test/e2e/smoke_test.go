@@ -784,3 +784,127 @@ func TestE2ESubagentSpawn(t *testing.T) {
 	}
 	t.Logf("assistant replied: %q", lastText)
 }
+
+func TestE2ESessionResume(t *testing.T) {
+	cfg := loadE2EConfig(t)
+
+	ep := config.ModelConfig{
+		Wire:      cfg.wire,
+		BaseURL:   cfg.baseURL,
+		ModelName: cfg.model,
+	}
+	client, err := llm.New(ep, cfg.apiKey)
+	if err != nil {
+		t.Fatalf("llm.New: %v", err)
+	}
+
+	tmpDir := t.TempDir()
+	sessionPath := filepath.Join(tmpDir, "resume-test.jsonl")
+
+	// --- Phase 1: Run a conversation and persist it. ---
+	w1, err := session.OpenWriter(sessionPath)
+	if err != nil {
+		t.Fatalf("OpenWriter: %v", err)
+	}
+
+	fe1 := &recordingFrontend{}
+	wl, werr := guard.Compile(guard.WhitelistFile{}, guard.WhitelistFile{}, "")
+	if werr != nil {
+		t.Fatalf("guard.Compile: %v", werr)
+	}
+	g1 := guard.NewGuard(wl, fe1, nil)
+	g1.SetYolo(true)
+
+	sess1 := session.NewSession("resume-test", tmpDir, cfg.model, string(cfg.wire))
+	sess1.History = []common.Message{
+		{
+			Role:    common.RoleUser,
+			Content: []common.Block{{Kind: common.BlockText, Text: "Remember this code word: gohome-persist-7743. Confirm you have memorized it."}},
+		},
+	}
+
+	reg1 := tools.NewRegistry()
+	reg1.Register(tools.ReadTool{})
+
+	state1 := agent.NewSessionState(sess1, w1, client)
+	a1 := &agent.Agent{
+		Tools:     reg1,
+		Guard:     g1,
+		Frontend:  fe1,
+		State:     state1,
+		System:    "You are a helpful assistant.",
+		MaxTokens: 128,
+	}
+
+	ctx1, cancel1 := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel1()
+
+	if err := a1.Run(ctx1, sess1); err != nil {
+		t.Fatalf("phase 1 agent.Run: %v", err)
+	}
+	_ = w1.Close()
+
+	// --- Phase 2: Load the session and continue. ---
+	loaded, loadedHistory, err := session.Load(sessionPath)
+	if err != nil {
+		t.Fatalf("session.Load: %v", err)
+	}
+
+	if loaded.ID != "resume-test" {
+		t.Errorf("loaded session ID = %q, want 'resume-test'", loaded.ID)
+	}
+	if len(loadedHistory) < 2 {
+		t.Fatalf("loaded history too short: %d messages (want >= 2: user + assistant)", len(loadedHistory))
+	}
+
+	loaded.History = append(loadedHistory, common.Message{
+		Role:    common.RoleUser,
+		Content: []common.Block{{Kind: common.BlockText, Text: "What was the code word I asked you to remember? Reply with just the code word."}},
+	})
+
+	resumePath := filepath.Join(tmpDir, "resume-test-continued.jsonl")
+	w2, err := session.OpenWriter(resumePath)
+	if err != nil {
+		t.Fatalf("OpenWriter (resume): %v", err)
+	}
+	t.Cleanup(func() { _ = w2.Close() })
+
+	fe2 := &recordingFrontend{}
+	g2 := guard.NewGuard(wl, fe2, nil)
+	g2.SetYolo(true)
+
+	reg2 := tools.NewRegistry()
+	reg2.Register(tools.ReadTool{})
+
+	state2 := agent.NewSessionState(loaded, w2, client)
+	a2 := &agent.Agent{
+		Tools:     reg2,
+		Guard:     g2,
+		Frontend:  fe2,
+		State:     state2,
+		System:    "You are a helpful assistant.",
+		MaxTokens: 128,
+	}
+
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel2()
+
+	if err := a2.Run(ctx2, loaded); err != nil {
+		t.Fatalf("phase 2 agent.Run: %v", err)
+	}
+
+	var lastText string
+	for _, msg := range loaded.History {
+		if msg.Role == common.RoleAssistant {
+			for _, b := range msg.Content {
+				if b.Kind == common.BlockText {
+					lastText = b.Text
+				}
+			}
+		}
+	}
+	if !strings.Contains(lastText, "gohome-persist-7743") {
+		t.Errorf("resumed agent should recall 'gohome-persist-7743', got: %q", lastText)
+	}
+	t.Logf("resumed agent replied: %q", lastText)
+}
