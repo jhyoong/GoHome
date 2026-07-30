@@ -27,6 +27,7 @@ import (
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
 	"github.com/jhyoong/GoHome/gohome/internal/config"
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
+	"github.com/jhyoong/GoHome/gohome/internal/headless"
 	"github.com/jhyoong/GoHome/gohome/internal/llm"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 	"github.com/jhyoong/GoHome/gohome/internal/session"
@@ -223,4 +224,105 @@ func TestE2EHeadlessToolCall(t *testing.T) {
 		t.Errorf("assistant reply should contain 'hello-gohome', got: %q", lastAssistantText)
 	}
 	t.Logf("assistant replied: %q", lastAssistantText)
+}
+
+func TestE2EHeadlessMultiTurn(t *testing.T) {
+	cfg := loadE2EConfig(t)
+
+	// Prepare JSONL input: two user messages then exit.
+	input := strings.Join([]string{
+		`{"type":"user_message","content":"What is 2+2? Reply with just the number."}`,
+		`{"type":"exit"}`,
+	}, "\n") + "\n"
+
+	var output strings.Builder
+	hfe := headless.NewInteractiveFrontend(
+		strings.NewReader(input),
+		true,
+		&output,
+	)
+
+	ep := config.ModelConfig{
+		Wire:      cfg.wire,
+		BaseURL:   cfg.baseURL,
+		ModelName: cfg.model,
+	}
+	client, err := llm.New(ep, cfg.apiKey)
+	if err != nil {
+		t.Fatalf("llm.New: %v", err)
+	}
+
+	reg := tools.NewRegistry()
+
+	wl, werr := guard.Compile(guard.WhitelistFile{}, guard.WhitelistFile{}, "")
+	if werr != nil {
+		t.Fatalf("guard.Compile: %v", werr)
+	}
+	g := guard.NewGuard(wl, hfe, nil)
+	g.SetYolo(true)
+
+	tmpDir := t.TempDir()
+	writerPath := filepath.Join(tmpDir, "e2e-multi.jsonl")
+	w, err := session.OpenWriter(writerPath)
+	if err != nil {
+		t.Fatalf("session.OpenWriter: %v", err)
+	}
+	t.Cleanup(func() { _ = w.Close() })
+
+	sess := session.NewSession("e2e-multi", tmpDir, cfg.model, string(cfg.wire))
+
+	state := agent.NewSessionState(sess, w, client)
+	a := &agent.Agent{
+		Tools:     reg,
+		Guard:     g,
+		Frontend:  hfe,
+		State:     state,
+		System:    "You are a helpful assistant.",
+		MaxTokens: 64,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	// Run the interactive loop: read input, run agent, repeat until exit.
+	for {
+		userText, inputErr := hfe.AwaitUserInput(ctx)
+		if inputErr != nil {
+			if errors.Is(inputErr, headless.ErrExit) {
+				break
+			}
+			t.Fatalf("AwaitUserInput: %v", inputErr)
+		}
+
+		sess.History = append(sess.History, common.Message{
+			Role:    common.RoleUser,
+			Content: []common.Block{{Kind: common.BlockText, Text: userText}},
+		})
+
+		if runErr := a.Run(ctx, sess); runErr != nil {
+			t.Fatalf("agent.Run: %v", runErr)
+		}
+	}
+
+	// Verify the agent responded with something containing "4".
+	var lastAssistantText string
+	for _, msg := range sess.History {
+		if msg.Role == common.RoleAssistant {
+			for _, b := range msg.Content {
+				if b.Kind == common.BlockText {
+					lastAssistantText = b.Text
+				}
+			}
+		}
+	}
+	if !strings.Contains(lastAssistantText, "4") {
+		t.Errorf("assistant should have responded with '4', got: %q", lastAssistantText)
+	}
+
+	// Verify verbose output was written (JSONL events on stdout).
+	if output.Len() == 0 {
+		t.Error("expected verbose JSONL output, got nothing")
+	}
+	t.Logf("assistant replied: %q", lastAssistantText)
+	t.Logf("output length: %d bytes", output.Len())
 }
