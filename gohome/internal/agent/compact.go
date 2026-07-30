@@ -35,11 +35,14 @@ func (cfg CompactConfig) shouldCompact(usage common.Usage) bool {
 	return false
 }
 
-// compact sends the current conversation history to the LLM for
-// summarization, replaces the history with the summary, persists a
-// Compaction event, and emits an EventCompacted to the frontend.
+const minCompactMessages = 4
+
+// compact sends older conversation history to the LLM for summarization,
+// keeps the last ~4 messages (recent turns) intact to preserve cache hits,
+// and prepends the summary as a new first message. Persists a Compaction
+// event and emits an EventCompacted to the frontend.
 func (a *Agent) compact(ctx context.Context, sess *session.Session) error {
-	if len(sess.History) == 0 {
+	if len(sess.History) < minCompactMessages {
 		return nil
 	}
 
@@ -48,8 +51,29 @@ func (a *Agent) compact(ctx context.Context, sess *session.Session) error {
 		prompt = defaultCompactPrompt
 	}
 
+	// Keep the last keepCount messages. Default: 4 (roughly 2 turns).
+	keepCount := 4
+	if keepCount >= len(sess.History) {
+		return nil
+	}
+
+	splitIdx := len(sess.History) - keepCount
+
+	// Don't split a tool-use/tool-result pair: if splitIdx lands on a
+	// RoleTool message, include its preceding assistant message too.
+	if splitIdx > 0 && sess.History[splitIdx].Role == common.RoleTool {
+		splitIdx--
+	}
+	if splitIdx <= 0 {
+		return nil
+	}
+
+	oldMessages := sess.History[:splitIdx]
+	recentMessages := make([]common.Message, len(sess.History[splitIdx:]))
+	copy(recentMessages, sess.History[splitIdx:])
+
 	beforeTokens := 0
-	for _, msg := range sess.History {
+	for _, msg := range oldMessages {
 		for _, b := range msg.Content {
 			beforeTokens += len(b.Text) / 4
 			beforeTokens += len(b.InputJSON) / 4
@@ -60,7 +84,7 @@ func (a *Agent) compact(ctx context.Context, sess *session.Session) error {
 	req := common.Request{
 		Model:     sess.Model,
 		System:    prompt,
-		Messages:  sess.History,
+		Messages:  oldMessages,
 		MaxTokens: a.MaxTokens,
 	}
 
@@ -85,14 +109,14 @@ func (a *Agent) compact(ctx context.Context, sess *session.Session) error {
 		return nil
 	}
 
-	sess.History = []common.Message{
-		{
-			Role: common.RoleUser,
-			Content: []common.Block{
-				{Kind: common.BlockText, Text: session.CompactSummaryPrefix + summary},
-			},
+	summaryMsg := common.Message{
+		Role: common.RoleUser,
+		Content: []common.Block{
+			{Kind: common.BlockText, Text: session.CompactSummaryPrefix + summary},
 		},
 	}
+
+	sess.History = append([]common.Message{summaryMsg}, recentMessages...)
 
 	afterTokens := len(summary) / 4
 
