@@ -53,6 +53,8 @@ cd GoHome
 go build -ldflags "-X main.version=v0.4.1" -o bin/gohome ./gohome/cmd/gohome
 ```
 
+> **Windows note:** Do not use `-ldflags "-s -w"` (strip flags) when building for Windows. Stripped binaries score higher on antivirus heuristics. See [Windows Defender False Positive](docs/windows-defender.md) for details.
+
 ### Run
 
 ```sh
