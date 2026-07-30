@@ -428,3 +428,61 @@ func TestE2EAutoCompact(t *testing.T) {
 	}
 	t.Logf("post-compaction reply length: %d chars", len(lastAssistantText))
 }
+
+func TestE2EShellTool(t *testing.T) {
+	cfg := loadE2EConfig(t)
+	fe := &recordingFrontend{}
+
+	tmpDir := t.TempDir()
+	markerFile := filepath.Join(tmpDir, "marker.txt")
+	if err := os.WriteFile(markerFile, []byte("gohome-shell-test"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	prompt := fmt.Sprintf(
+		"Run the shell command: cat %s\nTell me exactly what the command output. Reply with just the output, nothing else.",
+		markerFile,
+	)
+	history := []common.Message{
+		{
+			Role:    common.RoleUser,
+			Content: []common.Block{{Kind: common.BlockText, Text: prompt}},
+		},
+	}
+
+	a, sess := newE2EAgent(t, cfg, fe, history, tools.ShellTool{})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	if err := a.Run(ctx, sess); err != nil {
+		t.Fatalf("agent.Run: %v", err)
+	}
+
+	fe.mu.Lock()
+	var sawShellResult bool
+	for _, ev := range fe.events {
+		if ev.Kind == agent.EventToolResult && ev.Result != nil && !ev.Result.IsError {
+			sawShellResult = true
+		}
+	}
+	fe.mu.Unlock()
+	if !sawShellResult {
+		t.Error("expected a successful EventToolResult from shell tool")
+	}
+
+	var lastText string
+	for _, msg := range sess.History {
+		if msg.Role == common.RoleAssistant {
+			for _, b := range msg.Content {
+				if b.Kind == common.BlockText {
+					lastText = b.Text
+				}
+			}
+		}
+	}
+	if !strings.Contains(lastText, "gohome-shell-test") {
+		t.Errorf("assistant reply should contain 'gohome-shell-test', got: %q", lastText)
+	}
+	t.Logf("assistant replied: %q", lastText)
+}
