@@ -689,3 +689,98 @@ func TestE2EToolErrorRecovery(t *testing.T) {
 	}
 	t.Logf("assistant replied: %q", lastText)
 }
+
+func TestE2ESubagentSpawn(t *testing.T) {
+	cfg := loadE2EConfig(t)
+	fe := &recordingFrontend{}
+
+	ep := config.ModelConfig{
+		Wire:      cfg.wire,
+		BaseURL:   cfg.baseURL,
+		ModelName: cfg.model,
+	}
+	client, err := llm.New(ep, cfg.apiKey)
+	if err != nil {
+		t.Fatalf("llm.New: %v", err)
+	}
+
+	tmpDir := t.TempDir()
+	writerPath := filepath.Join(tmpDir, "e2e-subagent.jsonl")
+	w, err := session.OpenWriter(writerPath)
+	if err != nil {
+		t.Fatalf("session.OpenWriter: %v", err)
+	}
+	t.Cleanup(func() { _ = w.Close() })
+
+	wl, werr := guard.Compile(guard.WhitelistFile{}, guard.WhitelistFile{}, "")
+	if werr != nil {
+		t.Fatalf("guard.Compile: %v", werr)
+	}
+	g := guard.NewGuard(wl, fe, nil)
+	g.SetYolo(true)
+
+	sess := session.NewSession("e2e-subagent", tmpDir, cfg.model, string(cfg.wire))
+	sess.History = []common.Message{
+		{
+			Role:    common.RoleUser,
+			Content: []common.Block{{Kind: common.BlockText, Text: "Use the subagent tool to delegate this task: 'What is 3 + 7? Reply with just the number.' Then tell me the subagent's answer."}},
+		},
+	}
+
+	state := agent.NewSessionState(sess, w, client)
+
+	reg := tools.NewRegistry()
+	reg.Register(tools.ReadTool{})
+
+	a := &agent.Agent{
+		Tools:     reg,
+		Guard:     g,
+		Frontend:  fe,
+		State:     state,
+		System:    "You are a helpful assistant. When asked to delegate, use the subagent tool.",
+		MaxTokens: 256,
+		Home:      tmpDir,
+	}
+
+	reg.Register(tools.NewSubagentTool(a))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+
+	if err := a.Run(ctx, sess); err != nil {
+		t.Fatalf("agent.Run: %v", err)
+	}
+
+	fe.mu.Lock()
+	var sawChildStart, sawChildEnd bool
+	for _, ev := range fe.events {
+		if ev.Kind == agent.EventSessionStarted && strings.HasPrefix(ev.SessionID, "sub-") {
+			sawChildStart = true
+		}
+		if ev.Kind == agent.EventSessionEnded && strings.HasPrefix(ev.SessionID, "sub-") {
+			sawChildEnd = true
+		}
+	}
+	fe.mu.Unlock()
+	if !sawChildStart {
+		t.Error("expected EventSessionStarted for a child subagent")
+	}
+	if !sawChildEnd {
+		t.Error("expected EventSessionEnded for a child subagent")
+	}
+
+	var lastText string
+	for _, msg := range sess.History {
+		if msg.Role == common.RoleAssistant {
+			for _, b := range msg.Content {
+				if b.Kind == common.BlockText {
+					lastText = b.Text
+				}
+			}
+		}
+	}
+	if !strings.Contains(lastText, "10") {
+		t.Errorf("assistant reply should contain '10', got: %q", lastText)
+	}
+	t.Logf("assistant replied: %q", lastText)
+}
