@@ -486,3 +486,68 @@ func TestE2EShellTool(t *testing.T) {
 	}
 	t.Logf("assistant replied: %q", lastText)
 }
+
+func TestE2EWriteReadChain(t *testing.T) {
+	cfg := loadE2EConfig(t)
+	fe := &recordingFrontend{}
+
+	tmpDir := t.TempDir()
+	targetFile := filepath.Join(tmpDir, "output.txt")
+
+	prompt := fmt.Sprintf(
+		"First, write the text 'gohome-chain-test' to the file %s. "+
+			"Then read the file back. "+
+			"Tell me exactly what you read. Reply with just the file content, nothing else.",
+		targetFile,
+	)
+	history := []common.Message{
+		{
+			Role:    common.RoleUser,
+			Content: []common.Block{{Kind: common.BlockText, Text: prompt}},
+		},
+	}
+
+	a, sess := newE2EAgent(t, cfg, fe, history, tools.WriteTool{})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	if err := a.Run(ctx, sess); err != nil {
+		t.Fatalf("agent.Run: %v", err)
+	}
+
+	content, err := os.ReadFile(targetFile)
+	if err != nil {
+		t.Fatalf("file was not created: %v", err)
+	}
+	if !strings.Contains(string(content), "gohome-chain-test") {
+		t.Errorf("file content should contain 'gohome-chain-test', got: %q", string(content))
+	}
+
+	fe.mu.Lock()
+	var toolResultCount int
+	for _, ev := range fe.events {
+		if ev.Kind == agent.EventToolResult {
+			toolResultCount++
+		}
+	}
+	fe.mu.Unlock()
+	if toolResultCount < 2 {
+		t.Errorf("expected at least 2 tool results (write + read), got %d", toolResultCount)
+	}
+
+	var lastText string
+	for _, msg := range sess.History {
+		if msg.Role == common.RoleAssistant {
+			for _, b := range msg.Content {
+				if b.Kind == common.BlockText {
+					lastText = b.Text
+				}
+			}
+		}
+	}
+	if !strings.Contains(lastText, "gohome-chain-test") {
+		t.Errorf("assistant reply should contain 'gohome-chain-test', got: %q", lastText)
+	}
+	t.Logf("assistant replied: %q", lastText)
+}
