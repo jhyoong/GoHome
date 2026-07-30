@@ -551,3 +551,73 @@ func TestE2EWriteReadChain(t *testing.T) {
 	}
 	t.Logf("assistant replied: %q", lastText)
 }
+
+func TestE2EEditTool(t *testing.T) {
+	cfg := loadE2EConfig(t)
+	fe := &recordingFrontend{}
+
+	tmpDir := t.TempDir()
+	targetFile := filepath.Join(tmpDir, "editable.txt")
+	if err := os.WriteFile(targetFile, []byte("hello world"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	prompt := fmt.Sprintf(
+		"Read the file at %s. Then edit it to replace 'hello' with 'goodbye'. "+
+			"After editing, read it again and tell me the new content. Reply with just the final content.",
+		targetFile,
+	)
+	history := []common.Message{
+		{
+			Role:    common.RoleUser,
+			Content: []common.Block{{Kind: common.BlockText, Text: prompt}},
+		},
+	}
+
+	a, sess := newE2EAgent(t, cfg, fe, history, tools.EditTool{})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	if err := a.Run(ctx, sess); err != nil {
+		t.Fatalf("agent.Run: %v", err)
+	}
+
+	content, err := os.ReadFile(targetFile)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if !strings.Contains(string(content), "goodbye") {
+		t.Errorf("file should contain 'goodbye' after edit, got: %q", string(content))
+	}
+	if strings.Contains(string(content), "hello") {
+		t.Errorf("file should no longer contain 'hello' after edit, got: %q", string(content))
+	}
+
+	fe.mu.Lock()
+	var toolResultCount int
+	for _, ev := range fe.events {
+		if ev.Kind == agent.EventToolResult {
+			toolResultCount++
+		}
+	}
+	fe.mu.Unlock()
+	if toolResultCount < 3 {
+		t.Errorf("expected at least 3 tool results (read, edit, read), got %d", toolResultCount)
+	}
+
+	var lastText string
+	for _, msg := range sess.History {
+		if msg.Role == common.RoleAssistant {
+			for _, b := range msg.Content {
+				if b.Kind == common.BlockText {
+					lastText = b.Text
+				}
+			}
+		}
+	}
+	if !strings.Contains(lastText, "goodbye") {
+		t.Errorf("assistant reply should contain 'goodbye', got: %q", lastText)
+	}
+	t.Logf("assistant replied: %q", lastText)
+}
