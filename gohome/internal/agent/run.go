@@ -154,6 +154,9 @@ func (a *Agent) dispatchTool(
 	}
 
 	if !dec.Allow {
+		if dec.DenyInfo != "" {
+			return dec.DenyInfo, true, 0, false
+		}
 		if dec.SteerMessage != "" {
 			return dec.SteerMessage, true, 0, false
 		}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
@@ -498,5 +499,98 @@ func TestRun_UnknownTool(t *testing.T) {
 	}
 	if !foundError {
 		t.Errorf("expected IsError tool result for unknown tool")
+	}
+}
+
+// compileDenylistGuard returns a Guard with a real Denylist and yolo enabled.
+// This proves denylist overrides yolo.
+func compileDenylistGuard(t *testing.T, patterns []string) *guard.Guard {
+	t.Helper()
+	dl, err := guard.CompileDenylist(guard.DenylistFile{Shell: patterns})
+	if err != nil {
+		t.Fatalf("CompileDenylist: %v", err)
+	}
+	wl, err := guard.Compile(guard.WhitelistFile{}, guard.WhitelistFile{}, "")
+	if err != nil {
+		t.Fatalf("guard.Compile: %v", err)
+	}
+	g := guard.NewGuard(wl, nil, dl)
+	g.SetYolo(true)
+	return g
+}
+
+// TestRun_DenylistBlocksShellCommand verifies that when the denylist blocks a
+// shell command:
+//   - the tool is NOT executed
+//   - the tool result contains the DenyInfo message (not "denied by user")
+//   - Run does NOT return ErrToolDenied (agent can self-correct)
+//   - the agent continues to a second turn
+func TestRun_DenylistBlocksShellCommand(t *testing.T) {
+	turn1 := []common.StreamEvent{
+		{Kind: common.EventToolCallDone, ToolCallID: "tc-deny", ToolName: "shell", InputJSON: `{"command":"rm -rf /tmp/foo"}`},
+		{Kind: common.EventTurnDone, StopReason: "tool_use"},
+	}
+	turn2 := []common.StreamEvent{
+		{Kind: common.EventTextDelta, TextDelta: "ok I will not do that"},
+		{Kind: common.EventTurnDone, StopReason: "end_turn"},
+	}
+	client := &fakeClient{sequences: [][]common.StreamEvent{turn1, turn2}}
+
+	executed := false
+	tracked := &trackingTool{
+		fakeTool: &fakeTool{name: "shell", content: "should-not-run"},
+		executed: &executed,
+	}
+	reg := tools.NewRegistry()
+	reg.Register(tracked)
+
+	fe := &fakeRecorder{}
+	g := compileDenylistGuard(t, []string{"rm -rf"})
+	a, sess := newTestAgentWithGuard(t, client, fe, g, reg)
+
+	err := a.Run(context.Background(), sess)
+	if err != nil {
+		t.Fatalf("Run should succeed (denylist should not halt agent): %v", err)
+	}
+
+	if executed {
+		t.Error("shell tool was executed despite being denylisted")
+	}
+
+	// The tool result should contain the denylist info, not "denied by user".
+	var foundToolResult bool
+	for _, msg := range sess.History {
+		if msg.Role != common.RoleTool {
+			continue
+		}
+		for _, b := range msg.Content {
+			if b.ToolUseID == "tc-deny" {
+				foundToolResult = true
+				if !b.IsError {
+					t.Error("denylist result should have IsError=true")
+				}
+				if !strings.Contains(b.ResultText, "denylist") {
+					t.Errorf("result text should mention denylist, got: %q", b.ResultText)
+				}
+				if strings.Contains(b.ResultText, "denied by user") {
+					t.Errorf("result text should NOT say 'denied by user', got: %q", b.ResultText)
+				}
+			}
+		}
+	}
+	if !foundToolResult {
+		t.Error("no tool result found for tc-deny")
+	}
+
+	// Run should have called Stream twice (agent continued to turn 2).
+	if client.callCount != 2 {
+		t.Errorf("Stream call count: got %d, want 2", client.callCount)
+	}
+
+	// Frontend should NOT have seen EventToolDenied.
+	for _, ev := range fe.events {
+		if ev.Kind == EventToolDenied {
+			t.Error("EventToolDenied should not be emitted for denylist rejections")
+		}
 	}
 }
