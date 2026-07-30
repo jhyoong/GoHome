@@ -3,18 +3,20 @@
 // Package e2e contains opt-in end-to-end tests that require a live LLM
 // endpoint. These tests are never run in CI; pass -tags e2e to enable them.
 //
-// Required environment variables:
+// Configuration is loaded from e2e.config.json (copy e2e.config.example.json
+// to get started). Environment variables override the config file:
 //
-//	GOHOME_E2E_ENDPOINT  base URL of the LLM endpoint (e.g. https://api.anthropic.com)
+//	GOHOME_E2E_ENDPOINT  base URL of the LLM endpoint
 //	GOHOME_E2E_WIRE      wire format: "anthropic" or "openai"
-//	GOHOME_E2E_MODEL     model name (e.g. claude-opus-4-7)
+//	GOHOME_E2E_MODEL     model name
 //	GOHOME_E2E_API_KEY   API key for the endpoint
 //
-// If GOHOME_E2E_ENDPOINT is unset, the test skips.
+// If no endpoint is configured from either source, the tests skip.
 package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -34,7 +36,7 @@ import (
 	"github.com/jhyoong/GoHome/gohome/internal/tools"
 )
 
-// e2eConfig holds the environment variables needed for E2E tests.
+// e2eConfig holds the configuration needed for E2E tests.
 type e2eConfig struct {
 	baseURL string
 	wire    config.Wire
@@ -42,26 +44,51 @@ type e2eConfig struct {
 	apiKey  string
 }
 
-// loadE2EConfig reads environment variables and skips if not set.
+type e2eConfigFile struct {
+	Endpoint string `json:"endpoint"`
+	Wire     string `json:"wire"`
+	Model    string `json:"model"`
+	APIKey   string `json:"api_key"`
+}
+
+// loadE2EConfig loads config from e2e.config.json (next to this test file),
+// then lets environment variables override any field. Skips if no endpoint
+// is configured from either source.
 func loadE2EConfig(t *testing.T) e2eConfig {
 	t.Helper()
-	baseURL := os.Getenv("GOHOME_E2E_ENDPOINT")
-	if baseURL == "" {
-		t.Skip("GOHOME_E2E_ENDPOINT not set; skipping e2e test")
+
+	var file e2eConfigFile
+	data, err := os.ReadFile(filepath.Join(".", "e2e.config.json"))
+	if err == nil {
+		if jerr := json.Unmarshal(data, &file); jerr != nil {
+			t.Fatalf("e2e.config.json: %v", jerr)
+		}
 	}
-	wire := config.Wire(os.Getenv("GOHOME_E2E_WIRE"))
+
+	baseURL := envOr("GOHOME_E2E_ENDPOINT", file.Endpoint)
+	if baseURL == "" {
+		t.Skip("no e2e endpoint configured (set GOHOME_E2E_ENDPOINT or create e2e.config.json)")
+	}
+	wire := config.Wire(envOr("GOHOME_E2E_WIRE", file.Wire))
 	if wire == "" {
 		wire = config.WireAnthropic
 	}
-	model := os.Getenv("GOHOME_E2E_MODEL")
+	model := envOr("GOHOME_E2E_MODEL", file.Model)
 	if model == "" {
-		t.Fatal("GOHOME_E2E_MODEL must be set")
+		t.Fatal("GOHOME_E2E_MODEL must be set (env or e2e.config.json)")
 	}
-	apiKey := os.Getenv("GOHOME_E2E_API_KEY")
+	apiKey := envOr("GOHOME_E2E_API_KEY", file.APIKey)
 	if apiKey == "" {
-		t.Fatal("GOHOME_E2E_API_KEY must be set")
+		t.Fatal("GOHOME_E2E_API_KEY must be set (env or e2e.config.json)")
 	}
 	return e2eConfig{baseURL: baseURL, wire: wire, model: model, apiKey: apiKey}
+}
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }
 
 // recordingFrontend implements agent.Frontend and records events.
@@ -85,7 +112,7 @@ func (r *recordingFrontend) AwaitUserInput(_ context.Context) (string, error) {
 }
 
 // newE2EAgent creates an Agent wired up for E2E testing.
-func newE2EAgent(t *testing.T, cfg e2eConfig, fe agent.Frontend, history []common.Message) (*agent.Agent, *session.Session) {
+func newE2EAgent(t *testing.T, cfg e2eConfig, fe agent.Frontend, history []common.Message, extraTools ...tools.Tool) (*agent.Agent, *session.Session) {
 	t.Helper()
 	ep := config.ModelConfig{
 		Wire:      cfg.wire,
@@ -99,6 +126,9 @@ func newE2EAgent(t *testing.T, cfg e2eConfig, fe agent.Frontend, history []commo
 
 	reg := tools.NewRegistry()
 	reg.Register(tools.ReadTool{})
+	for _, tool := range extraTools {
+		reg.Register(tool)
+	}
 
 	wl, err := guard.Compile(guard.WhitelistFile{}, guard.WhitelistFile{}, "")
 	if err != nil {
