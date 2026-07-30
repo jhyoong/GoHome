@@ -594,3 +594,94 @@ func TestRun_DenylistBlocksShellCommand(t *testing.T) {
 		}
 	}
 }
+
+// TestRun_DenylistNonShellPassthrough verifies that the denylist only checks
+// shell tool calls. A non-shell tool should pass through even if the denylist
+// has patterns that would match its input.
+func TestRun_DenylistNonShellPassthrough(t *testing.T) {
+	turn1 := []common.StreamEvent{
+		{Kind: common.EventToolCallDone, ToolCallID: "tc-ok", ToolName: "fake", InputJSON: `{}`},
+		{Kind: common.EventTurnDone, StopReason: "tool_use"},
+	}
+	turn2 := []common.StreamEvent{
+		{Kind: common.EventTextDelta, TextDelta: "done"},
+		{Kind: common.EventTurnDone, StopReason: "end_turn"},
+	}
+	client := &fakeClient{sequences: [][]common.StreamEvent{turn1, turn2}}
+
+	executed := false
+	tracked := &trackingTool{
+		fakeTool: &fakeTool{name: "fake", content: "tool ran"},
+		executed: &executed,
+	}
+	reg := tools.NewRegistry()
+	reg.Register(tracked)
+
+	fe := &fakeRecorder{}
+	g := compileDenylistGuard(t, []string{"rm -rf"})
+	a, sess := newTestAgentWithGuard(t, client, fe, g, reg)
+
+	if err := a.Run(context.Background(), sess); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if !executed {
+		t.Error("non-shell tool should have been executed despite denylist")
+	}
+}
+
+// TestRun_DenylistAgentSelfCorrects verifies the full self-correction flow:
+// turn 1 requests a denylisted command (blocked), turn 2 requests a safe
+// command (allowed), turn 3 ends. The agent completes successfully.
+func TestRun_DenylistAgentSelfCorrects(t *testing.T) {
+	turn1 := []common.StreamEvent{
+		{Kind: common.EventToolCallDone, ToolCallID: "tc-bad", ToolName: "shell", InputJSON: `{"command":"rm -rf /tmp"}`},
+		{Kind: common.EventTurnDone, StopReason: "tool_use"},
+	}
+	turn2 := []common.StreamEvent{
+		{Kind: common.EventToolCallDone, ToolCallID: "tc-good", ToolName: "shell", InputJSON: `{"command":"ls /tmp"}`},
+		{Kind: common.EventTurnDone, StopReason: "tool_use"},
+	}
+	turn3 := []common.StreamEvent{
+		{Kind: common.EventTextDelta, TextDelta: "here are the files"},
+		{Kind: common.EventTurnDone, StopReason: "end_turn"},
+	}
+	client := &fakeClient{sequences: [][]common.StreamEvent{turn1, turn2, turn3}}
+
+	execCount := 0
+	shellTool := &fakeTool{name: "shell", content: "file1.txt\nfile2.txt"}
+	reg := tools.NewRegistry()
+	reg.Register(&countingTool{
+		fakeTool: shellTool,
+		count:    &execCount,
+	})
+
+	fe := &fakeRecorder{}
+	g := compileDenylistGuard(t, []string{"rm -rf"})
+	a, sess := newTestAgentWithGuard(t, client, fe, g, reg)
+
+	if err := a.Run(context.Background(), sess); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	// The shell tool should have been executed exactly once (the safe command).
+	if execCount != 1 {
+		t.Errorf("shell tool execution count: got %d, want 1", execCount)
+	}
+
+	// Stream should have been called 3 times.
+	if client.callCount != 3 {
+		t.Errorf("Stream call count: got %d, want 3", client.callCount)
+	}
+}
+
+// countingTool wraps fakeTool and counts Execute calls.
+type countingTool struct {
+	*fakeTool
+	count *int
+}
+
+func (c *countingTool) Execute(ctx context.Context, in json.RawMessage, sink tools.ProgressSink) (tools.Result, error) {
+	*c.count++
+	return c.fakeTool.Execute(ctx, in, sink)
+}
