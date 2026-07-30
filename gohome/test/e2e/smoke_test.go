@@ -16,8 +16,10 @@ package e2e
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -95,6 +97,7 @@ func newE2EAgent(t *testing.T, cfg e2eConfig, fe agent.Frontend, history []commo
 	}
 
 	reg := tools.NewRegistry()
+	reg.Register(tools.ReadTool{})
 
 	wl, err := guard.Compile(guard.WhitelistFile{}, guard.WhitelistFile{}, "")
 	if err != nil {
@@ -160,6 +163,64 @@ func TestE2ESmokeRoundtrip(t *testing.T) {
 	}
 	if lastAssistantText == "" {
 		t.Error("last assistant message text is empty")
+	}
+	t.Logf("assistant replied: %q", lastAssistantText)
+}
+
+func TestE2EHeadlessToolCall(t *testing.T) {
+	cfg := loadE2EConfig(t)
+	fe := &recordingFrontend{}
+
+	// Create a temp file with known content.
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "test.txt")
+	if err := os.WriteFile(testFile, []byte("hello-gohome"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	prompt := fmt.Sprintf("Read the file at %s and tell me its exact content. Reply with just the content, nothing else.", testFile)
+	history := []common.Message{
+		{
+			Role:    common.RoleUser,
+			Content: []common.Block{{Kind: common.BlockText, Text: prompt}},
+		},
+	}
+
+	a, sess := newE2EAgent(t, cfg, fe, history)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	if err := a.Run(ctx, sess); err != nil {
+		t.Fatalf("agent.Run: %v", err)
+	}
+
+	// Verify a tool was called.
+	fe.mu.Lock()
+	var sawToolResult bool
+	for _, ev := range fe.events {
+		if ev.Kind == agent.EventToolResult {
+			sawToolResult = true
+		}
+	}
+	fe.mu.Unlock()
+	if !sawToolResult {
+		t.Error("expected at least one EventToolResult (tool call)")
+	}
+
+	// Verify the assistant response contains the file content.
+	var lastAssistantText string
+	for _, msg := range sess.History {
+		if msg.Role == common.RoleAssistant {
+			for _, b := range msg.Content {
+				if b.Kind == common.BlockText {
+					lastAssistantText = b.Text
+				}
+			}
+		}
+	}
+	if !strings.Contains(lastAssistantText, "hello-gohome") {
+		t.Errorf("assistant reply should contain 'hello-gohome', got: %q", lastAssistantText)
 	}
 	t.Logf("assistant replied: %q", lastAssistantText)
 }
