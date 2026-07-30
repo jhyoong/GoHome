@@ -326,3 +326,75 @@ func TestE2EHeadlessMultiTurn(t *testing.T) {
 	t.Logf("assistant replied: %q", lastAssistantText)
 	t.Logf("output length: %d bytes", output.Len())
 }
+
+func TestE2EAutoCompact(t *testing.T) {
+	cfg := loadE2EConfig(t)
+	fe := &recordingFrontend{}
+
+	// Seed with a long conversation history to trigger compaction.
+	var history []common.Message
+	for i := 0; i < 10; i++ {
+		history = append(history,
+			common.Message{
+				Role:    common.RoleUser,
+				Content: []common.Block{{Kind: common.BlockText, Text: fmt.Sprintf("Tell me about topic %d in detail.", i)}},
+			},
+			common.Message{
+				Role:    common.RoleAssistant,
+				Content: []common.Block{{Kind: common.BlockText, Text: strings.Repeat(fmt.Sprintf("Here is a detailed explanation about topic %d. ", i), 50)}},
+			},
+		)
+	}
+	// Final prompt.
+	history = append(history, common.Message{
+		Role:    common.RoleUser,
+		Content: []common.Block{{Kind: common.BlockText, Text: "Summarize everything we discussed. Reply briefly."}},
+	})
+
+	a, sess := newE2EAgent(t, cfg, fe, history)
+
+	// Enable auto-compact with a very low trigger threshold.
+	a.CompactCfg = agent.CompactConfig{
+		Enabled:       true,
+		Mode:          "percentage",
+		TriggerPct:    0.01, // trigger almost immediately
+		ContextWindow: 128000,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	if err := a.Run(ctx, sess); err != nil {
+		t.Fatalf("agent.Run: %v", err)
+	}
+
+	// Verify compaction fired.
+	fe.mu.Lock()
+	var sawCompacted bool
+	for _, ev := range fe.events {
+		if ev.Kind == agent.EventCompacted {
+			sawCompacted = true
+			t.Logf("compaction: %d -> %d tokens", ev.CompactBefore, ev.CompactAfter)
+		}
+	}
+	fe.mu.Unlock()
+	if !sawCompacted {
+		t.Error("expected EventCompacted but it was not emitted")
+	}
+
+	// Verify the agent still produced a response after compaction.
+	var lastAssistantText string
+	for _, msg := range sess.History {
+		if msg.Role == common.RoleAssistant {
+			for _, b := range msg.Content {
+				if b.Kind == common.BlockText {
+					lastAssistantText = b.Text
+				}
+			}
+		}
+	}
+	if lastAssistantText == "" {
+		t.Error("no assistant response after compaction")
+	}
+	t.Logf("post-compaction reply length: %d chars", len(lastAssistantText))
+}
