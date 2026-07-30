@@ -283,3 +283,8 @@ The `subagent` tool spawns a fresh, isolated agent session from within the agent
 
 ---
 
+## Troubleshooting
+
+### Windows Defender False Positive
+
+Windows Defender may flag gohome as a trojan. This is a false positive caused by the binary's legitimate coding agent features (shell execution, file writes, API communication) overlapping with malware behavioral patterns. See [docs/windows-defender.md](docs/windows-defender.md) for details and workaround instructions.
