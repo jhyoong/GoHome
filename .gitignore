@@ -5,3 +5,4 @@ coverage.out
 .claude/*
 docs/old/*
 scratch/*
+gohome/test/e2e/e2e.config.json
