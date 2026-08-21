@@ -47,10 +47,11 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 
 	case agent.EventToolCallDone:
 		entry := TimelineEntry{
-			Kind:     KindTool,
-			ToolName: ev.ToolName,
-			Text:     ev.InputJSON,
-			Status:   "pending",
+			Kind:      KindTool,
+			ToolName:  ev.ToolName,
+			ToolUseID: ev.ToolCallID,
+			Text:      ev.InputJSON,
+			Status:    "pending",
 		}
 		if ev.ToolName == "edit" {
 			entry.DiffPreview = buildDiffPreview(ev.InputJSON)
@@ -60,6 +61,7 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 			shadow := TimelineEntry{
 				Kind:        KindTool,
 				ToolName:    ev.ToolName,
+				ToolUseID:   ev.ToolCallID,
 				Text:        ev.InputJSON,
 				Status:      "pending",
 				DiffPreview: entry.DiffPreview,
@@ -68,30 +70,36 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 		}
 
 	case agent.EventToolResult:
-		// Set ToolResult on the most recent tool entry without a result.
 		content := ""
 		isErr := false
+		toolUseID := ""
 		if ev.Result != nil {
 			content = ev.Result.Content
 			isErr = ev.Result.IsError
+			toolUseID = ev.Result.ToolUseID
 		}
 		set := false
 		var matchedChildID string
 		for i := len(sv.Timeline) - 1; i >= 0; i-- {
-			if sv.Timeline[i].Kind == KindTool && sv.Timeline[i].ToolResult == "" {
-				sv.Timeline[i].ToolResult = content
-				if isErr {
-					sv.Timeline[i].Status = "error"
-				} else {
-					sv.Timeline[i].Status = "success"
-				}
-				if ev.Result != nil {
-					sv.Timeline[i].Duration = ev.Result.Duration
-				}
-				matchedChildID = sv.Timeline[i].ChildSessionID
-				set = true
-				break
+			e := &sv.Timeline[i]
+			if e.Kind != KindTool || e.ToolResult != "" {
+				continue
 			}
+			if toolUseID != "" && e.ToolUseID != "" && e.ToolUseID != toolUseID {
+				continue
+			}
+			e.ToolResult = content
+			if isErr {
+				e.Status = "error"
+			} else {
+				e.Status = "success"
+			}
+			if ev.Result != nil {
+				e.Duration = ev.Result.Duration
+			}
+			matchedChildID = e.ChildSessionID
+			set = true
+			break
 		}
 		if matchedChildID != "" {
 			if childSV, ok := m.sessions[matchedChildID]; ok {
@@ -110,7 +118,7 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 			})
 		}
 		if sv.Depth > 0 {
-			m.updateShadowResult(msg.SessionID, content, isErr)
+			m.updateShadowResult(msg.SessionID, toolUseID, content, isErr)
 		}
 
 	case agent.EventToolDenied:
@@ -332,9 +340,10 @@ func (m *Model) insertShadowEntry(childID string, entry TimelineEntry) {
 	}
 }
 
-// updateShadowResult updates the most recent pending shadow entry for childID
-// in the parent's timeline with the tool result.
-func (m *Model) updateShadowResult(childID string, content string, isError bool) {
+// updateShadowResult updates the pending shadow entry for childID in the
+// parent's timeline that matches toolUseID. Falls back to the most recent
+// pending shadow entry when toolUseID is empty.
+func (m *Model) updateShadowResult(childID string, toolUseID string, content string, isError bool) {
 	parentID, ok := m.childToParent[childID]
 	if !ok {
 		return
@@ -345,15 +354,19 @@ func (m *Model) updateShadowResult(childID string, content string, isError bool)
 	}
 	for i := len(ps.Timeline) - 1; i >= 0; i-- {
 		e := &ps.Timeline[i]
-		if e.Shadow && e.ChildSessionID == childID && e.ToolResult == "" {
-			e.ToolResult = content
-			if isError {
-				e.Status = "error"
-			} else {
-				e.Status = "success"
-			}
-			return
+		if !e.Shadow || e.ChildSessionID != childID || e.ToolResult != "" {
+			continue
 		}
+		if toolUseID != "" && e.ToolUseID != "" && e.ToolUseID != toolUseID {
+			continue
+		}
+		e.ToolResult = content
+		if isError {
+			e.Status = "error"
+		} else {
+			e.Status = "success"
+		}
+		return
 	}
 }
 

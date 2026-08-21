@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
@@ -97,7 +98,9 @@ func (m *Model) statusBar() string {
 	}
 
 	var right string
-	if !m.chat.IsAutoScroll() {
+	if !m.mouseHintUntil.IsZero() && time.Now().Before(m.mouseHintUntil) {
+		right = "Hold Shift to select text"
+	} else if !m.chat.IsAutoScroll() {
 		currentLine, totalLines := m.chat.ScrollInfo(m.winW)
 		scrollPct := 0
 		if totalLines > 0 {

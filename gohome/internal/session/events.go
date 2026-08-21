@@ -57,6 +57,14 @@ type SessionEnd struct {
 	Reason string `json:"reason"`
 }
 
+type TurnDone struct {
+	SessionID string `json:"sessionId"`
+}
+
+type Warning struct {
+	Message string `json:"message"`
+}
+
 const CompactSummaryPrefix = "[Auto-compact summary]\n\n"
 
 type Compaction struct {
@@ -88,6 +96,10 @@ func encode(ev any) ([]byte, error) {
 		typeName = "session_end"
 	case Compaction:
 		typeName = "compaction"
+	case TurnDone:
+		typeName = "turn_done"
+	case Warning:
+		typeName = "warning"
 	default:
 		return nil, fmt.Errorf("session: unknown event type %T", ev)
 	}
@@ -103,4 +115,8 @@ func encode(ev any) ([]byte, error) {
 		return append([]byte(header+","), raw[1:]...), nil
 	}
 	return []byte(header + "}"), nil
+}
+
+func EncodeEvent(ev any) ([]byte, error) {
+	return encode(ev)
 }

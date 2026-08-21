@@ -53,6 +53,8 @@ cd GoHome
 go build -ldflags "-X main.version=v0.4.1" -o bin/gohome ./gohome/cmd/gohome
 ```
 
+> **Windows note:** Do not use `-ldflags "-s -w"` (strip flags) when building for Windows. Stripped binaries score higher on antivirus heuristics. See [Windows Defender False Positive](docs/windows-defender.md) for details.
+
 ### Run
 
 ```sh
@@ -283,3 +285,8 @@ The `subagent` tool spawns a fresh, isolated agent session from within the agent
 
 ---
 
+## Troubleshooting
+
+### Windows Defender False Positive
+
+Windows Defender may flag gohome as a trojan. This is a false positive caused by the binary's legitimate coding agent features (shell execution, file writes, API communication) overlapping with malware behavioral patterns. See [docs/windows-defender.md](docs/windows-defender.md) for details and workaround instructions.

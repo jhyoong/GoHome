@@ -3,87 +3,138 @@
 // Package e2e contains opt-in end-to-end tests that require a live LLM
 // endpoint. These tests are never run in CI; pass -tags e2e to enable them.
 //
-// Required environment variables:
+// Configuration is loaded from e2e.config.json (copy e2e.config.example.json
+// to get started). Environment variables override the config file:
 //
-//	GOHOME_E2E_ENDPOINT  base URL of the LLM endpoint (e.g. https://api.anthropic.com)
+//	GOHOME_E2E_ENDPOINT  base URL of the LLM endpoint
 //	GOHOME_E2E_WIRE      wire format: "anthropic" or "openai"
-//	GOHOME_E2E_MODEL     model name (e.g. claude-opus-4-7)
+//	GOHOME_E2E_MODEL     model name
 //	GOHOME_E2E_API_KEY   API key for the endpoint
 //
-// If GOHOME_E2E_ENDPOINT is unset, the test skips.
+// If no endpoint is configured from either source, the tests skip.
 package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
 	"github.com/jhyoong/GoHome/gohome/internal/config"
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
+	"github.com/jhyoong/GoHome/gohome/internal/headless"
 	"github.com/jhyoong/GoHome/gohome/internal/llm"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 	"github.com/jhyoong/GoHome/gohome/internal/session"
 	"github.com/jhyoong/GoHome/gohome/internal/tools"
 )
 
-// noopFrontend is a minimal agent.Frontend for headless e2e runs.
-// It discards all events, approves every tool call with AllowOnce,
-// and returns an error on AwaitUserInput (so the agent never blocks
-// waiting for interactive input).
-type noopFrontend struct{}
-
-func (noopFrontend) Emit(_ string, _ agent.Event) {}
-
-func (noopFrontend) RequestApproval(_ context.Context, _ guard.ApprovalRequest) (guard.ApprovalDecision, error) {
-	return guard.ApprovalDecision{Outcome: guard.AllowOnce}, nil
+// e2eConfig holds the configuration needed for E2E tests.
+type e2eConfig struct {
+	baseURL string
+	wire    config.Wire
+	model   string
+	apiKey  string
 }
 
-func (noopFrontend) AwaitUserInput(_ context.Context) (string, error) {
-	return "", errors.New("no interactive input in e2e tests")
+type e2eConfigFile struct {
+	Endpoint string `json:"endpoint"`
+	Wire     string `json:"wire"`
+	Model    string `json:"model"`
+	APIKey   string `json:"api_key"`
 }
 
-func TestE2ESmokeRoundtrip(t *testing.T) {
-	baseURL := os.Getenv("GOHOME_E2E_ENDPOINT")
-	if baseURL == "" {
-		t.Skip("GOHOME_E2E_ENDPOINT not set; skipping e2e test")
+// loadE2EConfig loads config from e2e.config.json (next to this test file),
+// then lets environment variables override any field. Skips if no endpoint
+// is configured from either source.
+func loadE2EConfig(t *testing.T) e2eConfig {
+	t.Helper()
+
+	var file e2eConfigFile
+	data, err := os.ReadFile(filepath.Join(".", "e2e.config.json"))
+	if err == nil {
+		if jerr := json.Unmarshal(data, &file); jerr != nil {
+			t.Fatalf("e2e.config.json: %v", jerr)
+		}
 	}
 
-	wire := config.Wire(os.Getenv("GOHOME_E2E_WIRE"))
+	baseURL := envOr("GOHOME_E2E_ENDPOINT", file.Endpoint)
+	if baseURL == "" {
+		t.Skip("no e2e endpoint configured (set GOHOME_E2E_ENDPOINT or create e2e.config.json)")
+	}
+	wire := config.Wire(envOr("GOHOME_E2E_WIRE", file.Wire))
 	if wire == "" {
 		wire = config.WireAnthropic
 	}
-	model := os.Getenv("GOHOME_E2E_MODEL")
+	model := envOr("GOHOME_E2E_MODEL", file.Model)
 	if model == "" {
-		t.Fatal("GOHOME_E2E_MODEL must be set")
+		t.Fatal("GOHOME_E2E_MODEL must be set (env or e2e.config.json)")
 	}
-	apiKey := os.Getenv("GOHOME_E2E_API_KEY")
+	apiKey := envOr("GOHOME_E2E_API_KEY", file.APIKey)
 	if apiKey == "" {
-		t.Fatal("GOHOME_E2E_API_KEY must be set")
+		t.Fatal("GOHOME_E2E_API_KEY must be set (env or e2e.config.json)")
 	}
+	return e2eConfig{baseURL: baseURL, wire: wire, model: model, apiKey: apiKey}
+}
 
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+// recordingFrontend implements agent.Frontend and records events.
+type recordingFrontend struct {
+	mu     sync.Mutex
+	events []agent.Event
+}
+
+func (r *recordingFrontend) Emit(_ string, ev agent.Event) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.events = append(r.events, ev)
+}
+
+func (r *recordingFrontend) RequestApproval(_ context.Context, _ guard.ApprovalRequest) (guard.ApprovalDecision, error) {
+	return guard.ApprovalDecision{Outcome: guard.AllowOnce}, nil
+}
+
+func (r *recordingFrontend) AwaitUserInput(_ context.Context) (string, error) {
+	return "", errors.New("no interactive input in e2e tests")
+}
+
+// newE2EAgent creates an Agent wired up for E2E testing.
+func newE2EAgent(t *testing.T, cfg e2eConfig, fe agent.Frontend, history []common.Message, extraTools ...tools.Tool) (*agent.Agent, *session.Session) {
+	t.Helper()
 	ep := config.ModelConfig{
-		Wire:      wire,
-		BaseURL:   baseURL,
-		ModelName: model,
+		Wire:      cfg.wire,
+		BaseURL:   cfg.baseURL,
+		ModelName: cfg.model,
 	}
-
-	client, err := llm.New(ep, apiKey)
+	client, err := llm.New(ep, cfg.apiKey)
 	if err != nil {
 		t.Fatalf("llm.New: %v", err)
 	}
 
 	reg := tools.NewRegistry()
+	reg.Register(tools.ReadTool{})
+	for _, tool := range extraTools {
+		reg.Register(tool)
+	}
 
 	wl, err := guard.Compile(guard.WhitelistFile{}, guard.WhitelistFile{}, "")
 	if err != nil {
 		t.Fatalf("guard.Compile: %v", err)
 	}
-	fe := noopFrontend{}
-	g := guard.NewGuard(wl, fe)
+	g := guard.NewGuard(wl, fe, nil)
 	g.SetYolo(true)
 
 	tmpDir := t.TempDir()
@@ -94,9 +145,26 @@ func TestE2ESmokeRoundtrip(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = w.Close() })
 
-	sess := session.NewSession("e2e-smoke", tmpDir, model, string(wire))
-	// Seed with a deterministic user message.
-	sess.History = []common.Message{
+	sess := session.NewSession("e2e-test", tmpDir, cfg.model, string(cfg.wire))
+	sess.History = history
+
+	state := agent.NewSessionState(sess, w, client)
+	a := &agent.Agent{
+		Tools:     reg,
+		Guard:     g,
+		Frontend:  fe,
+		State:     state,
+		System:    "You are a helpful assistant.",
+		MaxTokens: 256,
+	}
+
+	return a, sess
+}
+
+func TestE2ESmokeRoundtrip(t *testing.T) {
+	cfg := loadE2EConfig(t)
+	fe := &recordingFrontend{}
+	history := []common.Message{
 		{
 			Role: common.RoleUser,
 			Content: []common.Block{
@@ -105,15 +173,7 @@ func TestE2ESmokeRoundtrip(t *testing.T) {
 		},
 	}
 
-	a := &agent.Agent{
-		Client:    client,
-		Tools:     reg,
-		Guard:     g,
-		Frontend:  fe,
-		Writer:    w,
-		System:    "You are a helpful assistant.",
-		MaxTokens: 64,
-	}
+	a, sess := newE2EAgent(t, cfg, fe, history)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -122,7 +182,6 @@ func TestE2ESmokeRoundtrip(t *testing.T) {
 		t.Fatalf("agent.Run: %v", err)
 	}
 
-	// Find the last assistant message and check it has non-empty text.
 	var lastAssistantText string
 	for _, msg := range sess.History {
 		if msg.Role == common.RoleAssistant {
@@ -134,7 +193,820 @@ func TestE2ESmokeRoundtrip(t *testing.T) {
 		}
 	}
 	if lastAssistantText == "" {
-		t.Error("last assistant message text is empty; expected a non-empty reply")
+		t.Error("last assistant message text is empty")
 	}
 	t.Logf("assistant replied: %q", lastAssistantText)
+}
+
+func TestE2EHeadlessToolCall(t *testing.T) {
+	cfg := loadE2EConfig(t)
+	fe := &recordingFrontend{}
+
+	// Create a temp file with known content.
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "test.txt")
+	if err := os.WriteFile(testFile, []byte("hello-gohome"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	prompt := fmt.Sprintf("Read the file at %s and tell me its exact content. Reply with just the content, nothing else.", testFile)
+	history := []common.Message{
+		{
+			Role:    common.RoleUser,
+			Content: []common.Block{{Kind: common.BlockText, Text: prompt}},
+		},
+	}
+
+	a, sess := newE2EAgent(t, cfg, fe, history)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	if err := a.Run(ctx, sess); err != nil {
+		t.Fatalf("agent.Run: %v", err)
+	}
+
+	// Verify a tool was called.
+	fe.mu.Lock()
+	var sawToolResult bool
+	for _, ev := range fe.events {
+		if ev.Kind == agent.EventToolResult {
+			sawToolResult = true
+		}
+	}
+	fe.mu.Unlock()
+	if !sawToolResult {
+		t.Error("expected at least one EventToolResult (tool call)")
+	}
+
+	// Verify the assistant response contains the file content.
+	var lastAssistantText string
+	for _, msg := range sess.History {
+		if msg.Role == common.RoleAssistant {
+			for _, b := range msg.Content {
+				if b.Kind == common.BlockText {
+					lastAssistantText = b.Text
+				}
+			}
+		}
+	}
+	if !strings.Contains(lastAssistantText, "hello-gohome") {
+		t.Errorf("assistant reply should contain 'hello-gohome', got: %q", lastAssistantText)
+	}
+	t.Logf("assistant replied: %q", lastAssistantText)
+}
+
+func TestE2EHeadlessMultiTurn(t *testing.T) {
+	cfg := loadE2EConfig(t)
+
+	// Prepare JSONL input: two user messages then exit.
+	input := strings.Join([]string{
+		`{"type":"user_message","content":"What is 2+2? Reply with just the number."}`,
+		`{"type":"exit"}`,
+	}, "\n") + "\n"
+
+	var output strings.Builder
+	hfe := headless.NewInteractiveFrontend(
+		strings.NewReader(input),
+		true,
+		&output,
+	)
+
+	ep := config.ModelConfig{
+		Wire:      cfg.wire,
+		BaseURL:   cfg.baseURL,
+		ModelName: cfg.model,
+	}
+	client, err := llm.New(ep, cfg.apiKey)
+	if err != nil {
+		t.Fatalf("llm.New: %v", err)
+	}
+
+	reg := tools.NewRegistry()
+
+	wl, werr := guard.Compile(guard.WhitelistFile{}, guard.WhitelistFile{}, "")
+	if werr != nil {
+		t.Fatalf("guard.Compile: %v", werr)
+	}
+	g := guard.NewGuard(wl, hfe, nil)
+	g.SetYolo(true)
+
+	tmpDir := t.TempDir()
+	writerPath := filepath.Join(tmpDir, "e2e-multi.jsonl")
+	w, err := session.OpenWriter(writerPath)
+	if err != nil {
+		t.Fatalf("session.OpenWriter: %v", err)
+	}
+	t.Cleanup(func() { _ = w.Close() })
+
+	sess := session.NewSession("e2e-multi", tmpDir, cfg.model, string(cfg.wire))
+
+	state := agent.NewSessionState(sess, w, client)
+	a := &agent.Agent{
+		Tools:     reg,
+		Guard:     g,
+		Frontend:  hfe,
+		State:     state,
+		System:    "You are a helpful assistant.",
+		MaxTokens: 64,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	// Run the interactive loop: read input, run agent, repeat until exit.
+	for {
+		userText, inputErr := hfe.AwaitUserInput(ctx)
+		if inputErr != nil {
+			if errors.Is(inputErr, headless.ErrExit) {
+				break
+			}
+			t.Fatalf("AwaitUserInput: %v", inputErr)
+		}
+
+		sess.History = append(sess.History, common.Message{
+			Role:    common.RoleUser,
+			Content: []common.Block{{Kind: common.BlockText, Text: userText}},
+		})
+
+		if runErr := a.Run(ctx, sess); runErr != nil {
+			t.Fatalf("agent.Run: %v", runErr)
+		}
+	}
+
+	// Verify the agent responded with something containing "4".
+	var lastAssistantText string
+	for _, msg := range sess.History {
+		if msg.Role == common.RoleAssistant {
+			for _, b := range msg.Content {
+				if b.Kind == common.BlockText {
+					lastAssistantText = b.Text
+				}
+			}
+		}
+	}
+	if !strings.Contains(lastAssistantText, "4") {
+		t.Errorf("assistant should have responded with '4', got: %q", lastAssistantText)
+	}
+
+	// Verify verbose output was written (JSONL events on stdout).
+	if output.Len() == 0 {
+		t.Error("expected verbose JSONL output, got nothing")
+	}
+	t.Logf("assistant replied: %q", lastAssistantText)
+	t.Logf("output length: %d bytes", output.Len())
+}
+
+func TestE2EAutoCompact(t *testing.T) {
+	cfg := loadE2EConfig(t)
+	fe := &recordingFrontend{}
+
+	// Seed with a long conversation history to trigger compaction.
+	var history []common.Message
+	for i := 0; i < 10; i++ {
+		history = append(history,
+			common.Message{
+				Role:    common.RoleUser,
+				Content: []common.Block{{Kind: common.BlockText, Text: fmt.Sprintf("Tell me about topic %d in detail.", i)}},
+			},
+			common.Message{
+				Role:    common.RoleAssistant,
+				Content: []common.Block{{Kind: common.BlockText, Text: strings.Repeat(fmt.Sprintf("Here is a detailed explanation about topic %d. ", i), 50)}},
+			},
+		)
+	}
+	// Final prompt.
+	history = append(history, common.Message{
+		Role:    common.RoleUser,
+		Content: []common.Block{{Kind: common.BlockText, Text: "Summarize everything we discussed. Reply briefly."}},
+	})
+
+	a, sess := newE2EAgent(t, cfg, fe, history)
+
+	// Enable auto-compact with a very low trigger threshold.
+	a.CompactCfg = agent.CompactConfig{
+		Enabled:       true,
+		Mode:          "percentage",
+		TriggerPct:    0.01, // trigger almost immediately
+		ContextWindow: 128000,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	if err := a.Run(ctx, sess); err != nil {
+		t.Fatalf("agent.Run: %v", err)
+	}
+
+	// Verify compaction fired.
+	fe.mu.Lock()
+	var sawCompacted bool
+	for _, ev := range fe.events {
+		if ev.Kind == agent.EventCompacted {
+			sawCompacted = true
+			t.Logf("compaction: %d -> %d tokens", ev.CompactBefore, ev.CompactAfter)
+		}
+	}
+	fe.mu.Unlock()
+	if !sawCompacted {
+		t.Error("expected EventCompacted but it was not emitted")
+	}
+
+	// Verify the agent still produced a response after compaction.
+	var lastAssistantText string
+	for _, msg := range sess.History {
+		if msg.Role == common.RoleAssistant {
+			for _, b := range msg.Content {
+				if b.Kind == common.BlockText {
+					lastAssistantText = b.Text
+				}
+			}
+		}
+	}
+	if lastAssistantText == "" {
+		t.Error("no assistant response after compaction")
+	}
+	t.Logf("post-compaction reply length: %d chars", len(lastAssistantText))
+}
+
+func TestE2EShellTool(t *testing.T) {
+	cfg := loadE2EConfig(t)
+	fe := &recordingFrontend{}
+
+	tmpDir := t.TempDir()
+	markerFile := filepath.Join(tmpDir, "marker.txt")
+	if err := os.WriteFile(markerFile, []byte("gohome-shell-test"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	prompt := fmt.Sprintf(
+		"Run the shell command: cat %s\nTell me exactly what the command output. Reply with just the output, nothing else.",
+		markerFile,
+	)
+	history := []common.Message{
+		{
+			Role:    common.RoleUser,
+			Content: []common.Block{{Kind: common.BlockText, Text: prompt}},
+		},
+	}
+
+	a, sess := newE2EAgent(t, cfg, fe, history, tools.ShellTool{})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	if err := a.Run(ctx, sess); err != nil {
+		t.Fatalf("agent.Run: %v", err)
+	}
+
+	fe.mu.Lock()
+	var sawShellResult bool
+	for _, ev := range fe.events {
+		if ev.Kind == agent.EventToolResult && ev.Result != nil && !ev.Result.IsError {
+			sawShellResult = true
+		}
+	}
+	fe.mu.Unlock()
+	if !sawShellResult {
+		t.Error("expected a successful EventToolResult from shell tool")
+	}
+
+	var lastText string
+	for _, msg := range sess.History {
+		if msg.Role == common.RoleAssistant {
+			for _, b := range msg.Content {
+				if b.Kind == common.BlockText {
+					lastText = b.Text
+				}
+			}
+		}
+	}
+	if !strings.Contains(lastText, "gohome-shell-test") {
+		t.Errorf("assistant reply should contain 'gohome-shell-test', got: %q", lastText)
+	}
+	t.Logf("assistant replied: %q", lastText)
+}
+
+func TestE2EWriteReadChain(t *testing.T) {
+	cfg := loadE2EConfig(t)
+	fe := &recordingFrontend{}
+
+	tmpDir := t.TempDir()
+	targetFile := filepath.Join(tmpDir, "output.txt")
+
+	prompt := fmt.Sprintf(
+		"First, write the text 'gohome-chain-test' to the file %s. "+
+			"Then read the file back. "+
+			"Tell me exactly what you read. Reply with just the file content, nothing else.",
+		targetFile,
+	)
+	history := []common.Message{
+		{
+			Role:    common.RoleUser,
+			Content: []common.Block{{Kind: common.BlockText, Text: prompt}},
+		},
+	}
+
+	a, sess := newE2EAgent(t, cfg, fe, history, tools.WriteTool{})
+	a.MaxTokens = 1024
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	if err := a.Run(ctx, sess); err != nil {
+		t.Fatalf("agent.Run: %v", err)
+	}
+
+	content, err := os.ReadFile(targetFile)
+	if err != nil {
+		t.Fatalf("file was not created: %v", err)
+	}
+	if !strings.Contains(string(content), "gohome-chain-test") {
+		t.Errorf("file content should contain 'gohome-chain-test', got: %q", string(content))
+	}
+
+	var lastText string
+	for _, msg := range sess.History {
+		if msg.Role == common.RoleAssistant {
+			for _, b := range msg.Content {
+				if b.Kind == common.BlockText {
+					lastText = b.Text
+				}
+			}
+		}
+	}
+	if !strings.Contains(lastText, "gohome-chain-test") {
+		t.Errorf("assistant reply should contain 'gohome-chain-test', got: %q", lastText)
+	}
+	t.Logf("assistant replied: %q", lastText)
+}
+
+func TestE2EEditTool(t *testing.T) {
+	cfg := loadE2EConfig(t)
+	fe := &recordingFrontend{}
+
+	tmpDir := t.TempDir()
+	targetFile := filepath.Join(tmpDir, "editable.txt")
+	if err := os.WriteFile(targetFile, []byte("hello world"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	prompt := fmt.Sprintf(
+		"Read the file at %s. Then edit it to replace 'hello' with 'goodbye'. "+
+			"After editing, read it again and tell me the new content. Reply with just the final content.",
+		targetFile,
+	)
+	history := []common.Message{
+		{
+			Role:    common.RoleUser,
+			Content: []common.Block{{Kind: common.BlockText, Text: prompt}},
+		},
+	}
+
+	a, sess := newE2EAgent(t, cfg, fe, history, tools.EditTool{})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	if err := a.Run(ctx, sess); err != nil {
+		t.Fatalf("agent.Run: %v", err)
+	}
+
+	content, err := os.ReadFile(targetFile)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if !strings.Contains(string(content), "goodbye") {
+		t.Errorf("file should contain 'goodbye' after edit, got: %q", string(content))
+	}
+	if strings.Contains(string(content), "hello") {
+		t.Errorf("file should no longer contain 'hello' after edit, got: %q", string(content))
+	}
+
+	fe.mu.Lock()
+	var toolResultCount int
+	for _, ev := range fe.events {
+		if ev.Kind == agent.EventToolResult {
+			toolResultCount++
+		}
+	}
+	fe.mu.Unlock()
+	if toolResultCount < 3 {
+		t.Errorf("expected at least 3 tool results (read, edit, read), got %d", toolResultCount)
+	}
+
+	var lastText string
+	for _, msg := range sess.History {
+		if msg.Role == common.RoleAssistant {
+			for _, b := range msg.Content {
+				if b.Kind == common.BlockText {
+					lastText = b.Text
+				}
+			}
+		}
+	}
+	if !strings.Contains(lastText, "goodbye") {
+		t.Errorf("assistant reply should contain 'goodbye', got: %q", lastText)
+	}
+	t.Logf("assistant replied: %q", lastText)
+}
+
+func TestE2EToolErrorRecovery(t *testing.T) {
+	cfg := loadE2EConfig(t)
+	fe := &recordingFrontend{}
+
+	tmpDir := t.TempDir()
+	badPath := filepath.Join(tmpDir, "nonexistent", "missing.txt")
+	goodPath := filepath.Join(tmpDir, "fallback.txt")
+	if err := os.WriteFile(goodPath, []byte("gohome-recovery-ok"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	prompt := fmt.Sprintf(
+		"Try to read the file at %s. It does not exist. "+
+			"When the read fails, read %s instead and tell me its content. "+
+			"Reply with just the content of the file you successfully read.",
+		badPath, goodPath,
+	)
+	history := []common.Message{
+		{
+			Role:    common.RoleUser,
+			Content: []common.Block{{Kind: common.BlockText, Text: prompt}},
+		},
+	}
+
+	a, sess := newE2EAgent(t, cfg, fe, history)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	if err := a.Run(ctx, sess); err != nil {
+		t.Fatalf("agent.Run: %v", err)
+	}
+
+	fe.mu.Lock()
+	var sawError, sawSuccess bool
+	for _, ev := range fe.events {
+		if ev.Kind == agent.EventToolResult && ev.Result != nil {
+			if ev.Result.IsError {
+				sawError = true
+			} else {
+				sawSuccess = true
+			}
+		}
+	}
+	fe.mu.Unlock()
+	if !sawError {
+		t.Error("expected at least one error tool result (failed read)")
+	}
+	if !sawSuccess {
+		t.Error("expected at least one successful tool result (recovery read)")
+	}
+
+	var lastText string
+	for _, msg := range sess.History {
+		if msg.Role == common.RoleAssistant {
+			for _, b := range msg.Content {
+				if b.Kind == common.BlockText {
+					lastText = b.Text
+				}
+			}
+		}
+	}
+	if !strings.Contains(lastText, "gohome-recovery-ok") {
+		t.Errorf("assistant reply should contain 'gohome-recovery-ok', got: %q", lastText)
+	}
+	t.Logf("assistant replied: %q", lastText)
+}
+
+func TestE2ESubagentSpawn(t *testing.T) {
+	cfg := loadE2EConfig(t)
+	fe := &recordingFrontend{}
+
+	ep := config.ModelConfig{
+		Wire:      cfg.wire,
+		BaseURL:   cfg.baseURL,
+		ModelName: cfg.model,
+	}
+	client, err := llm.New(ep, cfg.apiKey)
+	if err != nil {
+		t.Fatalf("llm.New: %v", err)
+	}
+
+	tmpDir := t.TempDir()
+	writerPath := filepath.Join(tmpDir, "e2e-subagent.jsonl")
+	w, err := session.OpenWriter(writerPath)
+	if err != nil {
+		t.Fatalf("session.OpenWriter: %v", err)
+	}
+	t.Cleanup(func() { _ = w.Close() })
+
+	wl, werr := guard.Compile(guard.WhitelistFile{}, guard.WhitelistFile{}, "")
+	if werr != nil {
+		t.Fatalf("guard.Compile: %v", werr)
+	}
+	g := guard.NewGuard(wl, fe, nil)
+	g.SetYolo(true)
+
+	sess := session.NewSession("e2e-subagent", tmpDir, cfg.model, string(cfg.wire))
+	sess.History = []common.Message{
+		{
+			Role:    common.RoleUser,
+			Content: []common.Block{{Kind: common.BlockText, Text: "Use the subagent tool to delegate this task: 'What is 3 + 7? Reply with just the number.' Then tell me the subagent's answer."}},
+		},
+	}
+
+	state := agent.NewSessionState(sess, w, client)
+
+	reg := tools.NewRegistry()
+	reg.Register(tools.ReadTool{})
+
+	a := &agent.Agent{
+		Tools:     reg,
+		Guard:     g,
+		Frontend:  fe,
+		State:     state,
+		System:    "You are a helpful assistant. When asked to delegate, use the subagent tool.",
+		MaxTokens: 256,
+		Home:      tmpDir,
+	}
+
+	reg.Register(tools.NewSubagentTool(a))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+
+	if err := a.Run(ctx, sess); err != nil {
+		t.Fatalf("agent.Run: %v", err)
+	}
+
+	fe.mu.Lock()
+	var sawChildStart, sawChildEnd bool
+	for _, ev := range fe.events {
+		if ev.Kind == agent.EventSessionStarted && strings.HasPrefix(ev.SessionID, "sub-") {
+			sawChildStart = true
+		}
+		if ev.Kind == agent.EventSessionEnded && strings.HasPrefix(ev.SessionID, "sub-") {
+			sawChildEnd = true
+		}
+	}
+	fe.mu.Unlock()
+	if !sawChildStart {
+		t.Error("expected EventSessionStarted for a child subagent")
+	}
+	if !sawChildEnd {
+		t.Error("expected EventSessionEnded for a child subagent")
+	}
+
+	var lastText string
+	for _, msg := range sess.History {
+		if msg.Role == common.RoleAssistant {
+			for _, b := range msg.Content {
+				if b.Kind == common.BlockText {
+					lastText = b.Text
+				}
+			}
+		}
+	}
+	if !strings.Contains(lastText, "10") {
+		t.Errorf("assistant reply should contain '10', got: %q", lastText)
+	}
+	t.Logf("assistant replied: %q", lastText)
+}
+
+func TestE2ESessionResume(t *testing.T) {
+	cfg := loadE2EConfig(t)
+
+	ep := config.ModelConfig{
+		Wire:      cfg.wire,
+		BaseURL:   cfg.baseURL,
+		ModelName: cfg.model,
+	}
+	client, err := llm.New(ep, cfg.apiKey)
+	if err != nil {
+		t.Fatalf("llm.New: %v", err)
+	}
+
+	tmpDir := t.TempDir()
+	sessionPath := filepath.Join(tmpDir, "resume-test.jsonl")
+
+	// --- Phase 1: Run a conversation and persist it. ---
+	w1, err := session.OpenWriter(sessionPath)
+	if err != nil {
+		t.Fatalf("OpenWriter: %v", err)
+	}
+
+	fe1 := &recordingFrontend{}
+	wl, werr := guard.Compile(guard.WhitelistFile{}, guard.WhitelistFile{}, "")
+	if werr != nil {
+		t.Fatalf("guard.Compile: %v", werr)
+	}
+	g1 := guard.NewGuard(wl, fe1, nil)
+	g1.SetYolo(true)
+
+	sess1 := session.NewSession("resume-test", tmpDir, cfg.model, string(cfg.wire))
+	sess1.History = []common.Message{
+		{
+			Role:    common.RoleUser,
+			Content: []common.Block{{Kind: common.BlockText, Text: "Remember this code word: gohome-persist-7743. Confirm you have memorized it."}},
+		},
+	}
+
+	reg1 := tools.NewRegistry()
+	reg1.Register(tools.ReadTool{})
+
+	w1.Emit(session.SessionStart{
+		ID:          sess1.ID,
+		CWD:         tmpDir,
+		Model:       cfg.model,
+		ModelConfig: string(cfg.wire),
+		StartedAt:   sess1.StartedAt,
+	})
+	w1.Emit(session.UserMessage{Content: sess1.History[0].Content})
+
+	state1 := agent.NewSessionState(sess1, w1, client)
+	a1 := &agent.Agent{
+		Tools:     reg1,
+		Guard:     g1,
+		Frontend:  fe1,
+		State:     state1,
+		System:    "You are a helpful assistant.",
+		MaxTokens: 128,
+	}
+
+	ctx1, cancel1 := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel1()
+
+	if err := a1.Run(ctx1, sess1); err != nil {
+		t.Fatalf("phase 1 agent.Run: %v", err)
+	}
+	_ = w1.Close()
+
+	// --- Phase 2: Load the session and continue. ---
+	loaded, loadedHistory, err := session.Load(sessionPath)
+	if err != nil {
+		t.Fatalf("session.Load: %v", err)
+	}
+
+	if loaded.ID != "resume-test" {
+		t.Errorf("loaded session ID = %q, want 'resume-test'", loaded.ID)
+	}
+	if len(loadedHistory) < 2 {
+		t.Fatalf("loaded history too short: %d messages (want >= 2: user + assistant)", len(loadedHistory))
+	}
+
+	loaded.History = append(loadedHistory, common.Message{
+		Role:    common.RoleUser,
+		Content: []common.Block{{Kind: common.BlockText, Text: "What was the code word I asked you to remember? Reply with just the code word."}},
+	})
+
+	resumePath := filepath.Join(tmpDir, "resume-test-continued.jsonl")
+	w2, err := session.OpenWriter(resumePath)
+	if err != nil {
+		t.Fatalf("OpenWriter (resume): %v", err)
+	}
+	t.Cleanup(func() { _ = w2.Close() })
+
+	fe2 := &recordingFrontend{}
+	g2 := guard.NewGuard(wl, fe2, nil)
+	g2.SetYolo(true)
+
+	reg2 := tools.NewRegistry()
+	reg2.Register(tools.ReadTool{})
+
+	state2 := agent.NewSessionState(loaded, w2, client)
+	a2 := &agent.Agent{
+		Tools:     reg2,
+		Guard:     g2,
+		Frontend:  fe2,
+		State:     state2,
+		System:    "You are a helpful assistant.",
+		MaxTokens: 128,
+	}
+
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel2()
+
+	if err := a2.Run(ctx2, loaded); err != nil {
+		t.Fatalf("phase 2 agent.Run: %v", err)
+	}
+
+	var lastText string
+	for _, msg := range loaded.History {
+		if msg.Role == common.RoleAssistant {
+			for _, b := range msg.Content {
+				if b.Kind == common.BlockText {
+					lastText = b.Text
+				}
+			}
+		}
+	}
+	if !strings.Contains(lastText, "gohome-persist-7743") {
+		t.Errorf("resumed agent should recall 'gohome-persist-7743', got: %q", lastText)
+	}
+	t.Logf("resumed agent replied: %q", lastText)
+}
+
+func TestE2EInteractiveWithTools(t *testing.T) {
+	cfg := loadE2EConfig(t)
+
+	tmpDir := t.TempDir()
+	dataFile := filepath.Join(tmpDir, "data.txt")
+	if err := os.WriteFile(dataFile, []byte("gohome-interactive-tools"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	input := strings.Join([]string{
+		fmt.Sprintf(`{"type":"user_message","content":"Read the file at %s and tell me its content."}`, dataFile),
+		`{"type":"user_message","content":"Now write 'updated-content' to the same file and confirm it was written."}`,
+		`{"type":"exit"}`,
+	}, "\n") + "\n"
+
+	var output strings.Builder
+	hfe := headless.NewInteractiveFrontend(
+		strings.NewReader(input),
+		true,
+		&output,
+	)
+
+	ep := config.ModelConfig{
+		Wire:      cfg.wire,
+		BaseURL:   cfg.baseURL,
+		ModelName: cfg.model,
+	}
+	client, err := llm.New(ep, cfg.apiKey)
+	if err != nil {
+		t.Fatalf("llm.New: %v", err)
+	}
+
+	reg := tools.NewRegistry()
+	reg.Register(tools.ReadTool{})
+	reg.Register(tools.WriteTool{})
+
+	wl, werr := guard.Compile(guard.WhitelistFile{}, guard.WhitelistFile{}, "")
+	if werr != nil {
+		t.Fatalf("guard.Compile: %v", werr)
+	}
+	g := guard.NewGuard(wl, hfe, nil)
+	g.SetYolo(true)
+
+	writerPath := filepath.Join(tmpDir, "e2e-interactive-tools.jsonl")
+	w, err := session.OpenWriter(writerPath)
+	if err != nil {
+		t.Fatalf("session.OpenWriter: %v", err)
+	}
+	t.Cleanup(func() { _ = w.Close() })
+
+	sess := session.NewSession("e2e-interactive-tools", tmpDir, cfg.model, string(cfg.wire))
+
+	state := agent.NewSessionState(sess, w, client)
+	a := &agent.Agent{
+		Tools:     reg,
+		Guard:     g,
+		Frontend:  hfe,
+		State:     state,
+		System:    "You are a helpful assistant.",
+		MaxTokens: 256,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+
+	turnCount := 0
+	for {
+		userText, inputErr := hfe.AwaitUserInput(ctx)
+		if inputErr != nil {
+			if errors.Is(inputErr, headless.ErrExit) {
+				break
+			}
+			t.Fatalf("AwaitUserInput: %v", inputErr)
+		}
+
+		sess.History = append(sess.History, common.Message{
+			Role:    common.RoleUser,
+			Content: []common.Block{{Kind: common.BlockText, Text: userText}},
+		})
+
+		if runErr := a.Run(ctx, sess); runErr != nil {
+			t.Fatalf("agent.Run (turn %d): %v", turnCount, runErr)
+		}
+		turnCount++
+	}
+
+	if turnCount < 2 {
+		t.Errorf("expected at least 2 turns, got %d", turnCount)
+	}
+
+	content, err := os.ReadFile(dataFile)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if !strings.Contains(string(content), "updated-content") {
+		t.Errorf("file should contain 'updated-content' after turn 2, got: %q", string(content))
+	}
+
+	if output.Len() == 0 {
+		t.Error("expected verbose JSONL output, got nothing")
+	}
+	t.Logf("completed %d turns, output: %d bytes", turnCount, output.Len())
 }

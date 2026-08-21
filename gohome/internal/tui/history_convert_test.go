@@ -186,6 +186,29 @@ func TestHistoryToTimeline_ThinkingWithoutSignatureCollapsed(t *testing.T) {
 	}
 }
 
+func TestHistoryToTimeline_MultipleToolCallsMatchByID(t *testing.T) {
+	msgs := []common.Message{
+		{Role: common.RoleAssistant, Content: []common.Block{
+			{Kind: common.BlockToolUse, ToolName: "shell", ToolUseID: "tc1", InputJSON: `{"cmd":"ls"}`},
+			{Kind: common.BlockToolUse, ToolName: "read", ToolUseID: "tc2", InputJSON: `{"path":"foo.go"}`},
+		}},
+		{Role: common.RoleTool, Content: []common.Block{
+			{Kind: common.BlockToolResult, ToolUseID: "tc1", ResultText: "ls-output"},
+			{Kind: common.BlockToolResult, ToolUseID: "tc2", ResultText: "read-output"},
+		}},
+	}
+	got := historyToTimeline(msgs)
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2", len(got))
+	}
+	if got[0].ToolName != "shell" || got[0].ToolResult != "ls-output" {
+		t.Errorf("tool[0]: name=%q result=%q, want shell/ls-output", got[0].ToolName, got[0].ToolResult)
+	}
+	if got[1].ToolName != "read" || got[1].ToolResult != "read-output" {
+		t.Errorf("tool[1]: name=%q result=%q, want read/read-output", got[1].ToolName, got[1].ToolResult)
+	}
+}
+
 func TestHistoryToTimeline_EmptyThinkingText(t *testing.T) {
 	msgs := []common.Message{
 		{Role: common.RoleAssistant, Content: []common.Block{

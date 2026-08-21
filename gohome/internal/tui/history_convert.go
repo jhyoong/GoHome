@@ -40,10 +40,11 @@ func historyToTimeline(msgs []common.Message) []TimelineEntry {
 					})
 				case common.BlockToolUse:
 					entries = append(entries, TimelineEntry{
-						Kind:     KindTool,
-						ToolName: b.ToolName,
-						Text:     b.InputJSON,
-						Status:   "success",
+						Kind:      KindTool,
+						ToolName:  b.ToolName,
+						ToolUseID: b.ToolUseID,
+						Text:      b.InputJSON,
+						Status:    "success",
 					})
 				}
 			}
@@ -59,16 +60,22 @@ func historyToTimeline(msgs []common.Message) []TimelineEntry {
 				}
 				merged := false
 				for i := len(entries) - 1; i >= 0; i-- {
-					if entries[i].Kind == KindTool && entries[i].ToolResult == "" {
-						entries[i].ToolResult = b.ResultText
-						entries[i].Status = status
-						merged = true
-						break
+					e := &entries[i]
+					if e.Kind != KindTool || e.ToolResult != "" {
+						continue
 					}
+					if b.ToolUseID != "" && e.ToolUseID != "" && e.ToolUseID != b.ToolUseID {
+						continue
+					}
+					e.ToolResult = b.ResultText
+					e.Status = status
+					merged = true
+					break
 				}
 				if !merged {
 					entries = append(entries, TimelineEntry{
 						Kind:       KindTool,
+						ToolUseID:  b.ToolUseID,
 						ToolResult: b.ResultText,
 						Status:     status,
 					})

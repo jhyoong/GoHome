@@ -3,7 +3,9 @@ package headless_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
@@ -69,5 +71,80 @@ func TestHeadless_EndToEnd(t *testing.T) {
 	got := fe.FinalText()
 	if got != "Hello!" {
 		t.Errorf("FinalText() = %q, want %q", got, "Hello!")
+	}
+}
+
+func TestHeadless_Interactive_MultiTurn(t *testing.T) {
+	input := strings.NewReader(
+		"{\"type\":\"user_message\",\"content\":\"say hello\"}\n" +
+			"{\"type\":\"user_message\",\"content\":\"say goodbye\"}\n" +
+			"{\"type\":\"exit\"}\n",
+	)
+	var buf bytes.Buffer
+	fe := headless.NewInteractiveFrontend(input, true, &buf)
+
+	client := &fakeClient{response: "Hello!"}
+	dir := t.TempDir()
+	sess := session.NewSession("test-interactive", dir, "fake-model", "fake")
+	writerPath := filepath.Join(dir, "test.jsonl")
+	writer, err := session.OpenWriter(writerPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = writer.Close() }()
+
+	wl, _ := guard.LoadWhitelist("", "")
+	g := guard.NewGuard(wl, fe, nil)
+	g.SetYolo(true)
+
+	registry := tools.NewRegistry()
+	state := agent.NewSessionState(sess, writer, client)
+
+	a := &agent.Agent{
+		Tools:    registry,
+		Guard:    g,
+		Frontend: fe,
+		State:    state,
+		System:   "You are a test agent.",
+	}
+
+	ctx := context.Background()
+	turnCount := 0
+	var loopErr error
+	for {
+		text, inputErr := fe.AwaitUserInput(ctx)
+		if inputErr != nil {
+			loopErr = inputErr
+			break
+		}
+		sess.History = append(sess.History, common.Message{
+			Role:    common.RoleUser,
+			Content: []common.Block{{Kind: common.BlockText, Text: text}},
+		})
+		writer.Emit(session.UserMessage{
+			Content: []common.Block{{Kind: common.BlockText, Text: text}},
+		})
+		runErr := a.Run(ctx, sess)
+		writer.Emit(session.TurnDone{SessionID: sess.ID})
+		if runErr != nil {
+			t.Fatalf("agent.Run failed on turn %d: %v", turnCount+1, runErr)
+		}
+		turnCount++
+	}
+
+	if !errors.Is(loopErr, headless.ErrExit) {
+		t.Fatalf("expected loop to end with ErrExit, got %v", loopErr)
+	}
+	if turnCount != 2 {
+		t.Errorf("expected 2 turns, got %d", turnCount)
+	}
+
+	output := buf.String()
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	if len(lines) < 4 {
+		t.Errorf("expected at least 4 output lines (2 events per turn), got %d", len(lines))
+	}
+	if !strings.Contains(output, "Hello!") {
+		t.Errorf("expected output to contain agent response, got %q", output)
 	}
 }

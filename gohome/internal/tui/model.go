@@ -36,6 +36,7 @@ type TimelineEntry struct {
 	Kind        string // KindUser | KindAssistant | KindTool | KindNotice | KindStats
 	Text        string
 	ToolName    string
+	ToolUseID   string // LLM-assigned tool_use ID for matching results to calls
 	ToolResult  string
 	Expanded    bool
 	Status      string // "" | "pending" | "success" | "error" (tool entries only)
@@ -159,6 +160,8 @@ type Model struct {
 
 	sudoPasswordCache string
 
+	mouseHintUntil time.Time
+
 	// slashCB holds optional callbacks wired to slash commands (/new, /resume,
 	// /model, /cancel). Set via SetSlashCallbacks.
 	slashCB SlashCallbacks
@@ -170,6 +173,9 @@ type Model struct {
 
 // renderThrottleMsg fires when a deferred render is due.
 type renderThrottleMsg struct{}
+
+// mouseHintExpiredMsg fires when the mouse selection hint should be hidden.
+type mouseHintExpiredMsg struct{}
 
 // New creates and returns a new Model with an initial session whose ID matches
 // the agent session. fe may be nil (tests that do not need agent routing or
@@ -384,6 +390,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case approvalReqMsg:
 		m.handleApprovalReq(msg)
 
+	case mouseHintExpiredMsg:
+		m.mouseHintUntil = time.Time{}
+
 	case tea.MouseMsg:
 		switch msg.Button {
 		case tea.MouseButtonWheelUp:
@@ -392,6 +401,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.MouseButtonWheelDown:
 			m.chat.DisableAutoScroll(m.winW)
 			m.chat.ScrollDown(3)
+		case tea.MouseButtonLeft:
+			m.mouseHintUntil = time.Now().Add(3 * time.Second)
+			return m, tea.Tick(3*time.Second, func(time.Time) tea.Msg {
+				return mouseHintExpiredMsg{}
+			})
 		}
 
 	case tea.KeyMsg:

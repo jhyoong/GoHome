@@ -16,6 +16,8 @@ go build -ldflags "-X main.version=dev" -o bin/gohome ./gohome/cmd/gohome
 ./bin/gohome --model <name>
 ```
 
+**Windows note:** Do not use `-ldflags "-s -w"` (strip flags) when building for Windows. Stripped binaries score higher on antivirus heuristics. The CI workflow builds without strip flags. See `docs/windows-defender.md` for details.
+
 ## Test commands
 
 ```sh

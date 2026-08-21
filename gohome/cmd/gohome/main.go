@@ -1,5 +1,7 @@
 package main
 
+//go:generate goversioninfo -o resource_windows.syso
+
 import (
 	"context"
 	"encoding/json"
@@ -36,7 +38,7 @@ var (
 	resume      = flag.Bool("resume", false, "resume a past session")
 	showVersion = flag.Bool("version", false, "print version and exit")
 	showConfig  = flag.Bool("config", false, "print merged configuration and exit")
-	prompt      = flag.String("prompt", "", "run non-interactively with this prompt (requires --yolo)")
+	prompt      = flag.String("prompt", "", "run headless with this prompt (requires --yolo); use - for interactive JSONL mode (requires --verbose)")
 	verbose     = flag.Bool("verbose", false, "emit all events as JSON lines (requires --prompt)")
 )
 
@@ -205,12 +207,16 @@ func main() {
 		os.Exit(0)
 	}
 
-	if *prompt != "" && !*yolo {
+	if *prompt != "" && *prompt != "-" && !*yolo {
 		fmt.Fprintf(os.Stderr, "gohome: --prompt (non-interactive mode) requires --yolo\n")
 		os.Exit(1)
 	}
 	if *verbose && *prompt == "" {
 		fmt.Fprintf(os.Stderr, "gohome: --verbose requires --prompt\n")
+		os.Exit(1)
+	}
+	if *prompt == "-" && !*verbose {
+		fmt.Fprintf(os.Stderr, "gohome: --prompt - (interactive mode) requires --verbose\n")
 		os.Exit(1)
 	}
 
@@ -354,7 +360,13 @@ func main() {
 
 	// Headless execution path: run agent non-interactively when --prompt is set.
 	if *prompt != "" {
-		hfe := headless.NewFrontend(*prompt, *verbose, os.Stdout)
+		var hfe *headless.Frontend
+		if *prompt == "-" {
+			hfe = headless.NewInteractiveFrontend(os.Stdin, true, os.Stdout)
+		} else {
+			hfe = headless.NewFrontend(*prompt, *verbose, os.Stdout)
+		}
+
 		g := guard.NewGuard(wl, hfe, dl)
 		g.SetYolo(*yolo)
 
@@ -415,20 +427,6 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		}
 		a.RegisterSubagentTool()
 
-		// Inject prompt as user message.
-		sess.History = append(sess.History, common.Message{
-			Role: common.RoleUser,
-			Content: []common.Block{
-				{Kind: common.BlockText, Text: *prompt},
-			},
-		})
-		writer.Emit(session.UserMessage{
-			Content: []common.Block{
-				{Kind: common.BlockText, Text: *prompt},
-			},
-		})
-
-		// Run agent.
 		ctx, cancel := context.WithCancel(context.Background())
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -437,31 +435,88 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 			cancel()
 		}()
 
-		runErr := a.Run(ctx, sess)
-		signal.Stop(sigCh)
-		cancel()
+		if *prompt == "-" {
+			// Interactive multi-turn loop.
+			for {
+				text, err := hfe.AwaitUserInput(ctx)
+				if err != nil {
+					break
+				}
 
-		// Output final text (plain mode only).
-		if !*verbose {
-			text := strings.TrimLeft(hfe.FinalText(), "\n")
-			if text != "" {
-				fmt.Print(text)
-				if !strings.HasSuffix(text, "\n") {
-					fmt.Println()
+				sess.History = append(sess.History, common.Message{
+					Role: common.RoleUser,
+					Content: []common.Block{
+						{Kind: common.BlockText, Text: text},
+					},
+				})
+				writer.Emit(session.UserMessage{
+					Content: []common.Block{
+						{Kind: common.BlockText, Text: text},
+					},
+				})
+
+				runErr := a.Run(ctx, sess)
+				writer.Emit(session.TurnDone{SessionID: sess.ID})
+
+				if runErr != nil && !errors.Is(runErr, context.Canceled) {
+					if errors.Is(runErr, agent.ErrToolDenied) {
+						continue
+					}
+					fmt.Fprintf(os.Stderr, "gohome: agent error: %v\n", runErr)
+					break
+				}
+				if ctx.Err() != nil {
+					break
 				}
 			}
+
+			writer.Emit(session.SessionEnd{Reason: "exit"})
+		} else {
+			// One-shot: inject prompt as user message and run once.
+			sess.History = append(sess.History, common.Message{
+				Role: common.RoleUser,
+				Content: []common.Block{
+					{Kind: common.BlockText, Text: *prompt},
+				},
+			})
+			writer.Emit(session.UserMessage{
+				Content: []common.Block{
+					{Kind: common.BlockText, Text: *prompt},
+				},
+			})
+
+			runErr := a.Run(ctx, sess)
+			signal.Stop(sigCh)
+			cancel()
+
+			if !*verbose {
+				text := strings.TrimLeft(hfe.FinalText(), "\n")
+				if text != "" {
+					fmt.Print(text)
+					if !strings.HasSuffix(text, "\n") {
+						fmt.Println()
+					}
+				}
+			}
+
+			writer.Emit(session.SessionEnd{Reason: "prompt_done"})
+			_ = writer.Close()
+			if logFile != nil {
+				_ = logFile.Close()
+			}
+
+			if runErr != nil && !errors.Is(runErr, context.Canceled) {
+				fmt.Fprintf(os.Stderr, "gohome: agent error: %v\n", runErr)
+				os.Exit(1)
+			}
+			return
 		}
 
-		// Shutdown.
-		writer.Emit(session.SessionEnd{Reason: "prompt_done"})
+		signal.Stop(sigCh)
+		cancel()
 		_ = writer.Close()
 		if logFile != nil {
 			_ = logFile.Close()
-		}
-
-		if runErr != nil && runErr != context.Canceled {
-			fmt.Fprintf(os.Stderr, "gohome: agent error: %v\n", runErr)
-			os.Exit(1)
 		}
 		return
 	}
