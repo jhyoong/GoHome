@@ -210,14 +210,14 @@ func TestTabCompletesFirstMatchFromSlash(t *testing.T) {
 		return bytes.Contains(out, []byte("─"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
-	// "/" matches all commands; first in list is "/config"
+	// "/" matches all commands; first in list is "/cancel"
 	tm.Type("/")
 	tm.Send(tea.KeyMsg{Type: tea.KeyTab})
 	tm.Type("x")
 
-	// If Tab completed, editor is "/config x". If not, editor is "/x".
+	// If Tab completed, editor is "/cancel x". If not, editor is "/x".
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("/config x"))
+		return bytes.Contains(out, []byte("/cancel x"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
 
@@ -235,6 +235,35 @@ func TestSlashModelNoConfigs(t *testing.T) {
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("Current model:"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
+
+func TestSlashMouseTogglesMouseTracking(t *testing.T) {
+	m := tui.New(nil, "")
+
+	if !m.MouseEnabled() {
+		t.Fatal("mouseEnabled should be true initially")
+	}
+
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("─"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	tm.Type("/mouse")
+	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Mouse tracking OFF"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	tm.Type("/mouse")
+	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Mouse tracking ON"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
 
@@ -281,4 +310,23 @@ func TestSlashModelCallsCallback(t *testing.T) {
 	if calledWith == "" {
 		t.Error("SetModel callback was not called")
 	}
+}
+
+func TestSlashClearQueue(t *testing.T) {
+	m := tui.New(nil, "")
+	m.SetPendingMessages([]string{"a", "b", "c"})
+
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("─"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	tm.Type("/clear-queue")
+	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Cleared 3 queued message(s)"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }

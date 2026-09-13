@@ -34,6 +34,9 @@ type approvalPrompt struct {
 	editing      bool
 	patternInput textinput.Model
 
+	// expandedSummary: user pressed 'v' to see full summary
+	expandedSummary bool
+
 	// steer sub-mode: user pressed '4' to deny + steer
 	steering   bool
 	steerInput textinput.Model
@@ -93,7 +96,29 @@ var approvalBoxStyle = lipgloss.NewStyle().
 func renderApprovalOverlay(ap *approvalPrompt, width int, focusedSessionID string) string {
 	var sb strings.Builder
 
-	sb.WriteString(approvalSummaryLine(ap, focusedSessionID))
+	summary := approvalSummaryLine(ap, focusedSessionID)
+	boxW := width - 4
+	if boxW < 20 {
+		boxW = 20
+	}
+
+	if ap.expandedSummary {
+		wrapped := WrapText(summary, boxW)
+		sb.WriteString(strings.Join(wrapped, "\n"))
+	} else {
+		wrapped := WrapText(summary, boxW)
+		maxSummaryLines := 3
+		if len(wrapped) > maxSummaryLines {
+			for i := 0; i < maxSummaryLines-1; i++ {
+				sb.WriteString(wrapped[i])
+				sb.WriteString("\n")
+			}
+			sb.WriteString(wrapped[maxSummaryLines-1] + " ...")
+			sb.WriteString("\n(v to expand)")
+		} else {
+			sb.WriteString(strings.Join(wrapped, "\n"))
+		}
+	}
 	sb.WriteString("\n")
 
 	if ap.needsSudo {
@@ -130,11 +155,5 @@ func renderApprovalOverlay(ap *approvalPrompt, width int, focusedSessionID strin
 	}
 
 	inner := sb.String()
-
-	// Constrain to available width (minus border/padding overhead of ~4 chars).
-	boxW := width - 4
-	if boxW < 20 {
-		boxW = 20
-	}
 	return approvalBoxStyle.Width(boxW).Render(inner)
 }

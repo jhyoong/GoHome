@@ -401,3 +401,51 @@ func TestApprovalPgUpScrollsTimeline(t *testing.T) {
 		t.Error("expected autoScroll to be false after PgUp during approval")
 	}
 }
+
+func TestCountLines_MatchesRender(t *testing.T) {
+	tl := []TimelineEntry{
+		{Kind: KindUser, Text: "hello world"},
+		{Kind: KindAssistant, Text: "response text here"},
+		{Kind: KindNotice, Text: "a notice"},
+	}
+	c := &ChatComponent{
+		timeline:   &tl,
+		autoScroll: true,
+		maxHeight:  100,
+		cursor:     -1,
+		lastCursor: -1,
+	}
+
+	rendered := c.Render(80)
+	counted := c.countLines(80)
+	if counted != len(rendered) {
+		t.Errorf("countLines=%d, len(Render)=%d", counted, len(rendered))
+	}
+}
+
+func TestRender_SkipsOffscreenEntries(t *testing.T) {
+	var tl []TimelineEntry
+	for i := 0; i < 100; i++ {
+		tl = append(tl, TimelineEntry{Kind: KindNotice, Text: fmt.Sprintf("entry %d", i)})
+	}
+	c := &ChatComponent{
+		timeline:   &tl,
+		autoScroll: true,
+		maxHeight:  10,
+		cursor:     -1,
+		lastCursor: -1,
+	}
+
+	rendered := c.Render(80)
+	if len(rendered) > 10 {
+		t.Errorf("expected at most 10 lines, got %d", len(rendered))
+	}
+
+	// Verify offscreen entries were not rendered (cachedLines should be nil).
+	// The first 89 entries (indices 0-88) should not have been rendered.
+	for i := 0; i < 80; i++ {
+		if tl[i].cachedLines != nil {
+			t.Errorf("entry %d was rendered but should have been skipped", i)
+		}
+	}
+}

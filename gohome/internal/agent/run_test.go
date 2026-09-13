@@ -685,3 +685,50 @@ func (c *countingTool) Execute(ctx context.Context, in json.RawMessage, sink too
 	*c.count++
 	return c.fakeTool.Execute(ctx, in, sink)
 }
+
+// TestRun_SteerInjection verifies that a mid-turn steer message is injected
+// into session history between tool results and the next LLM turn.
+func TestRun_SteerInjection(t *testing.T) {
+	// Turn 1: returns tool_use for "fake" tool.
+	turn1 := []common.StreamEvent{
+		{Kind: common.EventTextDelta, TextDelta: "thinking"},
+		{Kind: common.EventToolCallDone, ToolCallID: "tc1", ToolName: "fake", InputJSON: `{}`},
+		{Kind: common.EventTurnDone, StopReason: "tool_use"},
+	}
+	// Turn 2: returns end_turn (no tools).
+	turn2 := []common.StreamEvent{
+		{Kind: common.EventTextDelta, TextDelta: "done"},
+		{Kind: common.EventTurnDone, StopReason: "end_turn"},
+	}
+
+	client := &fakeClient{sequences: [][]common.StreamEvent{turn1, turn2}}
+	steerCh := make(chan string, 1)
+	steerCh <- "focus on error handling" // pre-load the steer message
+
+	fe := &fakeRecorder{steerCh: steerCh}
+	reg := tools.NewRegistry()
+	reg.Register(&fakeTool{name: "fake", content: "ok"})
+	g := compileYoloGuard(t)
+	a, sess := newTestAgentWithGuard(t, client, fe, g, reg)
+
+	err := a.Run(context.Background(), sess)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	// Verify steer message was injected into history.
+	// History should be: [assistant+tool_use] [tool_result] [user: steer] [assistant: done]
+	found := false
+	for _, msg := range sess.History {
+		if msg.Role == common.RoleUser {
+			for _, b := range msg.Content {
+				if b.Text == "focus on error handling" {
+					found = true
+				}
+			}
+		}
+	}
+	if !found {
+		t.Error("steer message not found in session history")
+	}
+}

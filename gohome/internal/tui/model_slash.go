@@ -14,7 +14,7 @@ import (
 
 // slashCommands is the static list of available slash commands.
 var slashCommands = []string{
-	"/config", "/help", "/new", "/resume", "/yolo", "/model", "/cancel", "/tokens", "/quit",
+	"/cancel", "/clear-queue", "/config", "/help", "/model", "/mouse", "/new", "/quit", "/resume", "/tokens", "/yolo",
 }
 
 // slashComplete returns all commands in slashCommands that have prefix as a prefix.
@@ -37,6 +37,10 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 	}
 	cmd := fields[0]
 	switch cmd {
+	case "/clear-queue":
+		n := len(m.pendingMessages)
+		m.pendingMessages = m.pendingMessages[:0]
+		m.statusMsg = fmt.Sprintf("Cleared %d queued message(s)", n)
 	case "/quit":
 		return tea.Quit
 	case "/yolo":
@@ -178,6 +182,16 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 			m.activeModal = nil
 		})
 		m.activeModal = ms
+	case "/mouse":
+		m.mouseEnabled = !m.mouseEnabled
+		if m.mouseEnabled {
+			m.mouseActive = true
+			m.statusMsg = "Mouse tracking ON (scroll with mouse, auto-disables for text selection)"
+			return func() tea.Msg { return tea.EnableMouseCellMotion() }
+		}
+		m.mouseActive = false
+		m.statusMsg = "Mouse tracking OFF (native text selection, no mouse scroll)"
+		return func() tea.Msg { return tea.DisableMouse() }
 	case "/config":
 		if m.slashCB.OpenConfig == nil {
 			m.statusMsg = "/config: not configured"

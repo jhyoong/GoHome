@@ -38,9 +38,10 @@ func (cfg CompactConfig) shouldCompact(usage common.Usage) bool {
 const minCompactMessages = 4
 
 // compact sends older conversation history to the LLM for summarization,
-// keeps the last ~4 messages (recent turns) intact to preserve cache hits,
-// and prepends the summary as a new first message. Persists a Compaction
-// event and emits an EventCompacted to the frontend.
+// keeps the first 2 messages (stable prefix for prompt caching) and the
+// last ~4 messages (recent turns) intact, summarizes everything in between,
+// and rebuilds History as: stablePrefix + summary + recentMessages.
+// Persists a Compaction event and emits an EventCompacted to the frontend.
 func (a *Agent) compact(ctx context.Context, sess *session.Session) error {
 	if len(sess.History) < minCompactMessages {
 		return nil
@@ -51,9 +52,12 @@ func (a *Agent) compact(ctx context.Context, sess *session.Session) error {
 		prompt = defaultCompactPrompt
 	}
 
-	// Keep the last keepCount messages. Default: 4 (roughly 2 turns).
 	keepCount := 4
-	if keepCount >= len(sess.History) {
+	prefixCount := 2
+
+	// Need at least: prefix + 1 message to summarize + keepCount recent
+	minRequired := prefixCount + 1 + keepCount
+	if len(sess.History) < minRequired {
 		return nil
 	}
 
@@ -64,11 +68,14 @@ func (a *Agent) compact(ctx context.Context, sess *session.Session) error {
 	if splitIdx > 0 && sess.History[splitIdx].Role == common.RoleTool {
 		splitIdx--
 	}
-	if splitIdx <= 0 {
+	if splitIdx <= prefixCount {
 		return nil
 	}
 
-	oldMessages := sess.History[:splitIdx]
+	stablePrefix := make([]common.Message, prefixCount)
+	copy(stablePrefix, sess.History[:prefixCount])
+
+	oldMessages := sess.History[prefixCount:splitIdx]
 	recentMessages := make([]common.Message, len(sess.History[splitIdx:]))
 	copy(recentMessages, sess.History[splitIdx:])
 
@@ -116,7 +123,10 @@ func (a *Agent) compact(ctx context.Context, sess *session.Session) error {
 		},
 	}
 
-	sess.History = append([]common.Message{summaryMsg}, recentMessages...)
+	sess.History = make([]common.Message, 0, len(stablePrefix)+1+len(recentMessages))
+	sess.History = append(sess.History, stablePrefix...)
+	sess.History = append(sess.History, summaryMsg)
+	sess.History = append(sess.History, recentMessages...)
 
 	afterTokens := len(summary) / 4
 

@@ -76,6 +76,10 @@ func TestSnapshots(t *testing.T) {
 			Kind:      agent.EventTurnDone,
 			SessionID: "main",
 		}})
+		m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+			Kind:      agent.EventRunDone,
+			SessionID: "main",
+		}})
 		golden.RequireEqual(t, []byte(m.View()))
 	})
 

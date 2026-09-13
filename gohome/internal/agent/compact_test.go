@@ -2,9 +2,11 @@ package agent
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
+	"github.com/jhyoong/GoHome/gohome/internal/session"
 )
 
 func TestShouldCompact_Disabled(t *testing.T) {
@@ -73,6 +75,7 @@ func TestCompact_KeepsRecentMessages(t *testing.T) {
 	fe := &fakeRecorder{}
 	a, sess, _ := newTestAgent(t, client, fe)
 
+	// 8 messages: 2 prefix + 2 to summarize + 4 recent
 	sess.History = []common.Message{
 		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "first"}}},
 		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "reply"}}},
@@ -80,27 +83,37 @@ func TestCompact_KeepsRecentMessages(t *testing.T) {
 		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "reply2"}}},
 		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "third"}}},
 		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "reply3"}}},
+		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "fourth"}}},
+		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "reply4"}}},
 	}
 
 	if err := a.compact(context.Background(), sess); err != nil {
 		t.Fatalf("compact: %v", err)
 	}
 
-	// Should be: summary + last 4 messages (2 turns kept).
-	if len(sess.History) < 3 {
-		t.Fatalf("len(sess.History) = %d, want >= 3 (summary + recent)", len(sess.History))
+	// Should be: 2 prefix + summary + 4 recent = 7 messages.
+	if len(sess.History) != 7 {
+		t.Fatalf("len(sess.History) = %d, want 7 (prefix + summary + recent)", len(sess.History))
 	}
 
-	// First message should be the summary.
+	// First two messages should be the stable prefix (unchanged).
+	if sess.History[0].Content[0].Text != "first" {
+		t.Errorf("prefix[0] = %q, want 'first'", sess.History[0].Content[0].Text)
+	}
+	if sess.History[1].Content[0].Text != "reply" {
+		t.Errorf("prefix[1] = %q, want 'reply'", sess.History[1].Content[0].Text)
+	}
+
+	// Third message should be the summary.
 	want := "[Auto-compact summary]\n\n" + summaryText
-	if sess.History[0].Content[0].Text != want {
-		t.Errorf("first message = %q, want summary", sess.History[0].Content[0].Text)
+	if sess.History[2].Content[0].Text != want {
+		t.Errorf("summary message = %q, want %q", sess.History[2].Content[0].Text, want)
 	}
 
 	// Last message should be unchanged from original.
 	last := sess.History[len(sess.History)-1]
-	if last.Content[0].Text != "reply3" {
-		t.Errorf("last message = %q, want 'reply3'", last.Content[0].Text)
+	if last.Content[0].Text != "reply4" {
+		t.Errorf("last message = %q, want 'reply4'", last.Content[0].Text)
 	}
 }
 
@@ -119,9 +132,10 @@ func TestCompact_DoesNotSplitToolPair(t *testing.T) {
 	// to fire, backing splitIdx up to 3 so the assistant+tool pair stays
 	// together in the kept portion.
 	//
-	//   [0] User              \
-	//   [1] Assistant           > summarized (oldMessages = history[:3])
-	//   [2] User              /
+	// With prefix preservation (first 2 messages kept as stable prefix):
+	//   [0] User              \  stable prefix
+	//   [1] Assistant         /
+	//   [2] User              -> summarized (oldMessages = history[2:3])
 	//   [3] Assistant (tool_use)  <-- splitIdx backs up here
 	//   [4] Tool (result)         <-- original splitIdx lands here
 	//   [5] Assistant          \
@@ -147,10 +161,18 @@ func TestCompact_DoesNotSplitToolPair(t *testing.T) {
 		t.Fatalf("compact: %v", err)
 	}
 
-	// After compaction: summary + messages[3:8] = 6 messages total
+	// After compaction: 2 prefix + summary + messages[3:8] = 8 messages total
 	// (splitIdx backed up from 4 to 3, so the tool pair stays intact).
-	if len(sess.History) != 6 {
-		t.Fatalf("len(sess.History) = %d, want 6 (summary + 5 kept)", len(sess.History))
+	if len(sess.History) != 8 {
+		t.Fatalf("len(sess.History) = %d, want 8 (2 prefix + summary + 5 kept)", len(sess.History))
+	}
+
+	// First two messages should be stable prefix.
+	if sess.History[0].Content[0].Text != "old" {
+		t.Errorf("prefix[0] = %q, want 'old'", sess.History[0].Content[0].Text)
+	}
+	if sess.History[1].Content[0].Text != "old reply" {
+		t.Errorf("prefix[1] = %q, want 'old reply'", sess.History[1].Content[0].Text)
 	}
 
 	// The tool_result message and its preceding assistant message should both
@@ -202,12 +224,16 @@ func TestCompact_EmitsEvent(t *testing.T) {
 	fe := &fakeRecorder{}
 	a, sess, _ := newTestAgent(t, client, fe)
 
+	// 8 messages: 2 prefix + 2 to summarize + 4 recent
 	sess.History = []common.Message{
 		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "first"}}},
 		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "reply"}}},
 		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "second"}}},
 		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "reply2"}}},
 		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "third"}}},
+		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "reply3"}}},
+		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "fourth"}}},
+		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "reply4"}}},
 	}
 
 	if err := a.compact(context.Background(), sess); err != nil {
@@ -236,12 +262,16 @@ func TestCompact_ErrorFromStream(t *testing.T) {
 	fe := &fakeRecorder{}
 	a, sess, _ := newTestAgent(t, client, fe)
 
+	// 8 messages: 2 prefix + 2 to summarize + 4 recent
 	sess.History = []common.Message{
 		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "first"}}},
 		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "reply"}}},
 		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "second"}}},
 		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "reply2"}}},
 		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "third"}}},
+		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "reply3"}}},
+		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "fourth"}}},
+		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "reply4"}}},
 	}
 	origLen := len(sess.History)
 
@@ -270,5 +300,95 @@ func TestCompact_EmptyHistoryNoop(t *testing.T) {
 	}
 	if client.callCount != 0 {
 		t.Errorf("client called %d times, want 0", client.callCount)
+	}
+}
+
+func TestCompact_PreservesStablePrefix(t *testing.T) {
+	summaryText := "mid-conversation summary"
+	events := []common.StreamEvent{
+		{Kind: common.EventTextDelta, TextDelta: summaryText},
+		{Kind: common.EventTurnDone, StopReason: "end_turn"},
+	}
+	client := &fakeClient{sequences: [][]common.StreamEvent{events}}
+	fe := &fakeRecorder{}
+	a, sess, _ := newTestAgent(t, client, fe)
+
+	// 8 messages: 2 prefix + 2 to summarize + 4 recent
+	sess.History = []common.Message{
+		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "initial prompt"}}},
+		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "initial response"}}},
+		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "middle question"}}},
+		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "middle answer"}}},
+		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "recent q1"}}},
+		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "recent a1"}}},
+		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "recent q2"}}},
+		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "recent a2"}}},
+	}
+
+	if err := a.compact(context.Background(), sess); err != nil {
+		t.Fatalf("compact: %v", err)
+	}
+
+	// Expected: 2 prefix + 1 summary + 4 recent = 7
+	if len(sess.History) != 7 {
+		t.Fatalf("len(sess.History) = %d, want 7", len(sess.History))
+	}
+
+	// Verify stable prefix is preserved exactly.
+	if sess.History[0].Content[0].Text != "initial prompt" {
+		t.Errorf("prefix[0] = %q, want 'initial prompt'", sess.History[0].Content[0].Text)
+	}
+	if sess.History[0].Role != common.RoleUser {
+		t.Errorf("prefix[0].Role = %v, want RoleUser", sess.History[0].Role)
+	}
+	if sess.History[1].Content[0].Text != "initial response" {
+		t.Errorf("prefix[1] = %q, want 'initial response'", sess.History[1].Content[0].Text)
+	}
+	if sess.History[1].Role != common.RoleAssistant {
+		t.Errorf("prefix[1].Role = %v, want RoleAssistant", sess.History[1].Role)
+	}
+
+	// Verify summary message at index 2.
+	if !strings.Contains(sess.History[2].Content[0].Text, session.CompactSummaryPrefix) {
+		t.Errorf("summary message missing CompactSummaryPrefix, got %q", sess.History[2].Content[0].Text)
+	}
+	if !strings.Contains(sess.History[2].Content[0].Text, summaryText) {
+		t.Errorf("summary message missing summary text, got %q", sess.History[2].Content[0].Text)
+	}
+
+	// Verify last 4 messages are the recent ones.
+	recentTexts := []string{"recent q1", "recent a1", "recent q2", "recent a2"}
+	for i, want := range recentTexts {
+		got := sess.History[3+i].Content[0].Text
+		if got != want {
+			t.Errorf("recent[%d] = %q, want %q", i, got, want)
+		}
+	}
+}
+
+func TestCompact_TooFewForPrefix(t *testing.T) {
+	// 6 messages is below minRequired (7), so compact should be a no-op.
+	client := &fakeClient{}
+	fe := &fakeRecorder{}
+	a, sess, _ := newTestAgent(t, client, fe)
+
+	sess.History = []common.Message{
+		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "first"}}},
+		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "reply"}}},
+		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "second"}}},
+		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "reply2"}}},
+		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "third"}}},
+		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "reply3"}}},
+	}
+
+	if err := a.compact(context.Background(), sess); err != nil {
+		t.Fatalf("compact: %v", err)
+	}
+
+	if client.callCount != 0 {
+		t.Errorf("client called %d times, want 0 (too few messages for prefix-aware compact)", client.callCount)
+	}
+	if len(sess.History) != 6 {
+		t.Errorf("history length changed: got %d, want 6", len(sess.History))
 	}
 }

@@ -100,6 +100,7 @@ type Model struct {
 	chat    *ChatComponent
 	spinner *SpinnerComponent
 	inputCh chan string
+	steerCh chan string
 	winW    int
 	winH    int
 
@@ -160,6 +161,9 @@ type Model struct {
 
 	sudoPasswordCache string
 
+	mouseEnabled   bool
+	mouseActive    bool // true when terminal is in mouse capture mode
+	mouseIdleSeq   int  // incremented on each wheel event; stale timeouts are ignored
 	mouseHintUntil time.Time
 
 	// slashCB holds optional callbacks wired to slash commands (/new, /resume,
@@ -177,6 +181,11 @@ type renderThrottleMsg struct{}
 // mouseHintExpiredMsg fires when the mouse selection hint should be hidden.
 type mouseHintExpiredMsg struct{}
 
+// mouseIdleMsg fires after a period of no mouse wheel activity. When received,
+// mouse tracking is disabled so native text selection works. The next wheel
+// event re-enables it.
+type mouseIdleMsg struct{ seq int }
+
 // New creates and returns a new Model with an initial session whose ID matches
 // the agent session. fe may be nil (tests that do not need agent routing or
 // input submission). When fe is non-nil, the Model shares fe.input so submitted
@@ -192,8 +201,10 @@ func New(fe *Frontend, sessionID string) *Model {
 	}
 
 	var inputCh chan string
+	var steerCh chan string
 	if fe != nil {
 		inputCh = fe.input
+		steerCh = fe.steer
 	} else {
 		inputCh = make(chan string, 1)
 	}
@@ -205,6 +216,9 @@ func New(fe *Frontend, sessionID string) *Model {
 		focused:        sessionID,
 		childToParent:  make(map[string]string),
 		inputCh:        inputCh,
+		steerCh:        steerCh,
+		mouseEnabled:   true,
+		mouseActive:    true,
 		contextWindow:  config.DefaultContextWindow,
 		contextWarnPct: config.DefaultContextWarnPct,
 		contextCritPct: config.DefaultContextCritPct,
@@ -393,14 +407,35 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case mouseHintExpiredMsg:
 		m.mouseHintUntil = time.Time{}
 
+	case mouseIdleMsg:
+		if msg.seq == m.mouseIdleSeq && m.mouseEnabled && m.mouseActive {
+			m.mouseActive = false
+			return m, func() tea.Msg { return tea.DisableMouse() }
+		}
+
 	case tea.MouseMsg:
 		switch msg.Button {
-		case tea.MouseButtonWheelUp:
+		case tea.MouseButtonWheelUp, tea.MouseButtonWheelDown:
+			var cmds []tea.Cmd
+			// Re-enable mouse capture if it was disabled by the idle timeout.
+			if m.mouseEnabled && !m.mouseActive {
+				m.mouseActive = true
+				cmds = append(cmds, func() tea.Msg { return tea.EnableMouseCellMotion() })
+			}
 			m.chat.DisableAutoScroll(m.winW)
-			m.chat.ScrollUp(3)
-		case tea.MouseButtonWheelDown:
-			m.chat.DisableAutoScroll(m.winW)
-			m.chat.ScrollDown(3)
+			if msg.Button == tea.MouseButtonWheelUp {
+				m.chat.ScrollUp(3)
+			} else {
+				m.chat.ScrollDown(3)
+				m.chat.ReEnableAutoScrollIfAtBottom(m.winW)
+			}
+			// Schedule idle timeout: disable mouse capture after 2s of no wheel activity.
+			m.mouseIdleSeq++
+			seq := m.mouseIdleSeq
+			cmds = append(cmds, tea.Tick(2*time.Second, func(time.Time) tea.Msg {
+				return mouseIdleMsg{seq: seq}
+			}))
+			return m, tea.Batch(cmds...)
 		case tea.MouseButtonLeft:
 			m.mouseHintUntil = time.Now().Add(3 * time.Second)
 			return m, tea.Tick(3*time.Second, func(time.Time) tea.Msg {
@@ -639,6 +674,9 @@ func (m *Model) View() string {
 // Chat returns the chat component (exported for tests).
 func (m *Model) Chat() *ChatComponent { return m.chat }
 
+// MouseEnabled returns whether mouse tracking is currently enabled (exported for tests).
+func (m *Model) MouseEnabled() bool { return m.mouseEnabled }
+
 // Yolo returns current yolo mode state (exported for tests).
 func (m *Model) Yolo() bool {
 	return m.yolo
@@ -663,6 +701,16 @@ func (m *Model) OpenTokensOverlay() {
 		return
 	}
 	m.activeModal = NewTokensOverlay(sv, m.modelName, m.contextWindow, func() { m.activeModal = nil })
+}
+
+// SetPendingMessages sets the pending message queue (exported for tests).
+func (m *Model) SetPendingMessages(msgs []string) {
+	m.pendingMessages = msgs
+}
+
+// GetPendingMessages returns the pending message queue (exported for tests).
+func (m *Model) GetPendingMessages() []string {
+	return m.pendingMessages
 }
 
 // ShowHelp returns whether the help overlay is displayed (exported for tests).

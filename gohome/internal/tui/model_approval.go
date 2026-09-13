@@ -83,6 +83,7 @@ func (m *Model) handleApprovalKey(msg tea.KeyMsg) tea.Cmd {
 			m.chat.ScrollUp(scrollAmt)
 		} else {
 			m.chat.ScrollDown(scrollAmt)
+			m.chat.ReEnableAutoScrollIfAtBottom(m.winW)
 		}
 		return tea.Batch(cmds...)
 	}
@@ -120,6 +121,8 @@ func (m *Model) handleApprovalKey(msg tea.KeyMsg) tea.Cmd {
 	case keyRune(msg) == '4':
 		ap.steering = true
 		ap.steerInput.Focus()
+	case keyRune(msg) == 'v' || keyRune(msg) == 'V':
+		ap.expandedSummary = !ap.expandedSummary
 	case keyRune(msg) == 'e' && !ap.needsSudo:
 		ap.editing = true
 		ap.patternInput.SetValue(ap.pattern)

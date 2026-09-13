@@ -145,17 +145,25 @@ func TestPendingQueue_EnterWhileStreaming(t *testing.T) {
 		TextDelta: "working on it...",
 	}})
 
-	// Type and submit while streaming.
+	// First message fills the steer channel (buffer 1).
+	tm.Type("steer msg")
+	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Steer message sent"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// Second message: steer channel is full, so falls back to pending queue.
 	tm.Type("fix the tests")
 	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
 
-	// The message should appear in the pending queue, not be sent.
+	// The message should appear in the pending queue.
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("Queued:")) && bytes.Contains(out, []byte("fix the tests"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
 
-func TestPendingQueue_DequeueOnTurnDone(t *testing.T) {
+func TestPendingQueue_DequeueOnRunDone(t *testing.T) {
 	fe := tui.NewFrontend()
 	m := tui.New(fe, "")
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
@@ -178,13 +186,21 @@ func TestPendingQueue_DequeueOnTurnDone(t *testing.T) {
 		TextDelta: "response",
 	}})
 
-	// Queue a message.
+	// First message fills the steer channel (buffer 1).
+	tm.Type("steer msg")
+	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("Steer message sent"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// Second message: steer channel full, goes to pending queue.
 	tm.Type("queued msg")
 	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
 
-	// End the turn -- should auto-dequeue.
+	// End the run -- should auto-dequeue pending messages.
 	tm.Send(tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
-		Kind:      agent.EventTurnDone,
+		Kind:      agent.EventRunDone,
 		SessionID: "main",
 	}})
 

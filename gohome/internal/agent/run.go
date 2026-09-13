@@ -24,6 +24,13 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 	// Inject session into ctx so tools can call tools.SessionFrom(ctx).
 	tctx := tools.WithSession(ctx, sess)
 
+	defer func() {
+		a.Frontend.Emit(sess.ID, Event{
+			Kind:      EventRunDone,
+			SessionID: sess.ID,
+		})
+	}()
+
 	for {
 		a.Frontend.Emit(sess.ID, Event{
 			Kind:      EventSending,
@@ -32,8 +39,6 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 		_, usage, err := a.Turn(tctx, sess)
 		if err != nil {
 			if ctx.Err() != nil {
-				// Context was cancelled during Turn. Emit a frontend event but
-				// do NOT write session_end here — the writer's owner emits that.
 				a.Frontend.Emit(sess.ID, Event{
 					Kind:       EventTurnDone,
 					SessionID:  sess.ID,
@@ -68,17 +73,25 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 			return nil
 		}
 
-		// Dispatch each tool call and collect results.
+		// Dispatch each tool call, checking for mid-turn steering between calls.
 		var resultBlocks []common.Block
 		var anyDenied bool
+		var steered bool
 		for _, block := range toolUseBlocks {
+			// Check for steering before each tool call (except the first).
+			if len(resultBlocks) > 0 {
+				if msg := a.drainSteer(sess); msg != "" {
+					steered = true
+					break
+				}
+			}
+
 			content, isError, elapsed, denied := a.dispatchTool(ctx, tctx, sess, block)
 
 			if denied {
 				anyDenied = true
 			}
 
-			// Persist the tool result event.
 			if w := a.State.Writer(); w != nil {
 				w.Emit(session.ToolResult{
 					ToolUseID: block.ToolUseID,
@@ -87,7 +100,6 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 				})
 			}
 
-			// Forward to Frontend.
 			a.Frontend.Emit(sess.ID, Event{
 				Kind:       EventToolResult,
 				SessionID:  sess.ID,
@@ -108,11 +120,19 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 			})
 		}
 
-		// Append all results as a single RoleTool message.
-		sess.History = append(sess.History, common.Message{
-			Role:    common.RoleTool,
-			Content: resultBlocks,
-		})
+		// Append collected results as a single RoleTool message.
+		if len(resultBlocks) > 0 {
+			sess.History = append(sess.History, common.Message{
+				Role:    common.RoleTool,
+				Content: resultBlocks,
+			})
+		}
+
+		// Final steer check after all tool calls (catches messages that arrived
+		// during the last tool execution).
+		if !steered {
+			a.drainSteer(sess)
+		}
 
 		if anyDenied {
 			a.Frontend.Emit(sess.ID, Event{
@@ -121,6 +141,35 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 			})
 			return ErrToolDenied
 		}
+	}
+}
+
+// drainSteer does a non-blocking read of the steer channel. If a message is
+// available, it appends it to session history as a user message and returns it.
+// Returns "" when nothing was available.
+func (a *Agent) drainSteer(sess *session.Session) string {
+	ch := a.Frontend.SteerCh()
+	if ch == nil {
+		return ""
+	}
+	select {
+	case steer := <-ch:
+		sess.History = append(sess.History, common.Message{
+			Role: common.RoleUser,
+			Content: []common.Block{
+				{Kind: common.BlockText, Text: steer},
+			},
+		})
+		if w := a.State.Writer(); w != nil {
+			w.Emit(session.UserMessage{
+				Content: []common.Block{
+					{Kind: common.BlockText, Text: steer},
+				},
+			})
+		}
+		return steer
+	default:
+		return ""
 	}
 }
 

@@ -95,3 +95,11 @@ existing `_test.go` files with no structural changes.
 - ~~Tool calls to show last 3 rows of output~~ -- DELIVERED in v0.2.5
 - ~~Edit tool to show the changes made (git diff style)~~ -- DELIVERED in v0.2.5
 - ~~Scrolling doesn't work properly when in edit tool mode~~ -- Scrolling reworked in v0.4.1 (smart auto-scroll, mouse wheel, PgUp/PgDn during approval). Sudo cases now have dedicated approval prompts.
+- Steering or adding in prompts mid turn ( inbetween tool calls ) seems to not work as intended, and only send after the agent finishes all of its tool calls?
+- After the recent mouse scrolling update, selecting lines for copy pasting doesn't work anymore.
+- Multiple tool calls - wrong output displayed. E.g tool call 1 shows results of tool call 2, and vice versa.
+- Drastic slowdown on rendering when large thinking or replies after 40k context?
+- Auto-compact doesn't seem to work properly- the notice triggers, but the conversation history sent to the LLM endpoint seems to invalidate the entire cache? Is it because it's modified from the system prompt? Should it be tied to a 'user message` but sent by the system instead?
+- When LLM intends to run a inline python tool call - it can grow to really long tool approval prompt. Cant scroll properly to view the entire thing.
+- (Windows) When pasting multiple lines ( e.g copied from notepad, multiple commands ) - it seems to send the first line only ( might be due to breaklines or something? ) instead of the whole chunk. While default terminal behaves that way, gohome is a coding assistant so pasting long chunks of text should be the norm, and send only when pressing enter is the behaviour to match.
+  - Related point: When multiple messages are then queued - they fire off in turns and not altogether as one message. this causes issues. Might need a way to handle/edit/delete queued messages.
