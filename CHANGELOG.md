@@ -1,5 +1,36 @@
 # Changelog
 
+## v0.4.2
+
+### Added
+
+- **Headless CLI mode (`--prompt`)** -- Non-interactive execution. `--prompt "text"` runs a single prompt headlessly (requires `--yolo`), prints the final assistant text, and exits. `--prompt -` enables interactive JSONL-over-stdin/stdout mode for programmatic multi-turn sessions (requires `--verbose`). New `--verbose` flag emits all agent events as JSON lines. New `internal/headless` package implements `agent.Frontend` (#38).
+- **Denylist guard** -- Shell command denylist that rejects dangerous commands before yolo or whitelist checks. Default patterns block `rm -rf /`, `mkfs`, fork bombs, and writes to `/dev/sd*`. Users can override via `~/.gohome/denylist.json` and `.gohome/denylist.json`. Supports both substring and regex matching (prefixed with `regex:`). Denylist rejections return a `DenyInfo` message to the LLM so it can self-correct. Config wizard now offers optional denylist scaffolding (#38).
+- **Mid-turn steering** -- Users can now inject messages between tool calls while the agent is in-flight, instead of waiting for all tools to complete. Steered messages appear as user entries in the timeline. New `EventRunDone` event distinguishes "turn done" from "run done", fixing the InFlight dead zone (#40).
+- **Mouse idle timeout** -- After 2 seconds of no mouse wheel activity, mouse capture is automatically disabled so native text selection works. The next scroll re-enables it. Clicking shows a transient "Hold Shift to select text" hint in the status bar (#40).
+- **`/mouse` slash command** -- Explicit toggle for mouse tracking on/off (#40).
+- **`/clear-queue` slash command** -- Clears all pending queued messages (#40).
+- **`Ctrl+D` to pop last queued message** -- Removes the most recently queued pending message (#40).
+- **Pending message combining** -- When the agent finishes a run and pending messages exist, they are combined into a single message (joined with newlines) instead of firing one at a time (#40).
+- **Approval prompt expand/collapse** -- Long approval summaries are now truncated to 3 lines with a "(v to expand)" hint. Press `v` to toggle full view (#40).
+- **E2E test suite** -- 11 end-to-end tests against live LLM endpoints covering smoke roundtrip, headless tool call, shell tool, write+read chain, edit tool, error recovery, subagent spawn, session resume, headless multi-turn, interactive with tools, and auto-compaction. Runs with `-tags e2e` build tag (never in CI) (#39).
+- **Windows Defender mitigations** -- PE application manifest embedded for UAC level, DPI awareness, and UTF-8 codepage. Version info embedded via `goversioninfo`. Windows binary now built natively on `windows-latest` CI runner instead of cross-compiled. Strip flags (`-s -w`) no longer used for Windows builds (#39).
+
+### Fixed
+
+- **Tool results matched to wrong entries** -- When multiple tool calls arrived in a single LLM turn, results were matched by backwards position search, causing tool A's output to display under tool B's entry. Now stores `ToolUseID` on `TimelineEntry` and matches by ID (#40).
+- **Auto-scroll re-enable** -- Scrolling down to the bottom of the conversation now re-enables auto-scroll. Previously `ScrollDown` unconditionally disabled auto-scroll (#40).
+- **Denylist rejection halted agent** -- Denylist rejections now return `DenyInfo` to the LLM (as a tool error result) instead of halting the agent, allowing it to self-correct (#38).
+- **Partial compaction for cache preservation** -- Auto-compact now keeps the first 2 messages (stable prefix) and last 4 messages (recent turns) intact, only summarizing the middle portion. This preserves the prompt cache prefix and recent context (#40).
+- **Config wizard unreachable** -- Model resolution exited with `os.Exit(1)` when `ModelConfig` was empty, making the setup wizard unreachable. Now defers model resolution so the wizard can trigger in interactive mode (#38).
+
+### Changed
+
+- **Chat rendering optimized** -- `Render()` now uses a two-pass approach: pass 1 computes line offsets via `entryLineCount` (cache-aware), pass 2 only renders entries overlapping the visible window. Skips offscreen entries entirely (#40).
+- **`NewGuard` signature** -- Now accepts a `*Denylist` parameter (nil disables deny checking): `NewGuard(wl, fe, dl)` (#38).
+- **`agent.Frontend` interface** -- Added `SteerCh() <-chan string` method (#40).
+- **CI: Windows build now native** -- Windows binary is built on `windows-latest` runner instead of cross-compiled from Linux (#39).
+
 ## v0.4.1
 
 ### Added

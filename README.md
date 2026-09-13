@@ -25,7 +25,7 @@ Pre-built binaries are attached to each [GitHub release](https://github.com/jhyo
 
 ```sh
 # Download (replace the URL with the latest release and your platform)
-curl -L -o gohome https://github.com/jhyoong/GoHome/releases/download/v0.4.1/gohome-darwin-arm64
+curl -L -o gohome https://github.com/jhyoong/GoHome/releases/download/v0.4.2/gohome-darwin-arm64
 
 # Make it executable
 chmod +x gohome
@@ -50,7 +50,7 @@ The source tree lives under `gohome/` at the repo root. Because the module layou
 ```sh
 git clone https://github.com/jhyoong/GoHome
 cd GoHome
-go build -ldflags "-X main.version=v0.4.1" -o bin/gohome ./gohome/cmd/gohome
+go build -ldflags "-X main.version=v0.4.2" -o bin/gohome ./gohome/cmd/gohome
 ```
 
 > **Windows note:** Do not use `-ldflags "-s -w"` (strip flags) when building for Windows. Stripped binaries score higher on antivirus heuristics. See [Windows Defender False Positive](docs/windows-defender.md) for details.
@@ -68,6 +68,8 @@ go build -ldflags "-X main.version=v0.4.1" -o bin/gohome ./gohome/cmd/gohome
 | `--model <name>` | Select a configured model config by name |
 | `--yolo` | Start with all approval prompts disabled |
 | `--resume` | Resume the most recent session for the current working directory |
+| `--prompt <text>` | Run a single prompt headlessly and exit (requires `--yolo`). Use `--prompt -` for interactive JSONL-over-stdin/stdout mode (requires `--verbose`) |
+| `--verbose` | Emit all agent events as JSON lines to stdout (for programmatic use with `--prompt -`) |
 | `--config` | Print merged configuration and exit |
 | `--version` | Print version and exit |
 
@@ -105,7 +107,7 @@ Auto-compaction automatically summarizes your conversation history when the cont
 | `autoCompact` | `bool` | `false` | Enable automatic compaction |
 | `autoCompactMode` | `string` | `"percentage"` | Trigger mode: `"percentage"` or `"leftover"` |
 | `autoCompactPct` | `float64` | `0.80` | For percentage mode: compaction triggers when used tokens ≥ `contextWindow × autoCompactPct` |
-| `autoCompactTargetPct` | `float64` | `0.50` | Reserved for future partial compaction |
+| `autoCompactTargetPct` | `float64` | `0.50` | Target context usage ratio after compaction. The middle portion of the conversation is summarized while preserving the first 2 and last 4 messages for cache stability |
 | `autoCompactLeftover` | `int` | `32000` | For leftover mode: compaction triggers when remaining tokens < `autoCompactLeftover` |
 | `autoCompactPrompt` | `string` | (built-in) | Custom prompt for the summarization LLM call. Empty uses the default prompt. |
 
@@ -222,10 +224,12 @@ If `contextWarnPct` >= `contextCritPct`, or either value is outside the (0, 1] r
 | `Ctrl+H` | Open help overlay |
 | `Ctrl+Right` | Focus next session |
 | `Ctrl+Left` | Focus previous session |
+| `Ctrl+D` | Pop last queued pending message |
 | `PgUp` / `PgDn` | Scroll viewport |
 | `@` | Trigger file search popup (type a query after `@`) |
 | `/` | Open slash command with inline autocomplete |
 | `Tab` | Confirm file search selection |
+| `v` | Expand/collapse long approval prompt summary |
 | `1`–`4` | Pick option in approval prompt |
 | `e` | Edit suggested shell pattern in approval prompt |
 | `Esc` | Deny / close overlay / dismiss file search |
@@ -247,6 +251,8 @@ When the input editor is empty, `Up` and `Down` arrow keys move a `>` cursor thr
 | `/new` | Starts a new session (requires backend callback via `SetSlashCallbacks`; shows "not configured" until wired) |
 | `/resume <id>` | Resumes a previous session by ID (requires backend callback; shows "not configured" until wired) |
 | `/model <name>` | Switches the active model config (rebuilds the LLM client). Without arguments, opens a selector listing all configured model configs |
+| `/mouse` | Toggles mouse tracking on/off |
+| `/clear-queue` | Clears all pending queued messages |
 | `/config` | Opens the config overlay showing all settings with source annotations. Press `e` to edit in an external editor |
 
 ---

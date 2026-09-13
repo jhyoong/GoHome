@@ -22,19 +22,16 @@ Thinking blocks are parsed from Anthropic SSE streams and OpenAI `reasoning_cont
 deltas, rendered as collapsible timeline entries with line counts, persisted to
 session JSONL, and restored on resume.
 
-**Denylist**
-Complement to the whitelist — keep specific patterns blocked even if they
-would otherwise match an allow rule.
-Seam: `guard.Whitelist` and `guard.Compile` are the only callsites. A
-`DenyPatterns` field in `WhitelistFile` and a pre-allow check in
-`Whitelist.Allows` is the full implementation surface.
+**Denylist** -- DELIVERED in v0.4.2
+Shell command denylist that rejects dangerous commands before yolo or whitelist
+checks. Default patterns block `rm -rf /`, `mkfs`, fork bombs, and writes to
+`/dev/sd*`. Users can override via `~/.gohome/denylist.json` and
+`.gohome/denylist.json`. Supports both substring and regex matching.
 
-**In-flight subagent steering**
-Inject a user message into a running subagent's conversation without
-cancelling it.
-Seam: `agent.Frontend.AwaitUserInput` is already wired; in the subagent
-loop the parent could push a message into the child's `sess.History` via a
-channel exposed on `session.Session`, then unblock the child's turn.
+**In-flight subagent steering** -- PARTIALLY DELIVERED in v0.4.2
+Mid-turn steering is implemented for the main agent session: users can inject
+messages between tool calls while the agent is in-flight. Subagent-specific
+steering (injecting into a child session independently) is not yet wired.
 
 **Cross-session search / history browsing UI**
 Search across all past JSONL sessions for a project.
@@ -95,11 +92,11 @@ existing `_test.go` files with no structural changes.
 - ~~Tool calls to show last 3 rows of output~~ -- DELIVERED in v0.2.5
 - ~~Edit tool to show the changes made (git diff style)~~ -- DELIVERED in v0.2.5
 - ~~Scrolling doesn't work properly when in edit tool mode~~ -- Scrolling reworked in v0.4.1 (smart auto-scroll, mouse wheel, PgUp/PgDn during approval). Sudo cases now have dedicated approval prompts.
-- Steering or adding in prompts mid turn ( inbetween tool calls ) seems to not work as intended, and only send after the agent finishes all of its tool calls?
-- After the recent mouse scrolling update, selecting lines for copy pasting doesn't work anymore.
-- Multiple tool calls - wrong output displayed. E.g tool call 1 shows results of tool call 2, and vice versa.
+- ~~Steering or adding in prompts mid turn ( inbetween tool calls ) seems to not work as intended, and only send after the agent finishes all of its tool calls?~~ -- FIXED in v0.4.2 (mid-turn steering via steerCh channel)
+- ~~After the recent mouse scrolling update, selecting lines for copy pasting doesn't work anymore.~~ -- FIXED in v0.4.2 (mouse idle timeout auto-disables capture after 2s)
+- ~~Multiple tool calls - wrong output displayed. E.g tool call 1 shows results of tool call 2, and vice versa.~~ -- FIXED in v0.4.2 (tool results now matched by ToolUseID)
 - Drastic slowdown on rendering when large thinking or replies after 40k context?
-- Auto-compact doesn't seem to work properly- the notice triggers, but the conversation history sent to the LLM endpoint seems to invalidate the entire cache? Is it because it's modified from the system prompt? Should it be tied to a 'user message` but sent by the system instead?
-- When LLM intends to run a inline python tool call - it can grow to really long tool approval prompt. Cant scroll properly to view the entire thing.
+- ~~Auto-compact doesn't seem to work properly- the notice triggers, but the conversation history sent to the LLM endpoint seems to invalidate the entire cache? Is it because it's modified from the system prompt? Should it be tied to a 'user message` but sent by the system instead?~~ -- FIXED in v0.4.2 (partial compaction preserves first 2 and last 4 messages for cache stability)
+- ~~When LLM intends to run a inline python tool call - it can grow to really long tool approval prompt. Cant scroll properly to view the entire thing.~~ -- FIXED in v0.4.2 (approval prompt expand/collapse with `v` key)
 - (Windows) When pasting multiple lines ( e.g copied from notepad, multiple commands ) - it seems to send the first line only ( might be due to breaklines or something? ) instead of the whole chunk. While default terminal behaves that way, gohome is a coding assistant so pasting long chunks of text should be the norm, and send only when pressing enter is the behaviour to match.
   - Related point: When multiple messages are then queued - they fire off in turns and not altogether as one message. this causes issues. Might need a way to handle/edit/delete queued messages.
