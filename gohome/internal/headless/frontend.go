@@ -126,6 +126,12 @@ func (f *Frontend) emitWarning(msg string) {
 	_, _ = f.output.Write([]byte("\n"))
 }
 
+// SteerCh implements agent.Frontend. The headless frontend does not support
+// mid-turn steering, so it returns nil.
+func (f *Frontend) SteerCh() <-chan string {
+	return nil
+}
+
 func (f *Frontend) FinalText() string {
 	f.mu.Lock()
 	defer f.mu.Unlock()

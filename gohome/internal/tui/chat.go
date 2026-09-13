@@ -93,10 +93,24 @@ func (c *ChatComponent) ScrollUp(n int) {
 	c.autoScroll = false
 }
 
-// ScrollDown scrolls down by n lines, disabling auto-scroll.
+// ScrollDown scrolls down by n lines. If the viewport reaches the bottom,
+// auto-scroll is re-enabled so new content is tracked automatically.
 func (c *ChatComponent) ScrollDown(n int) {
 	c.scrollTop += n
 	c.autoScroll = false
+}
+
+// ReEnableAutoScrollIfAtBottom checks whether the viewport has scrolled to the
+// bottom of the content and re-enables auto-scroll if so. Call after ScrollDown
+// or mouse wheel down. maxWidth is needed to compute the total line count.
+func (c *ChatComponent) ReEnableAutoScrollIfAtBottom(maxWidth int) {
+	if c.autoScroll || c.timeline == nil || c.maxHeight <= 0 {
+		return
+	}
+	total := c.countLines(maxWidth)
+	if total <= c.maxHeight || c.scrollTop >= total-c.maxHeight {
+		c.autoScroll = true
+	}
 }
 
 // ScrollToBottom re-enables auto-scroll so new content keeps the view at the bottom.
@@ -249,7 +263,7 @@ func (c *ChatComponent) entryLineCount(e *TimelineEntry, maxWidth int) int {
 	}
 	switch e.Kind {
 	case KindUser:
-		return len(WrapText(e.Text, maxWidth-3))
+		return len(WrapText(e.Text, maxWidth-4))
 	case KindAssistant:
 		lines := RenderMarkdown(e.Text, maxWidth-2)
 		if len(lines) == 0 {
@@ -281,7 +295,8 @@ func needsSeparator(kind, lastVisibleKind string) bool {
 }
 
 // countLines returns the total number of rendered lines for all timeline entries
-// at the given maxWidth. Uses cached line counts when available.
+// at the given maxWidth. Delegates entirely to entryLineCount to avoid
+// double-rendering.
 func (c *ChatComponent) countLines(maxWidth int) int {
 	if c.timeline == nil {
 		return 0
@@ -291,43 +306,14 @@ func (c *ChatComponent) countLines(maxWidth int) int {
 	lastVisibleKind := ""
 	for i := range *c.timeline {
 		e := &(*c.timeline)[i]
-
 		n := c.entryLineCount(e, maxWidth)
 		if n > 0 {
 			if hasOutput && needsSeparator(e.Kind, lastVisibleKind) {
-				count++ // separator blank line
+				count++
 			}
+			count += n
 			hasOutput = true
 			lastVisibleKind = e.Kind
-		}
-
-		if e.cacheValid(maxWidth) {
-			count += len(e.cachedLines)
-			continue
-		}
-		switch e.Kind {
-		case KindUser:
-			count += len(WrapText(e.Text, maxWidth-4))
-		case KindAssistant:
-			lines := RenderMarkdown(e.Text, maxWidth-2)
-			if len(lines) == 0 {
-				if strings.TrimSpace(e.Text) != "" {
-					lines = WrapText(e.Text, maxWidth-2)
-				}
-			}
-			count += len(lines)
-		case KindThinking:
-			trimmed := strings.TrimSpace(e.Text)
-			if trimmed != "" {
-				count += len(WrapText(trimmed, maxWidth-2))
-			}
-		case KindTool:
-			rendered := c.renderEntry(e, maxWidth, "  ")
-			count += len(rendered)
-		case KindNotice:
-			count++
-		case KindStats:
-			count++
 		}
 	}
 	return count
@@ -335,6 +321,9 @@ func (c *ChatComponent) countLines(maxWidth int) int {
 
 // Render converts the current timeline to a slice of display lines, applying
 // scroll and height constraints. maxWidth is the terminal column width.
+// Uses a two-pass approach: pass 1 computes line offsets via entryLineCount
+// (cheap, cache-aware), pass 2 only renders entries overlapping the visible
+// window, avoiding work for offscreen entries.
 func (c *ChatComponent) Render(maxWidth int) []string {
 	if c.timeline == nil || len(*c.timeline) == 0 {
 		return nil
@@ -352,18 +341,83 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 		c.lastCursor = c.cursor
 	}
 
-	// Render all entries into lines, using cache when valid.
-	var all []string
+	tl := *c.timeline
+
+	// Pass 1: compute cumulative line offsets per entry.
+	type entryMeta struct {
+		startLine int
+		lineCount int
+		sepBefore bool
+	}
+	metas := make([]entryMeta, len(tl))
+	runningLine := 0
 	hasOutput := false
 	lastVisibleKind := ""
-	for i := range *c.timeline {
-		e := &(*c.timeline)[i]
+	for i := range tl {
+		e := &tl[i]
+		n := c.entryLineCount(e, maxWidth)
+		sep := false
+		if n > 0 && hasOutput && needsSeparator(e.Kind, lastVisibleKind) {
+			sep = true
+			runningLine++
+		}
+		metas[i] = entryMeta{startLine: runningLine, lineCount: n, sepBefore: sep}
+		runningLine += n
+		if n > 0 {
+			hasOutput = true
+			lastVisibleKind = e.Kind
+		}
+	}
+	total := runningLine
+
+	// Determine visible window.
+	viewStart, viewEnd := 0, total
+	if c.maxHeight > 0 && total > c.maxHeight {
+		if c.autoScroll {
+			viewStart = total - c.maxHeight
+		} else {
+			maxScroll := total - c.maxHeight
+			if c.scrollTop > maxScroll {
+				c.scrollTop = maxScroll
+			}
+			if c.scrollTop < 0 {
+				c.scrollTop = 0
+			}
+			viewStart = c.scrollTop
+		}
+		viewEnd = viewStart + c.maxHeight
+		if viewEnd > total {
+			viewEnd = total
+		}
+	}
+
+	// Pass 2: render only entries that overlap the visible window.
+	var all []string
+	allStartLine := -1 // line position of all[0] in the total line space
+	for i := range tl {
+		e := &tl[i]
+		em := metas[i]
+		entryEnd := em.startLine + em.lineCount
+
+		if entryEnd <= viewStart || em.startLine >= viewEnd {
+			continue
+		}
+
+		if em.sepBefore {
+			if allStartLine < 0 {
+				allStartLine = em.startLine - 1
+			}
+			all = append(all, "")
+		}
+
+		if allStartLine < 0 {
+			allStartLine = em.startLine
+		}
 
 		marker := "  "
 		if i == c.cursor {
 			marker = "> "
 		}
-
 		if !e.cacheValid(maxWidth) {
 			e.cachedLines = c.renderEntry(e, maxWidth, marker)
 			e.cachedWidth = maxWidth
@@ -372,57 +426,43 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 			e.cachedResult = e.ToolResult
 			e.cachedDiffStatus = e.Status
 		}
-
-		if len(e.cachedLines) > 0 {
-			if hasOutput && needsSeparator(e.Kind, lastVisibleKind) {
-				all = append(all, "")
-			}
-			hasOutput = true
-			lastVisibleKind = e.Kind
-		}
-
 		all = append(all, e.cachedLines...)
 	}
 
-	// Apply scroll and height constraints.
-	total := len(all)
-	var visible []string
-	if c.maxHeight <= 0 || total <= c.maxHeight {
-		visible = all
-	} else if c.autoScroll {
-		visible = all[total-c.maxHeight:]
-	} else {
-		maxScroll := total - c.maxHeight
-		if c.scrollTop > maxScroll {
-			c.scrollTop = maxScroll
+	// Trim to visible height by slicing precisely at the viewport boundary.
+	// The rendered entries may start before viewStart (partial overlap at top)
+	// or extend beyond viewEnd (partial overlap at bottom).
+	if c.maxHeight > 0 && len(all) > c.maxHeight {
+		if allStartLine < 0 {
+			allStartLine = viewStart
 		}
-		if c.scrollTop < 0 {
-			c.scrollTop = 0
+		skip := viewStart - allStartLine
+		if skip < 0 {
+			skip = 0
 		}
-
-		end := c.scrollTop + c.maxHeight
-		if end > total {
-			end = total
+		end := skip + c.maxHeight
+		if end > len(all) {
+			end = len(all)
 		}
-		visible = all[c.scrollTop:end]
+		if skip > len(all) {
+			skip = len(all)
+		}
+		all = all[skip:end]
 	}
 
 	// Apply gradient fade to boundary lines when content overflows.
-	if total > c.maxHeight && len(visible) > 0 {
-		effectiveTop := c.scrollTop
-		if c.autoScroll {
-			effectiveTop = total - c.maxHeight
-		}
+	if total > c.maxHeight && c.maxHeight > 0 && len(all) > 0 {
+		effectiveTop := viewStart
 		if effectiveTop > 0 {
-			visible[0] = ansiDim + visible[0] + ansiReset
+			all[0] = ansiDim + all[0] + ansiReset
 		}
-		if effectiveTop+c.maxHeight < total {
-			last := len(visible) - 1
-			visible[last] = ansiDim + visible[last] + ansiReset
+		if viewEnd < total {
+			last := len(all) - 1
+			all[last] = ansiDim + all[last] + ansiReset
 		}
 	}
 
-	return visible
+	return all
 }
 
 // renderEntry produces the display lines for a single timeline entry.

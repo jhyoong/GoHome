@@ -10,7 +10,7 @@ const (
 	DefaultMaxShellTimeoutMs = 600_000
 	DefaultContextWarnPct    = 0.80
 	DefaultContextCritPct    = 0.95
-	DefaultRenderThrottleMs  = 0
+	DefaultRenderThrottleMs  = 16
 
 	DefaultAutoCompactPct       = 0.80
 	DefaultAutoCompactTargetPct = 0.50

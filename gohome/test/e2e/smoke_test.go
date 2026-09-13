@@ -111,6 +111,10 @@ func (r *recordingFrontend) AwaitUserInput(_ context.Context) (string, error) {
 	return "", errors.New("no interactive input in e2e tests")
 }
 
+func (r *recordingFrontend) SteerCh() <-chan string {
+	return nil
+}
+
 // newE2EAgent creates an Agent wired up for E2E testing.
 func newE2EAgent(t *testing.T, cfg e2eConfig, fe agent.Frontend, history []common.Message, extraTools ...tools.Tool) (*agent.Agent, *session.Session) {
 	t.Helper()

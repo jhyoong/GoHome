@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -159,17 +160,21 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 				},
 			})
 		}
+		// InFlight stays true: the agent may still be dispatching tools.
+		// It is cleared by EventRunDone when the entire Run() exits.
+
+	case agent.EventRunDone:
 		sv.InFlight = false
 		if msg.SessionID == m.focused && len(m.pendingMessages) > 0 {
-			text := m.pendingMessages[0]
-			m.pendingMessages = m.pendingMessages[1:]
+			combined := strings.Join(m.pendingMessages, "\n")
+			m.pendingMessages = m.pendingMessages[:0]
 			sv.Timeline = append(sv.Timeline, TimelineEntry{
 				Kind: KindUser,
-				Text: text,
+				Text: combined,
 			})
 			sv.InFlight = true
 			m.cursor = len(sv.Timeline) - 1
-			dequeuedCmd = m.sendInputCmd(text)
+			dequeuedCmd = m.sendInputCmd(combined)
 		}
 
 	case agent.EventSessionStarted:
@@ -242,7 +247,7 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 		} else {
 			m.spinner.SetMessage("Generating...")
 		}
-	case agent.EventTurnDone, agent.EventSessionEnded, agent.EventError, agent.EventToolDenied:
+	case agent.EventRunDone, agent.EventSessionEnded, agent.EventError, agent.EventToolDenied:
 		if !sv.InFlight {
 			m.spinner.Stop()
 		}

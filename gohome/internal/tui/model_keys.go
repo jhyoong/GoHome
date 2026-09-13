@@ -93,6 +93,7 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.chat.DisableAutoScroll(m.winW)
 		m.chat.ScrollDown(scrollAmt)
+		m.chat.ReEnableAutoScrollIfAtBottom(m.winW)
 	case tea.KeyTab:
 		if m.completeSlash() {
 			return m, nil
@@ -132,7 +133,23 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.statusMsg = "Session complete"
 					m.editor.SetValue("")
 				} else if sv.InFlight {
-					if len(m.pendingMessages) >= 10 {
+					sent := false
+					if m.steerCh != nil {
+						select {
+						case m.steerCh <- text:
+							sent = true
+						default:
+						}
+					}
+					if sent {
+						sv.Timeline = append(sv.Timeline, TimelineEntry{
+							Kind: KindUser,
+							Text: text,
+						})
+						m.editor.SetValue("")
+						m.cursor = len(sv.Timeline) - 1
+						m.statusMsg = "Steer message sent"
+					} else if len(m.pendingMessages) >= 10 {
 						m.statusMsg = "Message queue full (10)"
 					} else {
 						m.pendingMessages = append(m.pendingMessages, text)
@@ -157,6 +174,12 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, tea.Batch(cmds...)
+	case tea.KeyCtrlD:
+		if len(m.pendingMessages) > 0 {
+			m.pendingMessages = m.pendingMessages[:len(m.pendingMessages)-1]
+			m.statusMsg = fmt.Sprintf("Removed last queued message (%d remaining)", len(m.pendingMessages))
+		}
+		return m, nil
 	case tea.KeyCtrlE:
 		return m, m.openExternalEditor()
 	default:
@@ -215,6 +238,7 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					if m.chat.entryLineCount(&sv.Timeline[m.cursor], m.winW) > m.chat.maxHeight {
 						m.chat.DisableAutoScroll(m.winW)
 						m.chat.ScrollDown(1)
+						m.chat.ReEnableAutoScrollIfAtBottom(m.winW)
 					}
 				}
 				return m, nil

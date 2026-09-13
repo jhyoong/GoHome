@@ -55,6 +55,10 @@ func (r *recorderFrontend) AwaitUserInput(ctx context.Context) (string, error) {
 	}
 }
 
+func (r *recorderFrontend) SteerCh() <-chan string {
+	return nil
+}
+
 func TestRunLoop_CancelMidTurn(t *testing.T) {
 	bgCtx, bgCancel := context.WithCancel(context.Background())
 	t.Cleanup(bgCancel)

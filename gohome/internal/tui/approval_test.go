@@ -3,6 +3,8 @@ package tui_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -617,6 +619,53 @@ func TestApprovalSudoPasswordCachedAcrossPrompts(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for second decision")
 	}
+}
+
+// --- GOAL #5: long approval summary truncation ---
+
+func TestApprovalSummary_LongArgTruncated(t *testing.T) {
+	m := tui.New(nil, "")
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	// Build a very long command (500+ chars).
+	longCmd := strings.Repeat("x", 600)
+	input := fmt.Sprintf(`{"command":%q}`, longCmd)
+	msg, _ := makeApprovalReq("main", "shell", "^x", json.RawMessage(input))
+	tm.Send(msg)
+
+	// Wait for the overlay to appear with the truncation hint.
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("(v to expand)"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
+
+func TestApprovalSummary_ExpandToggle(t *testing.T) {
+	m := tui.New(nil, "")
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+	t.Cleanup(func() { _ = tm.Quit() })
+
+	// Build a very long command (500+ chars).
+	longCmd := strings.Repeat("y", 600)
+	input := fmt.Sprintf(`{"command":%q}`, longCmd)
+	msg, _ := makeApprovalReq("main", "shell", "^y", json.RawMessage(input))
+	tm.Send(msg)
+
+	// Wait for the truncated overlay.
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		return bytes.Contains(out, []byte("(v to expand)"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// Press 'v' to expand.
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'v'}})
+
+	// After expanding, the hint should disappear and the full argument should be visible.
+	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+		noHint := !bytes.Contains(out, []byte("(v to expand)"))
+		// The full string of 'y' characters should appear in the output.
+		hasFullArg := bytes.Contains(out, []byte(strings.Repeat("y", 50)))
+		return noHint && hasFullArg
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
 
 func TestCrossSessionApprovalShowsLabel(t *testing.T) {

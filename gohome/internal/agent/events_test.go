@@ -19,6 +19,7 @@ type fakeRecorder struct {
 	approvalErr  error
 	userInput    string
 	userInputErr error
+	steerCh      chan string
 }
 
 func (f *fakeRecorder) Emit(_ string, ev Event) {
@@ -34,6 +35,13 @@ func (f *fakeRecorder) RequestApproval(ctx context.Context, req guard.ApprovalRe
 
 func (f *fakeRecorder) AwaitUserInput(_ context.Context) (string, error) {
 	return f.userInput, f.userInputErr
+}
+
+func (f *fakeRecorder) SteerCh() <-chan string {
+	if f.steerCh == nil {
+		return nil
+	}
+	return f.steerCh
 }
 
 // TestEventKindConstants verifies the string values for each EventKind.
@@ -53,6 +61,7 @@ func TestEventKindConstants(t *testing.T) {
 		{EventThinkingDelta, "thinking_delta"},
 		{EventThinkingDone, "thinking_done"},
 		{EventToolDenied, "tool_denied"},
+		{EventRunDone, "run_done"},
 		{EventSessionSwapped, "session_swapped"},
 		{EventSending, "sending"},
 		{EventCompacted, "compacted"},

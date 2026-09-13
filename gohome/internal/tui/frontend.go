@@ -42,13 +42,20 @@ type externalEditorMsg = ExternalEditorMsg
 type Frontend struct {
 	prog  *tea.Program
 	input chan string
+	steer chan string
 }
 
 // NewFrontend creates a Frontend ready to be wired to a tea.Program.
 func NewFrontend() *Frontend {
 	return &Frontend{
 		input: make(chan string),
+		steer: make(chan string, 1),
 	}
+}
+
+// SteerCh returns the channel used for mid-turn steering messages.
+func (f *Frontend) SteerCh() <-chan string {
+	return f.steer
 }
 
 // SetProgram wires the tea.Program so that Emit can send messages to it.

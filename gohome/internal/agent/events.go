@@ -24,6 +24,7 @@ const (
 	EventThinkingDelta  EventKind = "thinking_delta"
 	EventThinkingDone   EventKind = "thinking_done"
 	EventToolDenied     EventKind = "tool_denied"
+	EventRunDone        EventKind = "run_done"
 	EventCompacted      EventKind = "compacted"
 )
 
@@ -65,4 +66,5 @@ type Frontend interface {
 	Emit(sessionID string, ev Event)
 	RequestApproval(ctx context.Context, req guard.ApprovalRequest) (guard.ApprovalDecision, error)
 	AwaitUserInput(ctx context.Context) (string, error)
+	SteerCh() <-chan string
 }
