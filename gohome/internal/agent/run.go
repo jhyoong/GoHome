@@ -68,22 +68,47 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 			}
 		}
 
-		// No tool calls: the loop is done.
+		// No tool calls: check for a pending steer before exiting.
 		if len(toolUseBlocks) == 0 {
+			steerText := a.drainSteer()
+			if steerText != "" {
+				steerMsg := common.Message{
+					Role:    common.RoleUser,
+					Content: []common.Block{{Kind: common.BlockText, Text: steerText}},
+				}
+				sess.History = append(sess.History, steerMsg)
+				if w := a.State.Writer(); w != nil {
+					w.Emit(session.UserMessage{
+						Content: []common.Block{{Kind: common.BlockText, Text: steerText}},
+					})
+				}
+				continue
+			}
 			return nil
 		}
 
 		// Dispatch each tool call, checking for mid-turn steering between calls.
+		// When a steer is detected, remaining tool calls get synthetic
+		// "skipped" results so the RoleTool message has one result per
+		// tool_use block (required by the API contract).
 		var resultBlocks []common.Block
 		var anyDenied bool
-		var steered bool
-		for _, block := range toolUseBlocks {
+		var steerText string
+		for i, block := range toolUseBlocks {
 			// Check for steering before each tool call (except the first).
-			if len(resultBlocks) > 0 {
-				if msg := a.drainSteer(sess); msg != "" {
-					steered = true
-					break
-				}
+			if i > 0 && steerText == "" {
+				steerText = a.drainSteer()
+			}
+
+			// If steered, synthesise a skip result instead of executing.
+			if steerText != "" {
+				resultBlocks = append(resultBlocks, common.Block{
+					Kind:       common.BlockToolResult,
+					ToolUseID:  block.ToolUseID,
+					ResultText: "skipped: user steered",
+					IsError:    true,
+				})
+				continue
 			}
 
 			content, isError, elapsed, denied := a.dispatchTool(ctx, tctx, sess, block)
@@ -130,8 +155,20 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 
 		// Final steer check after all tool calls (catches messages that arrived
 		// during the last tool execution).
-		if !steered {
-			a.drainSteer(sess)
+		if steerText == "" {
+			steerText = a.drainSteer()
+		}
+		if steerText != "" {
+			steerMsg := common.Message{
+				Role:    common.RoleUser,
+				Content: []common.Block{{Kind: common.BlockText, Text: steerText}},
+			}
+			sess.History = append(sess.History, steerMsg)
+			if w := a.State.Writer(); w != nil {
+				w.Emit(session.UserMessage{
+					Content: []common.Block{{Kind: common.BlockText, Text: steerText}},
+				})
+			}
 		}
 
 		if anyDenied {
@@ -145,28 +182,15 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 }
 
 // drainSteer does a non-blocking read of the steer channel. If a message is
-// available, it appends it to session history as a user message and returns it.
-// Returns "" when nothing was available.
-func (a *Agent) drainSteer(sess *session.Session) string {
+// available it returns the text. Returns "" when nothing was available.
+// Callers are responsible for appending the steer to session history.
+func (a *Agent) drainSteer() string {
 	ch := a.Frontend.SteerCh()
 	if ch == nil {
 		return ""
 	}
 	select {
 	case steer := <-ch:
-		sess.History = append(sess.History, common.Message{
-			Role: common.RoleUser,
-			Content: []common.Block{
-				{Kind: common.BlockText, Text: steer},
-			},
-		})
-		if w := a.State.Writer(); w != nil {
-			w.Emit(session.UserMessage{
-				Content: []common.Block{
-					{Kind: common.BlockText, Text: steer},
-				},
-			})
-		}
 		return steer
 	default:
 		return ""

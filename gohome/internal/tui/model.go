@@ -381,6 +381,13 @@ func (m *Model) cancelFocusedSessionWith(statusMsg string) {
 		sv.Timeline = append(sv.Timeline, TimelineEntry{Kind: KindNotice, Text: "Cancelled."})
 	}
 	m.pendingMessages = m.pendingMessages[:0]
+	// Drain any pending steer so it does not leak into the next Run call.
+	if m.steerCh != nil {
+		select {
+		case <-m.steerCh:
+		default:
+		}
+	}
 	m.spinner.Stop()
 	m.statusMsg = statusMsg
 	m.chat.ScrollToBottom()
