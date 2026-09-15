@@ -165,6 +165,7 @@ func (a *Agent) compact(ctx context.Context, sess *session.Session) error {
 			BeforeTokens: beforeTokens,
 			AfterTokens:  afterTokens,
 			Summary:      summary,
+			History:      sess.History,
 		})
 	}
 

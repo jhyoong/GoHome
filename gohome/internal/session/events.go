@@ -68,9 +68,10 @@ type Warning struct {
 const CompactSummaryPrefix = "[Auto-compact summary]\n\n"
 
 type Compaction struct {
-	BeforeTokens int    `json:"beforeTokens"`
-	AfterTokens  int    `json:"afterTokens"`
-	Summary      string `json:"summary"`
+	BeforeTokens int              `json:"beforeTokens"`
+	AfterTokens  int              `json:"afterTokens"`
+	Summary      string           `json:"summary"`
+	History      []common.Message `json:"history,omitempty"`
 }
 
 // encode serialises ev as a flat single-line JSON object with "type" and "ts" fields.
