@@ -233,6 +233,7 @@ If `contextWarnPct` >= `contextCritPct`, or either value is outside the (0, 1] r
 | `1`–`4` | Pick option in approval prompt |
 | `e` | Edit suggested shell pattern in approval prompt |
 | `Esc` | Deny / close overlay / dismiss file search |
+| `Ctrl+Y` | Copy selected timeline entry to clipboard (when cursor is active) |
 
 ### Timeline cursor
 
