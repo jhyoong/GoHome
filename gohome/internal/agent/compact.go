@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -55,6 +56,24 @@ func (a *Agent) compact(ctx context.Context, sess *session.Session) error {
 	keepCount := 4
 	prefixCount := 2
 
+	// If the last message of the prefix is an assistant with tool_use blocks,
+	// shrink the prefix so it doesn't orphan the tool_use.
+	if prefixCount > 0 && prefixCount < len(sess.History) {
+		last := sess.History[prefixCount-1]
+		if last.Role == common.RoleAssistant {
+			hasToolUse := false
+			for _, b := range last.Content {
+				if b.Kind == common.BlockToolUse {
+					hasToolUse = true
+					break
+				}
+			}
+			if hasToolUse {
+				prefixCount = 0
+			}
+		}
+	}
+
 	// Need at least: prefix + 1 message to summarize + keepCount recent
 	minRequired := prefixCount + 1 + keepCount
 	if len(sess.History) < minRequired {
@@ -68,6 +87,12 @@ func (a *Agent) compact(ctx context.Context, sess *session.Session) error {
 	if splitIdx > 0 && sess.History[splitIdx].Role == common.RoleTool {
 		splitIdx--
 	}
+
+	// If oldMessages would start with RoleTool, push the split forward.
+	if prefixCount < len(sess.History) && sess.History[prefixCount].Role == common.RoleTool {
+		prefixCount++
+	}
+
 	if splitIdx <= prefixCount {
 		return nil
 	}
@@ -88,11 +113,16 @@ func (a *Agent) compact(ctx context.Context, sess *session.Session) error {
 		}
 	}
 
+	maxTokens := 4096
+	if a.MaxTokens > 0 {
+		maxTokens = a.MaxTokens
+	}
+
 	req := common.Request{
 		Model:     sess.Model,
 		System:    prompt,
-		Messages:  oldMessages,
-		MaxTokens: a.MaxTokens,
+		Messages:  stripToolBlocks(oldMessages),
+		MaxTokens: maxTokens,
 	}
 
 	events, err := a.State.Client().Stream(ctx, req)
@@ -146,6 +176,38 @@ func (a *Agent) compact(ctx context.Context, sess *session.Session) error {
 	})
 
 	return nil
+}
+
+// stripToolBlocks converts tool_use and tool_result blocks to plain text,
+// and converts RoleTool messages to RoleUser, so the summarization request
+// can be sent without a tools definition.
+func stripToolBlocks(msgs []common.Message) []common.Message {
+	out := make([]common.Message, 0, len(msgs))
+	for _, msg := range msgs {
+		role := msg.Role
+		if role == common.RoleTool {
+			role = common.RoleUser
+		}
+		var blocks []common.Block
+		for _, b := range msg.Content {
+			switch b.Kind {
+			case common.BlockToolUse:
+				blocks = append(blocks, common.Block{
+					Kind: common.BlockText,
+					Text: fmt.Sprintf("[Tool call: %s(%s)]", b.ToolName, b.InputJSON),
+				})
+			case common.BlockToolResult:
+				blocks = append(blocks, common.Block{
+					Kind: common.BlockText,
+					Text: fmt.Sprintf("[Result: %s]", b.ResultText),
+				})
+			default:
+				blocks = append(blocks, b)
+			}
+		}
+		out = append(out, common.Message{Role: role, Content: blocks})
+	}
+	return out
 }
 
 const defaultCompactPrompt = `You are summarizing a coding assistant conversation for context compaction.
