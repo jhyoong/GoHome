@@ -201,7 +201,7 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		// Timeline cursor navigation when editor is empty.
 		if strings.TrimSpace(m.editor.Value()) == "" {
-			if keyRune(msg) == 'c' {
+			if msg.Type == tea.KeyCtrlY {
 				sv, ok := m.sessions[m.focused]
 				if ok && m.cursor >= 0 && m.cursor < len(sv.Timeline) {
 					text := timelineEntryText(sv.Timeline[m.cursor])

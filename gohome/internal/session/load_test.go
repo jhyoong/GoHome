@@ -234,6 +234,55 @@ func TestLoad_MultipleCompactions(t *testing.T) {
 	}
 }
 
+func TestLoad_CompactionRetainsFullHistory(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.jsonl")
+
+	w, err := OpenWriter(path)
+	if err != nil {
+		t.Fatalf("OpenWriter: %v", err)
+	}
+
+	w.Emit(SessionStart{ID: "sess-h5", CWD: "/tmp", Model: "m"})
+
+	w.Emit(UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: "old"}}})
+	w.Emit(AssistantMessage{Content: []common.Block{{Kind: common.BlockText, Text: "old reply"}}})
+
+	w.Emit(Compaction{
+		BeforeTokens: 50000,
+		AfterTokens:  10000,
+		Summary:      "conversation summary",
+		History: []common.Message{
+			{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "first prompt"}}},
+			{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "first reply"}}},
+			{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: CompactSummaryPrefix + "conversation summary"}}},
+			{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "recent q"}}},
+			{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "recent a"}}},
+		},
+	})
+
+	w.Emit(UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: "new"}}})
+	w.Emit(AssistantMessage{Content: []common.Block{{Kind: common.BlockText, Text: "new reply"}}})
+
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	_, history, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	// History should be: 5 from compaction snapshot + 2 post-compaction = 7
+	if len(history) != 7 {
+		t.Fatalf("len(history) = %d, want 7", len(history))
+	}
+
+	if history[0].Content[0].Text != "first prompt" {
+		t.Errorf("history[0] = %q, want 'first prompt'", history[0].Content[0].Text)
+	}
+}
+
 func TestLoadMissingFile(t *testing.T) {
 	_, _, err := Load("/nonexistent/path/session.jsonl")
 	if err == nil {

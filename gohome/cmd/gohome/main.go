@@ -207,7 +207,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	if *prompt != "" && *prompt != "-" && !*yolo {
+	if *prompt != "" && !*yolo {
 		fmt.Fprintf(os.Stderr, "gohome: --prompt (non-interactive mode) requires --yolo\n")
 		os.Exit(1)
 	}

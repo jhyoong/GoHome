@@ -732,3 +732,114 @@ func TestRun_SteerInjection(t *testing.T) {
 		t.Error("steer message not found in session history")
 	}
 }
+
+// TestRun_SteerMultiToolCorruption verifies that when a steer arrives between
+// two tool calls in a single turn, skip-results are synthesised for remaining
+// tools and the steer user message appears AFTER the complete RoleTool message.
+func TestRun_SteerMultiToolCorruption(t *testing.T) {
+	turn1 := []common.StreamEvent{
+		{Kind: common.EventToolCallDone, ToolCallID: "tc1", ToolName: "fake", InputJSON: `{}`},
+		{Kind: common.EventToolCallDone, ToolCallID: "tc2", ToolName: "fake", InputJSON: `{}`},
+		{Kind: common.EventTurnDone, StopReason: "tool_use"},
+	}
+	turn2 := []common.StreamEvent{
+		{Kind: common.EventTextDelta, TextDelta: "steered"},
+		{Kind: common.EventTurnDone, StopReason: "end_turn"},
+	}
+	client := &fakeClient{sequences: [][]common.StreamEvent{turn1, turn2}}
+	steerCh := make(chan string, 1)
+	steerCh <- "stop and do X instead"
+
+	fe := &fakeRecorder{steerCh: steerCh}
+	reg := tools.NewRegistry()
+	reg.Register(&fakeTool{name: "fake", content: "ok"})
+	g := compileYoloGuard(t)
+	a, sess := newTestAgentWithGuard(t, client, fe, g, reg)
+
+	if err := a.Run(context.Background(), sess); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if len(sess.History) < 4 {
+		t.Fatalf("history length = %d, want >= 4", len(sess.History))
+	}
+
+	if sess.History[0].Role != common.RoleAssistant {
+		t.Errorf("history[0].Role = %v, want assistant", sess.History[0].Role)
+	}
+
+	toolMsg := sess.History[1]
+	if toolMsg.Role != common.RoleTool {
+		t.Fatalf("history[1].Role = %v, want tool", toolMsg.Role)
+	}
+	if len(toolMsg.Content) != 2 {
+		t.Fatalf("tool message has %d blocks, want 2", len(toolMsg.Content))
+	}
+	if toolMsg.Content[0].ToolUseID != "tc1" {
+		t.Errorf("tool block 0 ID = %q, want tc1", toolMsg.Content[0].ToolUseID)
+	}
+	if toolMsg.Content[0].IsError {
+		t.Error("tc1 result should not be error (it was executed)")
+	}
+	if toolMsg.Content[1].ToolUseID != "tc2" {
+		t.Errorf("tool block 1 ID = %q, want tc2", toolMsg.Content[1].ToolUseID)
+	}
+	if !toolMsg.Content[1].IsError {
+		t.Error("tc2 result should be error (skipped due to steer)")
+	}
+	if !strings.Contains(toolMsg.Content[1].ResultText, "skipped") {
+		t.Errorf("tc2 result text = %q, want to contain 'skipped'", toolMsg.Content[1].ResultText)
+	}
+
+	if sess.History[2].Role != common.RoleUser {
+		t.Errorf("history[2].Role = %v, want user", sess.History[2].Role)
+	}
+	if sess.History[2].Content[0].Text != "stop and do X instead" {
+		t.Errorf("steer text = %q", sess.History[2].Content[0].Text)
+	}
+}
+
+// TestRun_SteerDuringTextOnlyTurn verifies that when the LLM returns a
+// text-only turn (no tool calls) and a steer is waiting, the steer is drained
+// and injected into history, triggering a follow-up turn.
+func TestRun_SteerDuringTextOnlyTurn(t *testing.T) {
+	turn1 := []common.StreamEvent{
+		{Kind: common.EventTextDelta, TextDelta: "here is my answer"},
+		{Kind: common.EventTurnDone, StopReason: "end_turn"},
+	}
+	turn2 := []common.StreamEvent{
+		{Kind: common.EventTextDelta, TextDelta: "ok redirecting"},
+		{Kind: common.EventTurnDone, StopReason: "end_turn"},
+	}
+	client := &fakeClient{sequences: [][]common.StreamEvent{turn1, turn2}}
+
+	steerCh := make(chan string, 1)
+	steerCh <- "actually do Y instead"
+
+	fe := &fakeRecorder{steerCh: steerCh}
+	reg := tools.NewRegistry()
+	g := compileYoloGuard(t)
+	a, sess := newTestAgentWithGuard(t, client, fe, g, reg)
+
+	if err := a.Run(context.Background(), sess); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if client.callCount != 2 {
+		t.Errorf("Stream call count = %d, want 2 (steer should trigger second turn)", client.callCount)
+	}
+
+	var found bool
+	for _, msg := range sess.History {
+		if msg.Role == common.RoleUser {
+			for _, b := range msg.Content {
+				if b.Text == "actually do Y instead" {
+					found = true
+				}
+			}
+		}
+	}
+	if !found {
+		t.Error("steer message not found in session history")
+	}
+}

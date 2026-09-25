@@ -366,6 +366,113 @@ func TestCompact_PreservesStablePrefix(t *testing.T) {
 	}
 }
 
+// capturingClient wraps fakeClient to capture the request sent to Stream.
+type capturingClient struct {
+	*fakeClient
+	onStream func(common.Request)
+}
+
+func (c *capturingClient) Stream(ctx context.Context, req common.Request) (<-chan common.StreamEvent, error) {
+	if c.onStream != nil {
+		c.onStream(req)
+	}
+	return c.fakeClient.Stream(ctx, req)
+}
+
+func TestCompact_StripsToolBlocks(t *testing.T) {
+	summaryText := "summary with tools"
+	events := []common.StreamEvent{
+		{Kind: common.EventTextDelta, TextDelta: summaryText},
+		{Kind: common.EventTurnDone, StopReason: "end_turn"},
+	}
+
+	var capturedReq common.Request
+	client := &capturingClient{
+		fakeClient: &fakeClient{sequences: [][]common.StreamEvent{events}},
+		onStream:   func(req common.Request) { capturedReq = req },
+	}
+	fe := &fakeRecorder{}
+	a, sess, _ := newTestAgent(t, client, fe)
+	a.State = NewSessionState(sess, a.State.Writer(), client)
+
+	sess.History = []common.Message{
+		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "first"}}},
+		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "reply"}}},
+		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "run ls"}}},
+		{Role: common.RoleAssistant, Content: []common.Block{
+			{Kind: common.BlockText, Text: "calling tool"},
+			{Kind: common.BlockToolUse, ToolUseID: "tc1", ToolName: "shell", InputJSON: `{"command":"ls"}`},
+		}},
+		{Role: common.RoleTool, Content: []common.Block{
+			{Kind: common.BlockToolResult, ToolUseID: "tc1", ResultText: "file1.go"},
+		}},
+		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "done"}}},
+		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "recent"}}},
+		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "recent reply"}}},
+	}
+
+	if err := a.compact(context.Background(), sess); err != nil {
+		t.Fatalf("compact: %v", err)
+	}
+
+	for i, msg := range capturedReq.Messages {
+		for j, block := range msg.Content {
+			if block.Kind == common.BlockToolUse {
+				t.Errorf("request message[%d].block[%d] is tool_use, should be stripped", i, j)
+			}
+			if block.Kind == common.BlockToolResult {
+				t.Errorf("request message[%d].block[%d] is tool_result, should be stripped", i, j)
+			}
+		}
+		if msg.Role == common.RoleTool {
+			t.Errorf("request message[%d] has RoleTool, should be converted", i)
+		}
+	}
+}
+
+func TestCompact_PrefixEndsWithToolUse(t *testing.T) {
+	summaryText := "summary"
+	events := []common.StreamEvent{
+		{Kind: common.EventTextDelta, TextDelta: summaryText},
+		{Kind: common.EventTurnDone, StopReason: "end_turn"},
+	}
+	client := &fakeClient{sequences: [][]common.StreamEvent{events}}
+	fe := &fakeRecorder{}
+	a, sess, _ := newTestAgent(t, client, fe)
+
+	sess.History = []common.Message{
+		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "do something"}}},
+		{Role: common.RoleAssistant, Content: []common.Block{
+			{Kind: common.BlockToolUse, ToolUseID: "tc1", ToolName: "shell", InputJSON: `{"command":"ls"}`},
+		}},
+		{Role: common.RoleTool, Content: []common.Block{
+			{Kind: common.BlockToolResult, ToolUseID: "tc1", ResultText: "files"},
+		}},
+		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "q2"}}},
+		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "a2"}}},
+		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "q3"}}},
+		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "a3"}}},
+		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "q4"}}},
+		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "a4"}}},
+	}
+
+	if err := a.compact(context.Background(), sess); err != nil {
+		t.Fatalf("compact: %v", err)
+	}
+
+	for i, msg := range sess.History {
+		if msg.Role == common.RoleAssistant {
+			for _, b := range msg.Content {
+				if b.Kind == common.BlockToolUse {
+					if i+1 >= len(sess.History) || sess.History[i+1].Role != common.RoleTool {
+						t.Errorf("tool_use at history[%d] has no following tool_result", i)
+					}
+				}
+			}
+		}
+	}
+}
+
 func TestCompact_TooFewForPrefix(t *testing.T) {
 	// 6 messages is below minRequired (7), so compact should be a no-op.
 	client := &fakeClient{}

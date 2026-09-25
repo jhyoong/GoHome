@@ -119,18 +119,24 @@ func Load(path string) (*Session, []common.Message, error) {
 
 		case "compaction":
 			var ev struct {
-				Summary string `json:"summary"`
+				Summary string           `json:"summary"`
+				History []common.Message `json:"history"`
 			}
 			if err := json.Unmarshal([]byte(line), &ev); err != nil {
 				continue
 			}
-			history = []common.Message{
-				{
-					Role: common.RoleUser,
-					Content: []common.Block{
-						{Kind: common.BlockText, Text: CompactSummaryPrefix + ev.Summary},
+			if len(ev.History) > 0 {
+				history = make([]common.Message, len(ev.History))
+				copy(history, ev.History)
+			} else {
+				history = []common.Message{
+					{
+						Role: common.RoleUser,
+						Content: []common.Block{
+							{Kind: common.BlockText, Text: CompactSummaryPrefix + ev.Summary},
+						},
 					},
-				},
+				}
 			}
 
 			// Ignored for history reconstruction:

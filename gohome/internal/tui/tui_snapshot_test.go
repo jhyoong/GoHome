@@ -393,13 +393,13 @@ func TestCopyKey_SetsStatusMessage(t *testing.T) {
 	// Move cursor to the assistant entry.
 	m = apply(m, tea.KeyMsg{Type: tea.KeyDown})
 
-	// Press 'c' to copy.
-	m = apply(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	// Press Ctrl+Y to copy.
+	m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlY})
 
 	// Should show a status message (either success or failure is fine in test env).
 	msg := m.StatusMsg()
 	if msg == "" {
-		t.Fatal("expected a status message after pressing 'c'")
+		t.Fatal("expected a status message after pressing Ctrl+Y")
 	}
 }
 
@@ -413,12 +413,12 @@ func TestCopyKey_ToolEntry_IncludesAllContent(t *testing.T) {
 		Status:     "success",
 	})
 
-	// Press 'c' to copy (cursor starts at 0).
-	m = apply(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	// Press Ctrl+Y to copy (cursor starts at 0).
+	m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlY})
 
 	msg := m.StatusMsg()
 	if msg == "" {
-		t.Fatal("expected a status message after pressing 'c'")
+		t.Fatal("expected a status message after pressing Ctrl+Y")
 	}
 }
 
