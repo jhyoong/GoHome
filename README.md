@@ -164,7 +164,8 @@ Auto-compaction automatically summarizes your conversation history when the cont
   "autoCompactPct": 0.80,
   "autoCompactTargetPct": 0.50,
   "autoCompactLeftover": 32000,
-  "autoCompactPrompt": ""
+  "autoCompactPrompt": "",
+  "cacheSudoPassword": false
 }
 ```
 
@@ -197,6 +198,7 @@ Both `"anthropic"` and `"openai"` wires are supported. Set `apiKey` for a litera
 | `contextCritPct` | `0.95` | Context window usage ratio at which a critical warning is shown (must be > `contextWarnPct` and <= 1.0) |
 | `renderThrottleMs` | `16` | Minimum interval in milliseconds between TUI redraws during token streaming. `0` uses the default (16 ms); a negative value redraws on every token. Higher values reduce CPU use and terminal flicker |
 | `retryBackoffMs` | `[250, 1000, 2000]` | Retry backoff schedule in milliseconds |
+| `cacheSudoPassword` | `false` | Keep the sudo password in memory after the first entry and reuse it until `gohome` exits. See [Sudo commands](#sudo-commands) |
 
 ### 2. Run
 
@@ -283,6 +285,18 @@ Before every tool call, `gohome` checks the whitelist. If no rule covers the cal
 - **Deny + steer** — block the call and inject a message into the agent's context.
 
 `/yolo` skips all prompts without writing whitelist entries.
+
+### Sudo commands
+
+When a shell command uses `sudo`, the approval menu works as normal. After you choose **Allow once** or **Allow always**, a password dialog opens. Every key goes to the password field. Enter runs the command, Esc goes back to the menu, and Ctrl+C denies. While an approval is open, the mouse wheel scrolls the chat; hold Shift to select text.
+
+By default the password is asked for on every sudo command. To reuse it until `gohome` exits, set this in `settings.json` (or choose **Yes** in the setup wizard):
+
+```json
+{ "cacheSudoPassword": true }
+```
+
+The password is kept in memory only. If sudo rejects a cached password ("Sorry, try again"), the cache is cleared and the next sudo command asks again. Detection relies on sudo's standard messages; if several sudo commands run at once, a late rejection can also clear a newer correct password, which only costs one extra prompt.
 
 ---
 
