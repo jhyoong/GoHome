@@ -1351,3 +1351,89 @@ git commit -m "docs: describe sudo password dialog and cacheSudoPassword"
 5. Repeat with a wrong password. Confirm the command fails.
 6. With `"cacheSudoPassword": true`, confirm the second sudo command skips the dialog and shows `Using cached sudo password`, and that a rejected cached password shows the cleared notice.
 7. Resize the terminal small (e.g. 80x20) with the dialog open. Confirm the session strip stays on the top line.
+
+---
+
+## Addendum (2026-10-03): whitelisted sudo commands
+
+Found in final review: after "Allow always" on a sudo command, the pattern is
+whitelisted, so later sudo commands skip approval and run with no password.
+`sudo` then opens `/dev/tty` and prompts underneath the TUI, fighting it for
+keystrokes. User decision: whitelisted sudo commands skip the menu but still
+open the password dialog (or use the cache), and shell commands run in their
+own session so nothing can take over the terminal.
+
+### Task 10: Run shell commands without a controlling terminal
+
+**Files:**
+- Create: `gohome/internal/tools/shell_unix.go` (`//go:build !windows`)
+- Create: `gohome/internal/tools/shell_windows.go` (`//go:build windows`)
+- Modify: `gohome/internal/tools/shell.go` (after the `exec.CommandContext` block)
+- Test: `gohome/internal/tools/shell_unix_test.go` (`//go:build !windows`)
+
+`shell_unix.go`:
+
+```go
+// detachFromTerminal starts the command in a new session with no controlling
+// terminal, so programs that open /dev/tty (sudo, ssh password prompts) fail
+// instead of drawing over the TUI and stealing keystrokes.
+func detachFromTerminal(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+}
+```
+
+`shell_windows.go`: same signature, no-op body.
+
+`shell.go`: call `detachFromTerminal(cmd)` right after `cmd` is created.
+
+Test: run the shell tool (same way `shell_test.go` does) with
+`[ "$(ps -o sid= -p $$ | tr -d ' ')" = "$$" ] && echo SESSION_LEADER`
+and assert the output contains `SESSION_LEADER`. Write it first and confirm it
+fails before the change.
+
+Commit: `fix(shell): run commands in their own session so they cannot grab the terminal`
+
+### Task 11: Password-only prompt for whitelisted sudo commands
+
+**Files:**
+- Modify: `gohome/internal/guard/guard.go` (`ApprovalRequest`)
+- Modify: `gohome/internal/guard/check.go` (whitelist step)
+- Modify: `gohome/internal/tui/approval.go`, `gohome/internal/tui/model_approval.go`
+- Modify: `README.md` (Sudo commands section)
+- Test: `gohome/internal/guard/guard_test.go`, `gohome/internal/tui/sudo_prompt_test.go`
+
+Guard:
+- Add `PasswordOnly bool` to `ApprovalRequest`: the command is already
+  whitelisted; the frontend only collects the sudo password. `AllowOnce` (or
+  `AllowAlways`) with a password runs it; anything else blocks it.
+- In `Check`, when the whitelist allows the call and it is a shell sudo
+  command, call the frontend with `NeedsSudoPassword: true, PasswordOnly: true`
+  and return `Decision{Allow: true, Reason: "whitelisted", SudoPassword: ...}`
+  for an allow outcome, or `Decision{Allow: false, Reason: "user_denied"}`
+  otherwise. Non-sudo whitelisted calls still skip the frontend. Yolo is
+  unchanged (with Task 10, sudo under yolo fails cleanly).
+- Tests: whitelisted sudo calls the frontend with both flags and threads the
+  password; whitelisted sudo + Deny is blocked; whitelisted non-sudo still makes
+  no frontend call.
+
+TUI:
+- `newApprovalPrompt`: when `req.PasswordOnly`, start in the password stage
+  (`sudoStage = true`, `sudoOutcome = AllowOnce`, field focused).
+- `handleApprovalReq`: when `req.PasswordOnly` and the cache is enabled and
+  set, reply immediately with `AllowOnce` + cached password, add the
+  "Using cached sudo password" notice, and do not enqueue a prompt.
+- `handleSudoPasswordKey`: Esc on a password-only prompt denies (there is no
+  menu to return to).
+- `renderSudoDialog`: hint is `Enter: run | Esc: deny` for password-only
+  prompts.
+- Tests: password-only request opens the dialog at once; typing + Enter
+  replies AllowOnce with the password; Esc denies; with the cache on and set,
+  the reply is immediate, no prompt becomes active, and the notice is added;
+  hint text differs.
+
+README: in "Sudo commands", say that sudo commands allowed by the whitelist
+skip the menu but still ask for the password (or use the cache), and that shell
+commands run without a terminal, so programs that prompt on the terminal fail
+instead of taking over the screen.
+
+Commit: `fix: ask for the sudo password even when the command is whitelisted`
