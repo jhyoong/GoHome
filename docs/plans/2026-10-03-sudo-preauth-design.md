@@ -43,13 +43,13 @@ Rejected alternatives:
 - Remove `injectSudoS` and `sudoWordRe`.
 - If `SudoPasswordFrom(ctx)` is non-empty:
   - Create an `os.Pipe`, write `password + "\n"`, close the write end.
-  - Pass the read end as `cmd.ExtraFiles` (fd 3 in the child). Close the
-    parent's copy after `cmd.Start`.
+  - Pass the read end as `cmd.ExtraFiles` (fd 3 in the child). The parent's
+    copy is closed when `Execute` returns.
   - Leave `cmd.Stdin` unset.
   - Run this script instead of the raw command:
 
     ```sh
-    sudo -S -v -p '' <&3 2>/dev/null || { echo "gohome: sudo password rejected" >&2; exit 1; }
+    sudo -S -v -p '' <&3 || { echo 'gohome: sudo pre-authentication failed, command not run' >&2; exit 1; }
     exec 3<&-
     <original command>
     exit $?
@@ -60,7 +60,8 @@ Rejected alternatives:
   command. Some shells exec the last command in place of themselves, which
   would change sudo's parent process and miss the cached credentials. With no
   terminal, sudo keys its credential cache by parent process ID.
-- Windows is unchanged.
+- Windows: the password is no longer passed to the command. Before, it was
+  written to stdin of every command, which Windows sudo does not read.
 
 ### `internal/guard/sudo.go`
 
@@ -69,23 +70,29 @@ inside `$(...)` or `( ... )`, then opens the password dialog.
 
 ### `internal/tui/model_approval.go`
 
-`sudoRejected` also matches `gohome: sudo password rejected`, so a wrong
-cached password is still cleared.
+No change. Sudo's stderr is kept, so a wrong password still prints
+"Sorry, try again.", which `sudoRejected` already matches. Other `sudo -v`
+failures (sudo missing, user not in sudoers) show sudo's real message and do
+not clear the cached password.
 
 ## Data flow and errors
 
 - Correct password: `sudo -v` caches credentials, then the command runs. Works
   with `sudo`, `sudo -n`, `sudo -S`, pipes into sudo, and several sudo calls in
   one command.
-- Wrong password: the command does not run. The result is `exit 1` and
-  `gohome: sudo password rejected`. The TUI clears the cached password.
+- Wrong password: the command does not run. The result is `exit 1`, sudo's
+  "Sorry, try again.", and `gohome: sudo pre-authentication failed, command
+  not run`. The TUI clears the cached password.
 - NOPASSWD rules: `sudo -v` succeeds without reading fd 3.
 
 Known limits (document in README):
 
 - Sudo started by another program (`bash -c "sudo ..."`, `xargs sudo`,
-  `find -exec sudo`) has a different parent process and may not see the
+  `find -exec sudo`) or inside a subshell (`( ... )`, or `$(...)` with more
+  than one command) has a different parent process and may not see the
   cached credentials.
+- A command ending in `\` or with an unterminated heredoc picks up the
+  trailing `exit $?` line. Line numbers in shell errors are 2 higher.
 - A sudoers `timestamp_timeout=0` disables caching, so pre-authentication has
   no effect.
 
@@ -101,7 +108,6 @@ Known limits (document in README):
   - no password in context leaves the command unchanged
 - `internal/guard`: regex cases for newline, `$(sudo`, `(sudo`, and
   non-matches like `pseudo`.
-- `internal/tui`: cached password plus the new marker clears the cache.
 - Manual, on a Linux host with a sudo password:
   - `sudo -n head -3 /etc/shadow`
   - `echo x | sudo tee /tmp/gohome-sudo-test`

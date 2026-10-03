@@ -289,6 +289,8 @@ git commit -m "fix(tools): pre-authenticate sudo via fd 3 instead of stdin rewri
 
 ### Task 3: Clear cached password on the new rejection marker
 
+> **Dropped after Task 2 review.** The wrapper now keeps sudo's stderr, so a wrong password prints "Sorry, try again.", which `sudoRejected` already matches. The marker was renamed to `SudoPreauthFailedMarker` ("gohome: sudo pre-authentication failed, command not run") and is not matched by the TUI. The text below is kept for history only.
+
 **Files:**
 - Modify: `gohome/internal/tui/model_approval.go:189-192`
 - Test: `gohome/internal/tui/sudo_prompt_test.go` (`TestSudoRejected`, around line 496)
@@ -349,9 +351,9 @@ git commit -m "fix(tui): clear cached sudo password on pre-auth rejection"
 After the paragraph at line 293, add:
 
 ```markdown
-When you enter a password, `gohome` first checks it with `sudo -v` in the same shell, then runs the command exactly as written. The password goes to sudo on a separate file descriptor, never on stdin, so commands such as `sudo -n ...` and `echo x | sudo tee file` work. If sudo rejects the password, the command does not run and the output says `gohome: sudo password rejected`.
+When you enter a password, `gohome` first checks it with `sudo -v` in the same shell, then runs the command exactly as written. The password goes to sudo on a separate file descriptor, never on stdin, so commands such as `sudo -n ...` and `echo x | sudo tee file` work. If the check fails, the command does not run; the output shows sudo's own error (for example "Sorry, try again.") followed by `gohome: sudo pre-authentication failed, command not run`.
 
-Limits: sudo started by another program (`bash -c "sudo ..."`, `xargs sudo`, `find -exec sudo`) may not see the checked password and can fail. A sudoers setting of `timestamp_timeout=0` turns off this check entirely.
+Limits: sudo started by another program (`bash -c "sudo ..."`, `xargs sudo`, `find -exec sudo`) or inside a subshell (`( ... )`, or `$(...)` with more than one command) may not see the checked password and can fail. A sudoers setting of `timestamp_timeout=0` turns off this check entirely.
 ```
 
 In the paragraph at line 301, change `If sudo rejects a cached password ("Sorry, try again")` to `If sudo rejects a cached password`.
@@ -385,7 +387,7 @@ Run `./bin/gohome` on the host and ask the agent to run each command below. Ente
 1. `sudo -n head -3 /etc/shadow`: prints the first 3 lines, `exit 0`.
 2. `echo hello | sudo tee /tmp/gohome-sudo-test`: prints `hello`, `exit 0`. Then `cat /tmp/gohome-sudo-test` shows `hello`.
 3. A two-line command: `echo first` on line 1, `sudo -n id -u` on line 2: dialog appears, prints `0`.
-4. Any sudo command with a wrong password: `exit 1` and `gohome: sudo password rejected`; the command does not run.
+4. Any sudo command with a wrong password: `exit 1`, "Sorry, try again.", and `gohome: sudo pre-authentication failed, command not run`; the command does not run.
 5. With `"cacheSudoPassword": true`, repeat step 4 after a correct cached password is replaced by a wrong one: notice "Cached sudo password was rejected and cleared".
 
 Record the results in the PR description. If step 1 fails while step 4 behaves correctly, the host's sudo does not share credentials between `sudo -v` and the command. Stop and report back before changing the design.
