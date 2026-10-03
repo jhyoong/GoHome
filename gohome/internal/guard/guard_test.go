@@ -3,6 +3,7 @@ package guard
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"testing"
 )
 
@@ -389,5 +390,119 @@ func TestCheck_Denylist_Nil_NoEffect(t *testing.T) {
 	}
 	if !dec.Allow {
 		t.Error("expected nil denylist to have no effect")
+	}
+}
+
+func TestCheck_WhitelistedSudo_AsksPasswordOnly(t *testing.T) {
+	fe := &fakeFrontend{response: ApprovalDecision{Outcome: AllowOnce, SudoPassword: "pw"}}
+	g := newTestGuard(whitelistWith(t, nil, []string{"^sudo"}), fe)
+
+	dec, err := g.Check(context.Background(), "sess1", "shell", bashCmd("sudo apt update"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !fe.called {
+		t.Fatal("whitelisted sudo: frontend should be called for the password")
+	}
+	req := fe.lastReq
+	if !req.NeedsSudoPassword || !req.PasswordOnly {
+		t.Errorf("request flags: NeedsSudoPassword=%v PasswordOnly=%v, want both true",
+			req.NeedsSudoPassword, req.PasswordOnly)
+	}
+	if req.SessionID != "sess1" || req.Tool != "shell" || req.Summary != "sudo apt update" {
+		t.Errorf("request fields: %+v", req)
+	}
+	if !dec.Allow || dec.Reason != "whitelisted" || dec.SudoPassword != "pw" {
+		t.Errorf("decision: got %+v, want Allow whitelisted with pw", dec)
+	}
+}
+
+func TestCheck_WhitelistedSudo_DenyBlocks(t *testing.T) {
+	fe := &fakeFrontend{response: ApprovalDecision{Outcome: Deny}}
+	g := newTestGuard(whitelistWith(t, nil, []string{"^sudo"}), fe)
+
+	dec, err := g.Check(context.Background(), "sess1", "shell", bashCmd("sudo apt update"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if dec.Allow || dec.Reason != "user_denied" {
+		t.Errorf("decision: got %+v, want blocked user_denied", dec)
+	}
+}
+
+func TestCheck_WhitelistedSudo_FrontendError(t *testing.T) {
+	fe := &fakeFrontend{err: context.Canceled}
+	g := newTestGuard(whitelistWith(t, nil, []string{"^sudo"}), fe)
+
+	if _, err := g.Check(context.Background(), "sess1", "shell", bashCmd("sudo true")); err == nil {
+		t.Error("expected frontend error to propagate")
+	}
+}
+
+func TestCheck_WhitelistedShellNonSudo_NoFrontendCall(t *testing.T) {
+	fe := &fakeFrontend{}
+	g := newTestGuard(whitelistWith(t, nil, []string{"^ls"}), fe)
+
+	dec, err := g.Check(context.Background(), "sess1", "shell", bashCmd("ls -la"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !dec.Allow || dec.Reason != "whitelisted" {
+		t.Errorf("decision: got %+v, want Allow whitelisted", dec)
+	}
+	if fe.called {
+		t.Error("whitelisted non-sudo shell: frontend should not be called")
+	}
+}
+
+func TestCheck_YoloWhitelistedSudo_NoFrontendCall(t *testing.T) {
+	fe := &fakeFrontend{}
+	g := newTestGuard(whitelistWith(t, nil, []string{"^sudo"}), fe)
+	g.SetYolo(true)
+
+	dec, err := g.Check(context.Background(), "sess1", "shell", bashCmd("sudo true"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !dec.Allow || dec.Reason != "yolo" {
+		t.Errorf("decision: got %+v, want Allow yolo", dec)
+	}
+	if fe.called {
+		t.Error("yolo: frontend should not be called")
+	}
+}
+
+func TestCheck_WhitelistedSudo_AllowAlwaysAddsNothing(t *testing.T) {
+	projPath := t.TempDir() + "/whitelist.json"
+	wl, err := Compile(WhitelistFile{Shell: []string{"^sudo"}}, WhitelistFile{}, projPath)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	fe := &fakeFrontend{response: ApprovalDecision{
+		Outcome: AllowAlways, SavedPattern: "^sudo apt", SudoPassword: "pw",
+	}}
+	g := NewGuard(wl, fe, nil)
+
+	dec, err := g.Check(context.Background(), "sess1", "shell", bashCmd("sudo apt update"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !dec.Allow || dec.Reason != "whitelisted" || dec.SavedPattern != "" || dec.SudoPassword != "pw" {
+		t.Errorf("decision: got %+v, want Allow whitelisted, no pattern, pw", dec)
+	}
+	if _, err := os.Stat(projPath); !os.IsNotExist(err) {
+		t.Errorf("project whitelist should not be written, stat err: %v", err)
+	}
+}
+
+func TestCheck_WhitelistedSudo_NoSuggestedPattern(t *testing.T) {
+	fe := &fakeFrontend{response: ApprovalDecision{Outcome: AllowOnce, SudoPassword: "pw"}}
+	g := newTestGuard(whitelistWith(t, nil, []string{"^sudo"}), fe)
+
+	if _, err := g.Check(context.Background(), "sess1", "shell", bashCmd("sudo apt update")); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fe.lastReq.SuggestedPattern != "" {
+		t.Errorf("SuggestedPattern: got %q, want empty", fe.lastReq.SuggestedPattern)
 	}
 }

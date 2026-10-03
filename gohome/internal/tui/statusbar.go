@@ -98,7 +98,9 @@ func (m *Model) statusBar() string {
 	}
 
 	var right string
-	if !m.mouseHintUntil.IsZero() && time.Now().Before(m.mouseHintUntil) {
+	if m.activeApproval != nil && m.activeApproval.sudoStage {
+		right = "sudo password needed"
+	} else if !m.mouseHintUntil.IsZero() && time.Now().Before(m.mouseHintUntil) {
 		right = "Hold Shift to select text"
 	} else if !m.chat.IsAutoScroll() {
 		currentLine, totalLines := m.chat.ScrollInfo(m.winW)

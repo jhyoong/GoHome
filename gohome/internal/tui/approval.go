@@ -41,8 +41,13 @@ type approvalPrompt struct {
 	steering   bool
 	steerInput textinput.Model
 
-	// sudo password sub-mode: command needs sudo password
+	// sudo password sub-mode: command needs sudo password.
+	// sudoStage is set after the user picks Allow; while set, every key goes
+	// to passwordInput. sudoOutcome remembers which Allow option was picked.
 	needsSudo     bool
+	sudoStage     bool
+	sudoOutcome   guard.ApprovalOutcome
+	sudoErr       string
 	passwordInput textinput.Model
 }
 
@@ -56,13 +61,10 @@ func newApprovalPrompt(req guard.ApprovalRequest, reply chan guard.ApprovalDecis
 	si.Placeholder = "steer message"
 
 	pwi := textinput.New()
-	pwi.Placeholder = ""
+	pwi.Prompt = ""
 	pwi.EchoMode = textinput.EchoPassword
-	if req.NeedsSudoPassword {
-		pwi.Focus()
-	}
 
-	return &approvalPrompt{
+	ap := &approvalPrompt{
 		req:           req,
 		reply:         reply,
 		pattern:       req.SuggestedPattern,
@@ -71,20 +73,44 @@ func newApprovalPrompt(req guard.ApprovalRequest, reply chan guard.ApprovalDecis
 		needsSudo:     req.NeedsSudoPassword,
 		passwordInput: pwi,
 	}
+	// Whitelisted sudo commands skip the menu and open the password stage.
+	if req.PasswordOnly {
+		ap.sudoStage = true
+		ap.sudoOutcome = guard.AllowOnce
+		ap.passwordInput.Focus()
+	}
+	return ap
 }
 
 // approvalSummaryLine builds a single contextual line describing the tool call
 // (e.g. "shell: git status", "read: path/to/file").
 func approvalSummaryLine(ap *approvalPrompt, focusedSessionID string) string {
 	arg := extractToolArg(ap.req.Tool, string(ap.req.Input))
-	var prefix string
-	if ap.req.SessionID != focusedSessionID {
-		prefix = fmt.Sprintf("[%s] ", ap.req.SessionID)
-	}
+	prefix := sessionPrefix(ap, focusedSessionID)
 	if arg != "" {
 		return fmt.Sprintf("%s%s: %s", prefix, ap.req.Tool, arg)
 	}
 	return prefix + ap.req.Tool
+}
+
+// sessionPrefix returns "[sid] " when the request comes from a session other
+// than the focused one, and "" otherwise.
+func sessionPrefix(ap *approvalPrompt, focusedSessionID string) string {
+	if ap.req.SessionID != focusedSessionID {
+		return fmt.Sprintf("[%s] ", ap.req.SessionID)
+	}
+	return ""
+}
+
+// capLines keeps at most maxLines lines. When lines are dropped, the last kept
+// line is trimmed so that it plus " ..." fits within width columns.
+func capLines(lines []string, maxLines, width int) ([]string, bool) {
+	if len(lines) <= maxLines {
+		return lines, false
+	}
+	out := append([]string(nil), lines[:maxLines]...)
+	out[maxLines-1] = TruncateText(out[maxLines-1], width-4) + " ..."
+	return out, true
 }
 
 var approvalBoxStyle = lipgloss.NewStyle().
@@ -94,6 +120,10 @@ var approvalBoxStyle = lipgloss.NewStyle().
 
 // renderApprovalOverlay renders the approval prompt box for the given prompt.
 func renderApprovalOverlay(ap *approvalPrompt, width int, focusedSessionID string) string {
+	if ap.sudoStage {
+		return renderSudoDialog(ap, width, focusedSessionID)
+	}
+
 	var sb strings.Builder
 
 	summary := approvalSummaryLine(ap, focusedSessionID)
@@ -101,31 +131,21 @@ func renderApprovalOverlay(ap *approvalPrompt, width int, focusedSessionID strin
 	if boxW < 20 {
 		boxW = 20
 	}
+	// Style.Width includes the horizontal padding (1 each side).
+	contentW := boxW - 2
 
+	wrapped := WrapText(summary, contentW)
 	if ap.expandedSummary {
-		wrapped := WrapText(summary, boxW)
 		sb.WriteString(strings.Join(wrapped, "\n"))
 	} else {
-		wrapped := WrapText(summary, boxW)
-		maxSummaryLines := 3
-		if len(wrapped) > maxSummaryLines {
-			for i := 0; i < maxSummaryLines-1; i++ {
-				sb.WriteString(wrapped[i])
-				sb.WriteString("\n")
-			}
-			sb.WriteString(wrapped[maxSummaryLines-1] + " ...")
+		const maxSummaryLines = 3
+		capped, truncated := capLines(wrapped, maxSummaryLines, contentW)
+		sb.WriteString(strings.Join(capped, "\n"))
+		if truncated {
 			sb.WriteString("\n(v to expand)")
-		} else {
-			sb.WriteString(strings.Join(wrapped, "\n"))
 		}
 	}
 	sb.WriteString("\n")
-
-	if ap.needsSudo {
-		sb.WriteString("Password: ")
-		sb.WriteString(ap.passwordInput.View())
-		sb.WriteString("\n")
-	}
 
 	if ap.steering {
 		sb.WriteString("\nSteer message (Enter to send, Esc to cancel):\n")
@@ -156,4 +176,53 @@ func renderApprovalOverlay(ap *approvalPrompt, width int, focusedSessionID strin
 
 	inner := sb.String()
 	return approvalBoxStyle.Width(boxW).Render(inner)
+}
+
+var (
+	sudoBoxStyle = lipgloss.NewStyle().
+			Border(lipgloss.DoubleBorder()).
+			Padding(0, 1).
+			BorderForeground(lipgloss.Color("9"))
+	sudoHeaderStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("9"))
+)
+
+// renderSudoDialog renders the password stage of a sudo approval.
+func renderSudoDialog(ap *approvalPrompt, width int, focusedSessionID string) string {
+	boxW := width - 4
+	if boxW < 20 {
+		boxW = 20
+	}
+
+	// Style.Width includes the horizontal padding (1 each side).
+	contentW := boxW - 2
+
+	header := sessionPrefix(ap, focusedSessionID) + "SUDO PASSWORD REQUIRED"
+
+	const maxCmdLines = 3
+	cmdLines := WrapText(extractToolArg(ap.req.Tool, string(ap.req.Input)), contentW)
+	cmdLines, _ = capLines(cmdLines, maxCmdLines, contentW)
+
+	const pwLabel = "Password: "
+	// Keep the field on one line so long passwords scroll instead of wrapping.
+	ap.passwordInput.Width = max(contentW-len(pwLabel)-1, 1)
+
+	var sb strings.Builder
+	sb.WriteString(sudoHeaderStyle.Render(header))
+	sb.WriteString("\n")
+	sb.WriteString(strings.Join(cmdLines, "\n"))
+	sb.WriteString("\n\n")
+	sb.WriteString(pwLabel)
+	sb.WriteString(ap.passwordInput.View())
+	sb.WriteString("\n")
+	if ap.sudoErr != "" {
+		sb.WriteString(sudoHeaderStyle.Render(ap.sudoErr))
+	}
+	sb.WriteString("\n")
+	if ap.req.PasswordOnly {
+		sb.WriteString("Enter: run | Esc: deny")
+	} else {
+		sb.WriteString("Enter: run | Esc: back | Ctrl+C: deny")
+	}
+
+	return sudoBoxStyle.Width(boxW).Render(sb.String())
 }

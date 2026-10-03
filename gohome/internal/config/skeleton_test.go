@@ -30,6 +30,7 @@ func TestSkeletonJSON_ContainsAllTopLevelFields(t *testing.T) {
 		"autoCompact", "autoCompactMode",
 		"autoCompactPct", "autoCompactTargetPct",
 		"autoCompactLeftover", "autoCompactPrompt",
+		"cacheSudoPassword",
 	}
 	for _, key := range required {
 		if _, ok := raw[key]; !ok {

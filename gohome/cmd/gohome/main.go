@@ -756,6 +756,7 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 				return
 			}
 			settings = reloaded
+			m.SetSettings(reloaded)
 			name := reloaded.DefaultModel
 			cfg, ok := reloaded.ModelConfig[name]
 			if !ok {

@@ -434,3 +434,42 @@ func TestEffectiveRenderThrottleMs(t *testing.T) {
 		}
 	}
 }
+
+func TestLoad_CacheSudoPasswordDefaultsFalse(t *testing.T) {
+	dir := t.TempDir()
+	gPath := writeJSON(t, dir, "global.json", Settings{})
+	pPath := writeJSON(t, dir, "project.json", Settings{})
+	merged, err := Load(gPath, pPath)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if merged.CacheSudoPassword {
+		t.Error("CacheSudoPassword: got true, want false")
+	}
+}
+
+func TestLoad_CacheSudoPasswordMerge(t *testing.T) {
+	dir := t.TempDir()
+	cases := []struct {
+		name            string
+		global, project bool
+		want            bool
+	}{
+		{"global on", true, false, true},
+		{"project on", false, true, true},
+		{"both off", false, false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			gPath := writeJSON(t, dir, "g-"+tc.name+".json", Settings{CacheSudoPassword: tc.global})
+			pPath := writeJSON(t, dir, "p-"+tc.name+".json", Settings{CacheSudoPassword: tc.project})
+			merged, err := Load(gPath, pPath)
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if merged.CacheSudoPassword != tc.want {
+				t.Errorf("got %v, want %v", merged.CacheSudoPassword, tc.want)
+			}
+		})
+	}
+}

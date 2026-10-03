@@ -442,13 +442,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case approvalReqMsg:
-		m.handleApprovalReq(msg)
+		if cmd := m.handleApprovalReq(msg); cmd != nil {
+			return m, cmd
+		}
 
 	case mouseHintExpiredMsg:
 		m.mouseHintUntil = time.Time{}
 
 	case mouseIdleMsg:
-		if msg.seq == m.mouseIdleSeq && m.mouseEnabled && m.mouseActive {
+		if msg.seq == m.mouseIdleSeq && m.mouseEnabled && m.mouseActive && m.activeApproval == nil {
 			m.mouseActive = false
 			return m, func() tea.Msg { return tea.DisableMouse() }
 		}
@@ -470,11 +472,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.chat.ReEnableAutoScrollIfAtBottom(m.winW)
 			}
 			// Schedule idle timeout: disable mouse capture after 2s of no wheel activity.
-			m.mouseIdleSeq++
-			seq := m.mouseIdleSeq
-			cmds = append(cmds, tea.Tick(2*time.Second, func(time.Time) tea.Msg {
-				return mouseIdleMsg{seq: seq}
-			}))
+			cmds = append(cmds, m.scheduleMouseIdle())
 			return m, tea.Batch(cmds...)
 		case tea.MouseButtonLeft:
 			m.mouseHintUntil = time.Now().Add(3 * time.Second)
@@ -651,75 +649,88 @@ func (m *Model) render() string {
 		return strings.Join(sections, "\n")
 	}
 
-	// Chat area
+	// Sections below the chat, built first so the chat can be sized to fit.
+	var below []string
+	if spinnerLines := m.spinner.Render(m.winW); len(spinnerLines) > 0 {
+		below = append(below, strings.Join(spinnerLines, "\n"))
+	}
+	if m.fileSearching {
+		if popupLines := m.fileSearch.Render(m.winW); len(popupLines) > 0 {
+			below = append(below, strings.Join(popupLines, "\n"))
+		}
+	}
+	if pendingLines := m.pending.Render(m.winW); len(pendingLines) > 0 {
+		below = append(below, strings.Join(pendingLines, "\n"))
+	}
+	if m.statusMsg != "" {
+		below = append(below, m.statusMsg)
+	}
+	below = append(below, m.renderInputRegion())
+
+	// Chat area: the usual height, capped so the frame fits the window.
+	// The status bar is always one line (statusHeight) and is rendered after
+	// the chat because its scroll hint reads chat state set by Render.
 	chatH := m.winH - editorMinHeight - 2 - stripHeight - statusHeight - 2
+	if avail := m.winH - countLines(sections) - countLines(below) - statusHeight; avail < chatH {
+		chatH = avail
+	}
 	if chatH < 1 {
 		chatH = 1
 	}
 	m.chat.SetMaxHeight(chatH)
-	sv, ok := m.sessions[m.focused]
-	if ok {
+	if sv, ok := m.sessions[m.focused]; ok {
 		m.chat.SetTimeline(&sv.Timeline)
 	}
-	chatLines := m.chat.Render(m.winW)
-	if len(chatLines) > 0 {
+	if chatLines := m.chat.Render(m.winW); len(chatLines) > 0 {
 		sections = append(sections, strings.Join(chatLines, "\n"))
 	}
 
-	// Spinner
-	spinnerLines := m.spinner.Render(m.winW)
-	if len(spinnerLines) > 0 {
-		sections = append(sections, strings.Join(spinnerLines, "\n"))
-	}
-
-	// File search popup
-	if m.fileSearching {
-		popupLines := m.fileSearch.Render(m.winW)
-		if len(popupLines) > 0 {
-			sections = append(sections, strings.Join(popupLines, "\n"))
-		}
-	}
-
-	// Pending messages
-	pendingLines := m.pending.Render(m.winW)
-	if len(pendingLines) > 0 {
-		sections = append(sections, strings.Join(pendingLines, "\n"))
-	}
-
-	// Status message
-	if m.statusMsg != "" {
-		sections = append(sections, m.statusMsg)
-	}
-
-	// Input region (swappable slot).
-	if m.activeApproval != nil {
-		sections = append(sections, renderApprovalOverlay(m.activeApproval, m.winW, m.focused))
-	} else if m.activeModal != nil {
-		modalLines := m.activeModal.Render(m.winW)
-		sections = append(sections, strings.Join(modalLines, "\n"))
-	} else {
-		sv, svOK := m.sessions[m.focused]
-		if svOK && sv.Completed {
-			completedLabel := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("[Session complete]")
-			sections = append(sections, completedLabel)
-		} else {
-			palette := m.slashPalette()
-			if palette != "" {
-				sections = append(sections, palette)
-			}
-			m.editor.SetTermHeight(m.winH)
-			editorLines := m.editor.Render(m.winW)
-			sections = append(sections, strings.Join(editorLines, "\n"))
-		}
-	}
-
+	sections = append(sections, below...)
 	sections = append(sections, m.statusBar())
-
 	return strings.Join(sections, "\n")
+}
+
+// renderInputRegion renders the swappable input slot: approval prompt,
+// modal, completed label, or the editor.
+func (m *Model) renderInputRegion() string {
+	if m.activeApproval != nil {
+		return renderApprovalOverlay(m.activeApproval, m.winW, m.focused)
+	}
+	if m.activeModal != nil {
+		return strings.Join(m.activeModal.Render(m.winW), "\n")
+	}
+	if sv, ok := m.sessions[m.focused]; ok && sv.Completed {
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("[Session complete]")
+	}
+	var parts []string
+	if palette := m.slashPalette(); palette != "" {
+		parts = append(parts, palette)
+	}
+	m.editor.SetTermHeight(m.winH)
+	parts = append(parts, strings.Join(m.editor.Render(m.winW), "\n"))
+	return strings.Join(parts, "\n")
+}
+
+// countLines returns the number of terminal lines the joined sections use.
+func countLines(sections []string) int {
+	n := 0
+	for _, s := range sections {
+		n += strings.Count(s, "\n") + 1
+	}
+	return n
 }
 
 // Chat returns the chat component (exported for tests).
 func (m *Model) Chat() *ChatComponent { return m.chat }
+
+// scheduleMouseIdle starts a fresh idle timer; older timers become stale.
+func (m *Model) scheduleMouseIdle() tea.Cmd {
+	m.mouseIdleSeq++
+	seq := m.mouseIdleSeq
+	return tea.Tick(2*time.Second, func(time.Time) tea.Msg {
+		return mouseIdleMsg{seq: seq}
+	})
+}
 
 // MouseEnabled returns whether mouse tracking is currently enabled (exported for tests).
 func (m *Model) MouseEnabled() bool { return m.mouseEnabled }

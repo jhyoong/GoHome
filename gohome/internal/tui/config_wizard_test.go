@@ -81,11 +81,20 @@ func TestConfigWizard_FullFlow(t *testing.T) {
 		w.HandleInput(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 	}
 	w.HandleInput(tea.KeyMsg{Type: tea.KeyEnter})
-	if w.step != wizardStepConfirm {
-		t.Fatalf("after config name: step = %d, want %d", w.step, wizardStepConfirm)
+	if w.step != wizardStepSudoCache {
+		t.Fatalf("after config name: step = %d, want %d", w.step, wizardStepSudoCache)
 	}
 
-	// Step 7: confirm (select "Save", first item)
+	// Step 7: sudo cache -- default "No" (first item)
+	w.HandleInput(tea.KeyMsg{Type: tea.KeyEnter})
+	if w.step != wizardStepConfirm {
+		t.Fatalf("after sudo cache: step = %d, want %d", w.step, wizardStepConfirm)
+	}
+	if !strings.Contains(w.summaryText(), "Sudo cache:   off") {
+		t.Errorf("summary missing default sudo cache line:\n%s", w.summaryText())
+	}
+
+	// Step 8: confirm (select "Save", first item)
 	w.HandleInput(tea.KeyMsg{Type: tea.KeyEnter})
 
 	// Verify file was written
@@ -111,8 +120,67 @@ func TestConfigWizard_FullFlow(t *testing.T) {
 	if mc.APIKeyEnv != "ANTHROPIC_API_KEY" {
 		t.Errorf("apiKeyEnv: got %q, want ANTHROPIC_API_KEY", mc.APIKeyEnv)
 	}
+	if s.CacheSudoPassword {
+		t.Error("cacheSudoPassword: got true, want false (default No)")
+	}
 	if savedPath != outPath {
 		t.Errorf("onSave path: got %q, want %q", savedPath, outPath)
+	}
+}
+
+func TestConfigWizard_SudoCacheYes(t *testing.T) {
+	dir := t.TempDir()
+	outPath := dir + "/settings.json"
+	w := NewConfigWizard(func() {}, func(string) {})
+	w.outputPath = outPath
+	w.wire, w.baseURL, w.keySource, w.keyValue = "anthropic", "http://x", "env", "K"
+	w.modelName, w.configName = "m", "c"
+	w.step = wizardStepSudoCache
+	w.buildStep()
+
+	if joined := StripAnsi(strings.Join(w.Render(80), "\n")); !strings.Contains(joined, "Cache sudo password") {
+		t.Fatalf("missing prompt:\n%s", joined)
+	}
+
+	w.HandleInput(tea.KeyMsg{Type: tea.KeyDown})  // move to "Yes"
+	w.HandleInput(tea.KeyMsg{Type: tea.KeyEnter}) // select
+	if !strings.Contains(w.summaryText(), "Sudo cache:   on") {
+		t.Errorf("summary missing sudo cache line:\n%s", w.summaryText())
+	}
+	w.HandleInput(tea.KeyMsg{Type: tea.KeyEnter}) // Save
+
+	data, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	var s config.Settings
+	if err := json.Unmarshal(data, &s); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if !s.CacheSudoPassword {
+		t.Error("cacheSudoPassword: got false, want true")
+	}
+}
+
+func TestConfigWizard_SudoCacheEscGoesBackToConfigName(t *testing.T) {
+	w := NewConfigWizard(func() {}, func(string) {})
+	w.outputPath = t.TempDir() + "/settings.json"
+	w.step = wizardStepSudoCache
+	w.buildStep()
+	w.HandleInput(tea.KeyMsg{Type: tea.KeyEsc})
+	if w.step != wizardStepConfigName {
+		t.Errorf("step = %d, want %d", w.step, wizardStepConfigName)
+	}
+}
+
+func TestConfigWizard_ConfirmEscGoesBackToSudoCache(t *testing.T) {
+	w := NewConfigWizard(func() {}, func(string) {})
+	w.outputPath = t.TempDir() + "/settings.json"
+	w.step = wizardStepConfirm
+	w.buildStep()
+	w.HandleInput(tea.KeyMsg{Type: tea.KeyEsc})
+	if w.step != wizardStepSudoCache {
+		t.Errorf("step = %d, want %d", w.step, wizardStepSudoCache)
 	}
 }
 

@@ -51,6 +51,10 @@ type Settings struct {
 	AutoCompactTargetPct float64 `json:"autoCompactTargetPct,omitempty"`
 	AutoCompactLeftover  int     `json:"autoCompactLeftover,omitempty"`
 	AutoCompactPrompt    string  `json:"autoCompactPrompt,omitempty"`
+
+	// CacheSudoPassword keeps the sudo password in memory for the rest of the
+	// process after the first successful entry. Off by default.
+	CacheSudoPassword bool `json:"cacheSudoPassword,omitempty"`
 }
 
 // load reads and decodes a Settings file at path.
@@ -93,6 +97,7 @@ func Load(globalPath, projectPath string) (Settings, error) {
 		AutoCompactTargetPct: global.AutoCompactTargetPct,
 		AutoCompactLeftover:  global.AutoCompactLeftover,
 		AutoCompactPrompt:    global.AutoCompactPrompt,
+		CacheSudoPassword:    global.CacheSudoPassword,
 	}
 
 	for k, v := range global.ModelConfig {
@@ -131,6 +136,9 @@ func Load(globalPath, projectPath string) (Settings, error) {
 	}
 	if project.AutoCompact {
 		merged.AutoCompact = true
+	}
+	if project.CacheSudoPassword {
+		merged.CacheSudoPassword = true
 	}
 	if project.AutoCompactMode != "" {
 		merged.AutoCompactMode = project.AutoCompactMode
@@ -227,6 +235,7 @@ func LoadAnnotated(globalPath, projectPath string) (AnnotatedSettings, error) {
 		"autoCompactTargetPct": SourceDefault,
 		"autoCompactLeftover":  SourceDefault,
 		"autoCompactPrompt":    SourceDefault,
+		"cacheSudoPassword":    SourceDefault,
 	}
 
 	if global.DefaultModel != "" {
@@ -325,6 +334,13 @@ func LoadAnnotated(globalPath, projectPath string) (AnnotatedSettings, error) {
 	}
 	if project.AutoCompactPrompt != "" {
 		sources["autoCompactPrompt"] = SourceProject
+	}
+
+	if global.CacheSudoPassword {
+		sources["cacheSudoPassword"] = SourceGlobal
+	}
+	if project.CacheSudoPassword {
+		sources["cacheSudoPassword"] = SourceProject
 	}
 
 	modelSources := make(map[string]Source)
