@@ -148,11 +148,34 @@ func (m *Model) allowApproval(outcome guard.ApprovalOutcome) tea.Cmd {
 	if !ap.needsSudo {
 		return m.resolveApproval(m.buildApprovalDecision(outcome))
 	}
+	if m.settings.CacheSudoPassword && m.sudoPasswordCache != "" {
+		m.addNotice(ap.req.SessionID, "Using cached sudo password")
+		dec := m.buildApprovalDecision(outcome)
+		dec.SudoPassword = m.sudoPasswordCache
+		return m.resolveApproval(dec)
+	}
 	ap.sudoStage = true
 	ap.sudoOutcome = outcome
 	ap.sudoErr = ""
 	ap.passwordInput.SetValue("")
 	return ap.passwordInput.Focus()
+}
+
+// addNotice appends a notice to the session's timeline without forcing the
+// view to scroll, so a user who scrolled up keeps their position.
+func (m *Model) addNotice(sessionID, text string) {
+	sv := m.getOrCreateSession(sessionID, 1)
+	sv.Timeline = append(sv.Timeline, TimelineEntry{Kind: KindNotice, Text: text})
+	if sessionID == m.focused {
+		m.rebuildViewport()
+	}
+}
+
+// sudoRejected reports whether shell output contains sudo's standard
+// wrong-password messages.
+func sudoRejected(output string) bool {
+	return strings.Contains(output, "Sorry, try again") ||
+		strings.Contains(output, "incorrect password attempt")
 }
 
 // handleSudoPasswordKey routes keys while the password stage is open. Every

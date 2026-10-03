@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/jhyoong/GoHome/gohome/internal/agent"
+	"github.com/jhyoong/GoHome/gohome/internal/config"
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
 )
 
@@ -132,11 +134,16 @@ func TestSudo_CtrlCDeniesInPasswordStage(t *testing.T) {
 	m := newSudoTestModel()
 	ch := sendSudoReq(m, "main", "sudo true")
 	typeRunes(m, "1")
+	typeRunes(m, "secret")
 
 	pressKey(m, tea.KeyCtrlC)
 
-	if dec := requireReply(t, ch); dec.Outcome != guard.Deny {
+	dec := requireReply(t, ch)
+	if dec.Outcome != guard.Deny {
 		t.Errorf("outcome: got %q, want Deny", dec.Outcome)
+	}
+	if dec.SudoPassword != "" {
+		t.Errorf("password must not be sent on deny, got %q", dec.SudoPassword)
 	}
 }
 
@@ -327,5 +334,122 @@ func TestSudo_LongPasswordStaysOnOneLine(t *testing.T) {
 	requireMaxWidth(t, view, 80)
 	if h := dialogHeight(t, view); h != before {
 		t.Errorf("dialog height changed from %d to %d with a long password", before, h)
+	}
+}
+
+func enterSudoPassword(t *testing.T, m *Model, command, password string) guard.ApprovalDecision {
+	t.Helper()
+	ch := sendSudoReq(m, "main", command)
+	typeRunes(m, "1")
+	typeRunes(m, password)
+	pressKey(m, tea.KeyEnter)
+	return requireReply(t, ch)
+}
+
+func lastNotice(m *Model) string {
+	tl := m.sessions[m.focused].Timeline
+	for i := len(tl) - 1; i >= 0; i-- {
+		if tl[i].Kind == KindNotice {
+			return tl[i].Text
+		}
+	}
+	return ""
+}
+
+func TestSudo_CacheOffAlwaysAsks(t *testing.T) {
+	m := newSudoTestModel()
+	enterSudoPassword(t, m, "sudo true", "pw")
+
+	ch := sendSudoReq(m, "main", "sudo ls")
+	typeRunes(m, "1")
+	requireNoReply(t, ch)
+	if !m.activeApproval.sudoStage {
+		t.Fatal("cache off: expected password stage on second sudo")
+	}
+	if m.sudoPasswordCache != "" {
+		t.Error("cache off: password must not be stored")
+	}
+}
+
+func TestSudo_CacheOnSkipsDialog(t *testing.T) {
+	m := newSudoTestModel()
+	m.SetSettings(config.Settings{CacheSudoPassword: true})
+	enterSudoPassword(t, m, "sudo true", "pw")
+
+	ch := sendSudoReq(m, "main", "sudo ls")
+	typeRunes(m, "1")
+
+	dec := requireReply(t, ch)
+	if dec.Outcome != guard.AllowOnce || dec.SudoPassword != "pw" {
+		t.Errorf("got %+v, want AllowOnce with cached pw", dec)
+	}
+	if got := lastNotice(m); got != "Using cached sudo password" {
+		t.Errorf("notice: got %q", got)
+	}
+}
+
+func TestSudo_RejectedPasswordClearsCache(t *testing.T) {
+	m := newSudoTestModel()
+	m.SetSettings(config.Settings{CacheSudoPassword: true})
+	enterSudoPassword(t, m, "sudo true", "wrong")
+
+	m.Update(AgentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind:      agent.EventToolResult,
+		SessionID: "main",
+		Result: &agent.ToolResult{
+			Content: "Password:Sorry, try again.\nsudo: no password was provided\n",
+			IsError: true,
+		},
+	}})
+
+	if m.sudoPasswordCache != "" {
+		t.Error("cache should be cleared after rejection")
+	}
+	if got := lastNotice(m); got != "Cached sudo password was rejected and cleared" {
+		t.Errorf("notice: got %q", got)
+	}
+
+	ch := sendSudoReq(m, "main", "sudo ls")
+	typeRunes(m, "1")
+	requireNoReply(t, ch)
+	if !m.activeApproval.sudoStage {
+		t.Fatal("expected password stage after cache was cleared")
+	}
+}
+
+func TestSudoRejected(t *testing.T) {
+	cases := map[string]bool{
+		"Sorry, try again.":                   true,
+		"sudo: 3 incorrect password attempts": true,
+		"sudo: 1 incorrect password attempt":  true,
+		"Reading package lists... Done":       false,
+		"":                                    false,
+	}
+	for in, want := range cases {
+		if got := sudoRejected(in); got != want {
+			t.Errorf("sudoRejected(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
+
+// A queued sudo approval must start fresh after the first is resolved.
+func TestSudo_QueuedApprovalStartsFresh(t *testing.T) {
+	m := newSudoTestModel()
+	ch1 := sendSudoReq(m, "main", "sudo true")
+	ch2 := sendSudoReq(m, "main", "sudo ls")
+
+	typeRunes(m, "1")
+	typeRunes(m, "pw")
+	pressKey(m, tea.KeyEnter)
+	requireReply(t, ch1)
+
+	requireNoReply(t, ch2)
+	ap := m.activeApproval
+	if ap == nil {
+		t.Fatal("expected queued approval to become active")
+	}
+	if ap.sudoStage || ap.passwordInput.Value() != "" || ap.sudoErr != "" {
+		t.Errorf("queued approval not fresh: stage=%v value=%q err=%q",
+			ap.sudoStage, ap.passwordInput.Value(), ap.sudoErr)
 	}
 }

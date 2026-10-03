@@ -121,6 +121,13 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 		if sv.Depth > 0 {
 			m.updateShadowResult(msg.SessionID, toolUseID, content, isErr)
 		}
+		if m.sudoPasswordCache != "" && sudoRejected(content) {
+			m.sudoPasswordCache = ""
+			sv.Timeline = append(sv.Timeline, TimelineEntry{
+				Kind: KindNotice,
+				Text: "Cached sudo password was rejected and cleared",
+			})
+		}
 
 	case agent.EventToolDenied:
 		sv.Timeline = append(sv.Timeline, TimelineEntry{
