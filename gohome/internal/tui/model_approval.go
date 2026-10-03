@@ -15,9 +15,7 @@ import (
 // at once from the sudo password cache when caching is on and a password is
 // stored.
 func (m *Model) handleApprovalReq(msg approvalReqMsg) tea.Cmd {
-	if msg.Req.PasswordOnly && m.settings.CacheSudoPassword && m.sudoPasswordCache != "" {
-		m.addNotice(msg.Req.SessionID, "Using cached sudo password")
-		msg.Reply <- guard.ApprovalDecision{Outcome: guard.AllowOnce, SudoPassword: m.sudoPasswordCache}
+	if m.replyFromCache(msg.Req, msg.Reply) {
 		return nil
 	}
 	ap := newApprovalPrompt(msg.Req, msg.Reply)
@@ -263,16 +261,31 @@ func (m *Model) resolveApproval(dec guard.ApprovalDecision) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-// promoteApproval pops the next approval from the FIFO queue (if any) and
-// sets it as the active approval.
-func (m *Model) promoteApproval() {
-	if m.activeApproval != nil {
-		return
+// replyFromCache answers a password-only request with the cached sudo
+// password when caching is on and a password is stored. It reports whether
+// the request was answered. Answering ahead of other queued approvals is
+// intended: the command is already whitelisted and needs no user input.
+// The reply channel is buffered, so the send does not block.
+func (m *Model) replyFromCache(req guard.ApprovalRequest, reply chan guard.ApprovalDecision) bool {
+	if !req.PasswordOnly || !m.settings.CacheSudoPassword || m.sudoPasswordCache == "" {
+		return false
 	}
-	if len(m.approvalQueue) > 0 {
-		m.activeApproval = m.approvalQueue[0]
+	m.addNotice(req.SessionID, "Using cached sudo password")
+	reply <- guard.ApprovalDecision{Outcome: guard.AllowOnce, SudoPassword: m.sudoPasswordCache}
+	return true
+}
+
+// promoteApproval pops the next approval from the FIFO queue (if any) and
+// sets it as the active approval. Password-only prompts that can be answered
+// from the cache (filled while they waited) are answered and skipped.
+func (m *Model) promoteApproval() {
+	for m.activeApproval == nil && len(m.approvalQueue) > 0 {
+		next := m.approvalQueue[0]
 		m.approvalQueue[0] = nil
 		m.approvalQueue = m.approvalQueue[1:]
+		if !m.replyFromCache(next.req, next.reply) {
+			m.activeApproval = next
+		}
 	}
 }
 

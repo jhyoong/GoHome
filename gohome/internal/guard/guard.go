@@ -12,7 +12,9 @@ const (
 	DenySteer   ApprovalOutcome = "deny_steer"
 )
 
-// ApprovalRequest is sent to the Frontend when a tool call is not whitelisted.
+// ApprovalRequest is sent to the Frontend when a tool call is not whitelisted,
+// and also for whitelisted sudo shell commands (PasswordOnly), which still need
+// the sudo password.
 type ApprovalRequest struct {
 	SessionID         string
 	Tool              string

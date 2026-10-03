@@ -769,3 +769,27 @@ func TestSudoPasswordOnly_QueuedOpensInPasswordStage(t *testing.T) {
 		t.Errorf("got %+v, want AllowOnce with pw", dec)
 	}
 }
+
+func TestSudoPasswordOnly_QueuedUsesCacheFilledWhileWaiting(t *testing.T) {
+	m := newSudoTestModel()
+	m.SetSettings(config.Settings{CacheSudoPassword: true})
+	chA := sendSudoReq(m, "main", "sudo true")
+	chB := sendPasswordOnlyReq(m, "main", "sudo ls")
+	requireNoReply(t, chB)
+
+	typeRunes(m, "1")
+	typeRunes(m, "pw")
+	pressKey(m, tea.KeyEnter)
+	requireReply(t, chA)
+
+	dec := requireReply(t, chB)
+	if dec.Outcome != guard.AllowOnce || dec.SudoPassword != "pw" {
+		t.Errorf("got %+v, want AllowOnce with cached pw", dec)
+	}
+	if m.activeApproval != nil {
+		t.Error("no prompt should stay active")
+	}
+	if got := lastNotice(m); got != "Using cached sudo password" {
+		t.Errorf("notice: got %q", got)
+	}
+}

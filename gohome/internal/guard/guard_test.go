@@ -3,6 +3,7 @@ package guard
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"testing"
 )
 
@@ -435,5 +436,73 @@ func TestCheck_WhitelistedSudo_FrontendError(t *testing.T) {
 
 	if _, err := g.Check(context.Background(), "sess1", "shell", bashCmd("sudo true")); err == nil {
 		t.Error("expected frontend error to propagate")
+	}
+}
+
+func TestCheck_WhitelistedShellNonSudo_NoFrontendCall(t *testing.T) {
+	fe := &fakeFrontend{}
+	g := newTestGuard(whitelistWith(t, nil, []string{"^ls"}), fe)
+
+	dec, err := g.Check(context.Background(), "sess1", "shell", bashCmd("ls -la"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !dec.Allow || dec.Reason != "whitelisted" {
+		t.Errorf("decision: got %+v, want Allow whitelisted", dec)
+	}
+	if fe.called {
+		t.Error("whitelisted non-sudo shell: frontend should not be called")
+	}
+}
+
+func TestCheck_YoloWhitelistedSudo_NoFrontendCall(t *testing.T) {
+	fe := &fakeFrontend{}
+	g := newTestGuard(whitelistWith(t, nil, []string{"^sudo"}), fe)
+	g.SetYolo(true)
+
+	dec, err := g.Check(context.Background(), "sess1", "shell", bashCmd("sudo true"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !dec.Allow || dec.Reason != "yolo" {
+		t.Errorf("decision: got %+v, want Allow yolo", dec)
+	}
+	if fe.called {
+		t.Error("yolo: frontend should not be called")
+	}
+}
+
+func TestCheck_WhitelistedSudo_AllowAlwaysAddsNothing(t *testing.T) {
+	projPath := t.TempDir() + "/whitelist.json"
+	wl, err := Compile(WhitelistFile{Shell: []string{"^sudo"}}, WhitelistFile{}, projPath)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	fe := &fakeFrontend{response: ApprovalDecision{
+		Outcome: AllowAlways, SavedPattern: "^sudo apt", SudoPassword: "pw",
+	}}
+	g := NewGuard(wl, fe, nil)
+
+	dec, err := g.Check(context.Background(), "sess1", "shell", bashCmd("sudo apt update"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !dec.Allow || dec.Reason != "whitelisted" || dec.SavedPattern != "" || dec.SudoPassword != "pw" {
+		t.Errorf("decision: got %+v, want Allow whitelisted, no pattern, pw", dec)
+	}
+	if _, err := os.Stat(projPath); !os.IsNotExist(err) {
+		t.Errorf("project whitelist should not be written, stat err: %v", err)
+	}
+}
+
+func TestCheck_WhitelistedSudo_NoSuggestedPattern(t *testing.T) {
+	fe := &fakeFrontend{response: ApprovalDecision{Outcome: AllowOnce, SudoPassword: "pw"}}
+	g := newTestGuard(whitelistWith(t, nil, []string{"^sudo"}), fe)
+
+	if _, err := g.Check(context.Background(), "sess1", "shell", bashCmd("sudo apt update")); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fe.lastReq.SuggestedPattern != "" {
+		t.Errorf("SuggestedPattern: got %q, want empty", fe.lastReq.SuggestedPattern)
 	}
 }
