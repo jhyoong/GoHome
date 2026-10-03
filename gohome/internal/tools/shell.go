@@ -108,6 +108,7 @@ func (s ShellTool) Execute(ctx context.Context, in json.RawMessage, sink Progres
 	} else {
 		cmd = exec.CommandContext(ctx, "/bin/sh", "-c", inp.Command)
 	}
+	detachFromTerminal(cmd)
 
 	if inp.CWD != nil {
 		cmd.Dir = *inp.CWD
