@@ -250,3 +250,82 @@ func TestSudo_DialogShowsError(t *testing.T) {
 		t.Errorf("missing error line:\n%s", view)
 	}
 }
+
+// dialogHeight returns the number of lines between the sudo dialog's top and
+// bottom borders (inclusive).
+func dialogHeight(t *testing.T, view string) int {
+	t.Helper()
+	lines := strings.Split(view, "\n")
+	top, bottom := -1, -1
+	for i, l := range lines {
+		if strings.HasPrefix(l, "╔") {
+			top = i
+		}
+		if strings.HasPrefix(l, "╚") {
+			bottom = i
+		}
+	}
+	if top < 0 || bottom < 0 {
+		t.Fatalf("dialog borders not found:\n%s", view)
+	}
+	return bottom - top + 1
+}
+
+func requireMaxWidth(t *testing.T, view string, maxW int) {
+	t.Helper()
+	for i, l := range strings.Split(view, "\n") {
+		if w := VisualWidth(l); w > maxW {
+			t.Errorf("line %d is %d wide (max %d): %q", i, w, maxW, l)
+		}
+	}
+}
+
+func TestSudo_LongCommandWrapsToContentWidth(t *testing.T) {
+	short := "sudo true"
+	// Both are longer than 3*74 columns; one with spaces, one without.
+	longWords := "sudo echo " + strings.Repeat("abcdefghi ", 40)
+	longSolid := "sudo " + strings.Repeat("x", 400)
+
+	m := newSudoTestModel()
+	sendSudoReq(m, "main", short)
+	typeRunes(m, "1")
+	// Short command: header + 1 cmd line + blank + password + err + hint + 2 borders.
+	if h := dialogHeight(t, StripAnsi(m.View())); h != 8 {
+		t.Fatalf("short command dialog height = %d, want 8", h)
+	}
+
+	for _, cmd := range []string{longWords, longSolid} {
+		m := newSudoTestModel()
+		sendSudoReq(m, "main", cmd)
+
+		menu := StripAnsi(m.View())
+		requireMaxWidth(t, menu, 80)
+		if !strings.Contains(menu, "(v to expand)") {
+			t.Errorf("menu stage should be truncated:\n%s", menu)
+		}
+
+		typeRunes(m, "1")
+		view := StripAnsi(m.View())
+		requireMaxWidth(t, view, 80)
+		// Command capped at 3 lines: 2 more than the short command.
+		if h := dialogHeight(t, view); h != 10 {
+			t.Errorf("long command dialog height = %d, want 10:\n%s", h, view)
+		}
+		if !strings.Contains(view, " ...") {
+			t.Errorf("truncated command should end with ...:\n%s", view)
+		}
+	}
+}
+
+func TestSudo_LongPasswordStaysOnOneLine(t *testing.T) {
+	m := newSudoTestModel()
+	sendSudoReq(m, "main", "sudo true")
+	typeRunes(m, "1")
+	before := dialogHeight(t, StripAnsi(m.View()))
+	typeRunes(m, strings.Repeat("p", 200))
+	view := StripAnsi(m.View())
+	requireMaxWidth(t, view, 80)
+	if h := dialogHeight(t, view); h != before {
+		t.Errorf("dialog height changed from %d to %d with a long password", before, h)
+	}
+}

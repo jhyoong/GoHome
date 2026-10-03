@@ -79,14 +79,31 @@ func newApprovalPrompt(req guard.ApprovalRequest, reply chan guard.ApprovalDecis
 // (e.g. "shell: git status", "read: path/to/file").
 func approvalSummaryLine(ap *approvalPrompt, focusedSessionID string) string {
 	arg := extractToolArg(ap.req.Tool, string(ap.req.Input))
-	var prefix string
-	if ap.req.SessionID != focusedSessionID {
-		prefix = fmt.Sprintf("[%s] ", ap.req.SessionID)
-	}
+	prefix := sessionPrefix(ap, focusedSessionID)
 	if arg != "" {
 		return fmt.Sprintf("%s%s: %s", prefix, ap.req.Tool, arg)
 	}
 	return prefix + ap.req.Tool
+}
+
+// sessionPrefix returns "[sid] " when the request comes from a session other
+// than the focused one, and "" otherwise.
+func sessionPrefix(ap *approvalPrompt, focusedSessionID string) string {
+	if ap.req.SessionID != focusedSessionID {
+		return fmt.Sprintf("[%s] ", ap.req.SessionID)
+	}
+	return ""
+}
+
+// capLines keeps at most maxLines lines. When lines are dropped, the last kept
+// line is trimmed so that it plus " ..." fits within width columns.
+func capLines(lines []string, maxLines, width int) ([]string, bool) {
+	if len(lines) <= maxLines {
+		return lines, false
+	}
+	out := append([]string(nil), lines[:maxLines]...)
+	out[maxLines-1] = TruncateText(out[maxLines-1], width-4) + " ..."
+	return out, true
 }
 
 var approvalBoxStyle = lipgloss.NewStyle().
@@ -107,22 +124,18 @@ func renderApprovalOverlay(ap *approvalPrompt, width int, focusedSessionID strin
 	if boxW < 20 {
 		boxW = 20
 	}
+	// Style.Width includes the horizontal padding (1 each side).
+	contentW := boxW - 2
 
+	wrapped := WrapText(summary, contentW)
 	if ap.expandedSummary {
-		wrapped := WrapText(summary, boxW)
 		sb.WriteString(strings.Join(wrapped, "\n"))
 	} else {
-		wrapped := WrapText(summary, boxW)
-		maxSummaryLines := 3
-		if len(wrapped) > maxSummaryLines {
-			for i := 0; i < maxSummaryLines-1; i++ {
-				sb.WriteString(wrapped[i])
-				sb.WriteString("\n")
-			}
-			sb.WriteString(wrapped[maxSummaryLines-1] + " ...")
+		const maxSummaryLines = 3
+		capped, truncated := capLines(wrapped, maxSummaryLines, contentW)
+		sb.WriteString(strings.Join(capped, "\n"))
+		if truncated {
 			sb.WriteString("\n(v to expand)")
-		} else {
-			sb.WriteString(strings.Join(wrapped, "\n"))
 		}
 	}
 	sb.WriteString("\n")
@@ -173,27 +186,30 @@ func renderSudoDialog(ap *approvalPrompt, width int, focusedSessionID string) st
 		boxW = 20
 	}
 
-	header := "SUDO PASSWORD REQUIRED"
-	if ap.req.SessionID != focusedSessionID {
-		header = fmt.Sprintf("[%s] %s", ap.req.SessionID, header)
-	}
+	// Style.Width includes the horizontal padding (1 each side).
+	contentW := boxW - 2
+
+	header := sessionPrefix(ap, focusedSessionID) + "SUDO PASSWORD REQUIRED"
 
 	const maxCmdLines = 3
-	cmdLines := WrapText(extractToolArg(ap.req.Tool, string(ap.req.Input)), boxW)
-	if len(cmdLines) > maxCmdLines {
-		cmdLines = cmdLines[:maxCmdLines]
-		cmdLines[maxCmdLines-1] += " ..."
-	}
+	cmdLines := WrapText(extractToolArg(ap.req.Tool, string(ap.req.Input)), contentW)
+	cmdLines, _ = capLines(cmdLines, maxCmdLines, contentW)
+
+	const pwLabel = "Password: "
+	// Keep the field on one line so long passwords scroll instead of wrapping.
+	ap.passwordInput.Width = max(contentW-len(pwLabel)-1, 1)
 
 	var sb strings.Builder
 	sb.WriteString(sudoHeaderStyle.Render(header))
 	sb.WriteString("\n")
 	sb.WriteString(strings.Join(cmdLines, "\n"))
 	sb.WriteString("\n\n")
-	sb.WriteString("Password: ")
+	sb.WriteString(pwLabel)
 	sb.WriteString(ap.passwordInput.View())
 	sb.WriteString("\n")
-	sb.WriteString(ap.sudoErr)
+	if ap.sudoErr != "" {
+		sb.WriteString(sudoHeaderStyle.Render(ap.sudoErr))
+	}
 	sb.WriteString("\n")
 	sb.WriteString("Enter: run | Esc: back | Ctrl+C: deny")
 
