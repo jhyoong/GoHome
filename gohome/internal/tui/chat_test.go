@@ -413,7 +413,6 @@ func TestCountLines_MatchesRender(t *testing.T) {
 		autoScroll: true,
 		maxHeight:  100,
 		cursor:     -1,
-		lastCursor: -1,
 	}
 
 	rendered := c.Render(80)
@@ -423,7 +422,7 @@ func TestCountLines_MatchesRender(t *testing.T) {
 	}
 }
 
-func TestRender_SkipsOffscreenEntries(t *testing.T) {
+func TestRender_ReusesCachedEntries(t *testing.T) {
 	var tl []TimelineEntry
 	for i := 0; i < 100; i++ {
 		tl = append(tl, TimelineEntry{Kind: KindNotice, Text: fmt.Sprintf("entry %d", i)})
@@ -433,7 +432,6 @@ func TestRender_SkipsOffscreenEntries(t *testing.T) {
 		autoScroll: true,
 		maxHeight:  10,
 		cursor:     -1,
-		lastCursor: -1,
 	}
 
 	rendered := c.Render(80)
@@ -441,11 +439,79 @@ func TestRender_SkipsOffscreenEntries(t *testing.T) {
 		t.Errorf("expected at most 10 lines, got %d", len(rendered))
 	}
 
-	// Verify offscreen entries were not rendered (cachedLines should be nil).
-	// The first 89 entries (indices 0-88) should not have been rendered.
-	for i := 0; i < 80; i++ {
-		if tl[i].cachedLines != nil {
-			t.Errorf("entry %d was rendered but should have been skipped", i)
+	// Every entry is rendered once (to count lines) and cached; a second
+	// frame, including a cursor move, must not re-render any of them.
+	first := make([]*string, len(tl))
+	for i := range tl {
+		if len(tl[i].cachedLines) == 0 {
+			t.Fatalf("entry %d has no cached lines", i)
 		}
+		first[i] = &tl[i].cachedLines[0]
+	}
+	c.SetCursor(95)
+	rendered = c.Render(80)
+	for i := range tl {
+		if &tl[i].cachedLines[0] != first[i] {
+			t.Errorf("entry %d was re-rendered", i)
+		}
+	}
+	found := false
+	for _, l := range rendered {
+		if strings.HasPrefix(l, "> ") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected cursor marker on the cursor entry")
+	}
+}
+
+func TestSpinnerTick_SingleChain(t *testing.T) {
+	m := New(nil, "main")
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	_, cmd := m.Update(agentEventMsg{SessionID: "main", Ev: agent.Event{Kind: agent.EventSending, SessionID: "main"}})
+	if cmd == nil {
+		t.Fatal("expected a spinner tick to be scheduled on first event")
+	}
+	// Further deltas while a tick is in flight must not start another chain.
+	for i := 0; i < 5; i++ {
+		_, cmd = m.Update(agentEventMsg{SessionID: "main", Ev: agent.Event{
+			Kind: agent.EventTokenDelta, SessionID: "main", TextDelta: "x",
+		}})
+		if cmd != nil {
+			t.Fatalf("delta %d: expected no new command while a tick is in flight", i)
+		}
+	}
+	// The tick itself reschedules exactly one follow-up.
+	_, cmd = m.Update(spinnerTickMsg{})
+	if cmd == nil {
+		t.Fatal("expected spinner tick to reschedule itself")
+	}
+}
+
+func TestRenderThrottle_ReusesFrameUntilFlush(t *testing.T) {
+	m := New(nil, "main")
+	m.SetRenderThrottleMs(100)
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	m.Update(agentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind: agent.EventTokenDelta, SessionID: "main", TextDelta: "Hello ",
+	}})
+	v1 := m.View()
+	if !strings.Contains(v1, "Hello") {
+		t.Fatalf("first delta should render immediately, got:\n%s", v1)
+	}
+
+	m.Update(agentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind: agent.EventTokenDelta, SessionID: "main", TextDelta: "world",
+	}})
+	if v2 := m.View(); v2 != v1 {
+		t.Fatal("throttled delta should reuse the previous frame")
+	}
+
+	m.Update(renderThrottleMsg{})
+	if v3 := m.View(); !strings.Contains(v3, "Hello world") {
+		t.Fatalf("throttle flush should show all text, got:\n%s", v3)
 	}
 }

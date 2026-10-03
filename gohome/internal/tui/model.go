@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/jhyoong/GoHome/gohome/internal/agent"
 	"github.com/jhyoong/GoHome/gohome/internal/config"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 	"github.com/jhyoong/GoHome/gohome/internal/tui/style"
@@ -173,6 +174,14 @@ type Model struct {
 	renderThrottleMs int
 	lastRenderTime   time.Time
 	renderPending    bool
+
+	// lastView is the most recent View output. While renderPending is set,
+	// View returns it instead of re-rendering so throttled deltas cost nothing.
+	lastView string
+
+	// spinnerTicking is true while a spinner tick is scheduled. It ensures only
+	// one tick chain runs at a time.
+	spinnerTicking bool
 }
 
 // renderThrottleMsg fires when a deferred render is due.
@@ -394,8 +403,31 @@ func (m *Model) cancelFocusedSessionWith(statusMsg string) {
 	m.rebuildViewport()
 }
 
+// spinnerTickCmd schedules the next spinner tick unless one is already
+// scheduled. Returns nil when a tick is in flight.
+func (m *Model) spinnerTickCmd() tea.Cmd {
+	if m.spinnerTicking {
+		return nil
+	}
+	m.spinnerTicking = true
+	return SpinnerTickCmd()
+}
+
+// isStreamDelta reports whether msg is a token or thinking delta, the only
+// messages whose redraws may be deferred by the render throttle.
+func isStreamDelta(msg tea.Msg) bool {
+	ev, ok := msg.(agentEventMsg)
+	return ok && (ev.Ev.Kind == agent.EventTokenDelta || ev.Ev.Kind == agent.EventThinkingDelta)
+}
+
 // Update implements tea.Model.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Any message other than a stream delta must be reflected immediately,
+	// so drop the cached frame.
+	if !isStreamDelta(msg) {
+		m.renderPending = false
+	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.winW = msg.Width
@@ -403,9 +435,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.editor.SetTermHeight(msg.Height)
 
 	case spinnerTickMsg:
+		m.spinnerTicking = false
 		if m.spinner.Active() {
 			m.spinner.Tick()
-			return m, SpinnerTickCmd()
+			return m, m.spinnerTickCmd()
 		}
 
 	case approvalReqMsg:
@@ -479,11 +512,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case renderThrottleMsg:
-		if m.renderPending {
-			m.renderPending = false
-			m.lastRenderTime = time.Now()
-			m.rebuildViewport()
-		}
+		m.lastRenderTime = time.Now()
+		m.rebuildViewport()
 
 	case agentEventMsg:
 		if cmd := m.handleAgentEvent(msg); cmd != nil {
@@ -585,6 +615,16 @@ func (m *Model) View() string {
 	if m.winW <= 0 {
 		return "gohome"
 	}
+	// A throttled delta is pending: reuse the last frame.
+	if m.renderPending && m.lastView != "" {
+		return m.lastView
+	}
+	m.lastView = m.render()
+	return m.lastView
+}
+
+// render builds the full screen. Called by View.
+func (m *Model) render() string {
 
 	var sections []string
 

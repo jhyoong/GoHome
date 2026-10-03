@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/formatters"
@@ -355,9 +356,51 @@ func applyInlineStyle(text string, bold, italic bool, buf *strings.Builder) {
 	}
 }
 
+// highlightCacheMax bounds the number of cached highlighted code blocks.
+// When full, the cache is cleared and refilled on demand.
+const highlightCacheMax = 256
+
+var (
+	highlightStyle     = chromastyles.Get("monokai")
+	highlightFormatter = formatters.Get("terminal256")
+
+	highlightMu    sync.Mutex
+	highlightCache = make(map[string]string)
+)
+
+func init() {
+	if highlightStyle == nil {
+		highlightStyle = chromastyles.Fallback
+	}
+	if highlightFormatter == nil {
+		highlightFormatter = formatters.Fallback
+	}
+}
+
 // highlightCode applies chroma syntax highlighting to code, returning ANSI output.
-// Falls back to plain code if highlighting fails.
+// Falls back to plain code if highlighting fails. Results are cached by
+// (lang, code) so unchanged blocks are not re-highlighted on every render.
 func highlightCode(code, lang string) string {
+	key := lang + "\x00" + code
+	highlightMu.Lock()
+	cached, ok := highlightCache[key]
+	highlightMu.Unlock()
+	if ok {
+		return cached
+	}
+
+	out := highlightUncached(code, lang)
+
+	highlightMu.Lock()
+	if len(highlightCache) >= highlightCacheMax {
+		clear(highlightCache)
+	}
+	highlightCache[key] = out
+	highlightMu.Unlock()
+	return out
+}
+
+func highlightUncached(code, lang string) string {
 	var lexer chroma.Lexer
 	if lang != "" {
 		lexer = lexers.Get(lang)
@@ -367,23 +410,13 @@ func highlightCode(code, lang string) string {
 	}
 	lexer = chroma.Coalesce(lexer)
 
-	style := chromastyles.Get("monokai")
-	if style == nil {
-		style = chromastyles.Fallback
-	}
-
-	formatter := formatters.Get("terminal256")
-	if formatter == nil {
-		formatter = formatters.Fallback
-	}
-
 	iterator, err := lexer.Tokenise(nil, code)
 	if err != nil {
 		return code
 	}
 
 	var buf bytes.Buffer
-	if err := formatter.Format(&buf, style, iterator); err != nil {
+	if err := highlightFormatter.Format(&buf, highlightStyle, iterator); err != nil {
 		return code
 	}
 	return buf.String()

@@ -195,7 +195,7 @@ Both `"anthropic"` and `"openai"` wires are supported. Set `apiKey` for a litera
 | `maxShellTimeoutMs` | `600000` | Maximum shell command timeout in milliseconds |
 | `contextWarnPct` | `0.80` | Context window usage ratio at which a warning is shown (must be < `contextCritPct`) |
 | `contextCritPct` | `0.95` | Context window usage ratio at which a critical warning is shown (must be > `contextWarnPct` and <= 1.0) |
-| `renderThrottleMs` | `0` | Minimum interval in milliseconds between TUI redraws during token streaming. `0` (default) renders every token; higher values reduce terminal flicker on slow connections |
+| `renderThrottleMs` | `16` | Minimum interval in milliseconds between TUI redraws during token streaming. `0` uses the default (16 ms); a negative value redraws on every token. Higher values reduce CPU use and terminal flicker |
 | `retryBackoffMs` | `[250, 1000, 2000]` | Retry backoff schedule in milliseconds |
 
 ### 2. Run

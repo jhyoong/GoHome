@@ -550,7 +550,14 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		critPct = config.DefaultContextCritPct
 	}
 	m.SetContextThresholds(warnPct, critPct)
-	m.SetRenderThrottleMs(settings.RenderThrottleMs)
+	// 0 means use the default; a negative value disables throttling.
+	throttleMs := settings.RenderThrottleMs
+	if throttleMs == 0 {
+		throttleMs = config.DefaultRenderThrottleMs
+	} else if throttleMs < 0 {
+		throttleMs = 0
+	}
+	m.SetRenderThrottleMs(throttleMs)
 	m.SetSettings(settings)
 	m.SetGitBranch(gitBranch(cwd))
 	m.SetProjectDir(filepath.Base(cwd))

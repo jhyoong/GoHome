@@ -253,43 +253,40 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 		}
 	}
 
+	var spinnerCmd tea.Cmd
+	if (ev.Kind == agent.EventSending || ev.Kind == agent.EventTokenDelta || ev.Kind == agent.EventThinkingDelta) && m.spinner.Active() {
+		spinnerCmd = m.spinnerTickCmd()
+	}
+
+	isDelta := ev.Kind == agent.EventTokenDelta || ev.Kind == agent.EventThinkingDelta
+	if !isDelta || msg.SessionID != m.focused {
+		// Non-delta events and background-session deltas are shown on the
+		// next frame without throttling.
+		m.renderPending = false
+	}
+
 	if msg.SessionID == m.focused {
-		if m.renderThrottleMs > 0 &&
-			(ev.Kind == agent.EventTokenDelta || ev.Kind == agent.EventThinkingDelta) {
+		if m.renderThrottleMs > 0 && isDelta {
 			elapsed := time.Since(m.lastRenderTime)
 			threshold := time.Duration(m.renderThrottleMs) * time.Millisecond
 			if elapsed < threshold {
+				// Defer the redraw: View reuses the last frame until the
+				// throttle tick (or any other message) clears renderPending.
 				if !m.renderPending {
 					m.renderPending = true
 					remaining := threshold - elapsed
-					cmd := tea.Tick(remaining, func(time.Time) tea.Msg {
+					return tea.Batch(dequeuedCmd, spinnerCmd, tea.Tick(remaining, func(time.Time) tea.Msg {
 						return renderThrottleMsg{}
-					})
-					if dequeuedCmd != nil {
-						return tea.Batch(dequeuedCmd, cmd)
-					}
-					return cmd
+					}))
 				}
-				if dequeuedCmd != nil {
-					return dequeuedCmd
-				}
-				if m.spinner.Active() {
-					return SpinnerTickCmd()
-				}
-				return nil
+				return tea.Batch(dequeuedCmd, spinnerCmd)
 			}
 			m.lastRenderTime = time.Now()
 		}
 		m.rebuildViewport()
 	}
 
-	if dequeuedCmd != nil {
-		return dequeuedCmd
-	}
-	if (ev.Kind == agent.EventSending || ev.Kind == agent.EventTokenDelta || ev.Kind == agent.EventThinkingDelta) && m.spinner.Active() {
-		return SpinnerTickCmd()
-	}
-	return nil
+	return tea.Batch(dequeuedCmd, spinnerCmd)
 }
 
 // insertShadowEntry inserts a shadow tool entry into the parent session's

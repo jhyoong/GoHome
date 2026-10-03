@@ -58,6 +58,13 @@ Fix: resolve style/formatter once and cache highlighted output keyed by
 (language, code) so completed blocks are not re-highlighted while the rest
 of the message streams.
 
+### Status
+
+Items 1-4 are fixed. `renderThrottleMs: 0` now means the 16 ms default; a
+negative value redraws on every token. The same benchmark after the fixes:
+~1.6 ms and ~0.6 MB / ~10k allocations per frame, and frames during
+streaming are capped by the throttle.
+
 ## Medium impact
 
 5. String accumulation with `+=` for streamed text in `agent/turn.go`
