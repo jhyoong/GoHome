@@ -20,6 +20,10 @@ type ApprovalRequest struct {
 	Summary           string
 	SuggestedPattern  string
 	NeedsSudoPassword bool
+	// PasswordOnly means the command is already whitelisted; the frontend
+	// only collects the sudo password. AllowOnce (or AllowAlways) runs it
+	// with the password; any other outcome blocks it.
+	PasswordOnly bool
 }
 
 // ApprovalDecision is the response from the Frontend for a pending tool call.

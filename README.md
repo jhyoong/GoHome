@@ -290,7 +290,9 @@ Before every tool call, `gohome` checks the whitelist. If no rule covers the cal
 
 When a shell command uses `sudo`, the approval menu works as normal. After you choose **Allow once** or **Allow always**, a password dialog opens. Every key goes to the password field. Enter runs the command, Esc goes back to the menu, and Ctrl+C denies. While an approval is open, the mouse wheel scrolls the chat; hold Shift to select text.
 
-By default the password is asked for on every sudo command. To reuse it until `gohome` exits, set this in `settings.json` (or choose **Yes** in the setup wizard):
+Sudo commands allowed by the whitelist (for example after **Allow always**) skip the menu but still open the password dialog; there, Esc denies the command. Shell commands run without a terminal, so programs that prompt on the terminal (for example sudo without a password, or an ssh password prompt) fail instead of taking over the screen.
+
+By default the password is asked for on every sudo command, including whitelisted ones. To reuse it until `gohome` exits, set this in `settings.json` (or choose **Yes** in the setup wizard):
 
 ```json
 { "cacheSudoPassword": true }

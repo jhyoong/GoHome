@@ -629,3 +629,143 @@ func TestViewFitsWindowWithApprovals(t *testing.T) {
 		})
 	}
 }
+
+// sendPasswordOnlyReq sends a request for a whitelisted sudo command, which
+// only needs the password.
+func sendPasswordOnlyReq(m *Model, sessionID, command string) chan guard.ApprovalDecision {
+	ch := make(chan guard.ApprovalDecision, 1)
+	input, _ := json.Marshal(map[string]string{"command": command})
+	m.Update(ApprovalReqMsg{
+		Req: guard.ApprovalRequest{
+			SessionID:         sessionID,
+			Tool:              "shell",
+			Input:             input,
+			Summary:           command,
+			NeedsSudoPassword: true,
+			PasswordOnly:      true,
+		},
+		Reply: ch,
+	})
+	return ch
+}
+
+func TestSudoPasswordOnly_OpensDialogAtOnce(t *testing.T) {
+	m := newSudoTestModel()
+	ch := sendPasswordOnlyReq(m, "main", "sudo apt update")
+
+	requireNoReply(t, ch)
+	if m.activeApproval == nil || !m.activeApproval.sudoStage {
+		t.Fatal("expected password stage right away")
+	}
+}
+
+func TestSudoPasswordOnly_EnterReplies(t *testing.T) {
+	m := newSudoTestModel()
+	ch := sendPasswordOnlyReq(m, "main", "sudo apt update")
+
+	typeRunes(m, "secret")
+	pressKey(m, tea.KeyEnter)
+
+	dec := requireReply(t, ch)
+	if dec.Outcome != guard.AllowOnce || dec.SudoPassword != "secret" {
+		t.Errorf("got %+v, want AllowOnce with secret", dec)
+	}
+	if m.activeApproval != nil {
+		t.Error("approval should be resolved")
+	}
+}
+
+func TestSudoPasswordOnly_EscDenies(t *testing.T) {
+	m := newSudoTestModel()
+	ch := sendPasswordOnlyReq(m, "main", "sudo apt update")
+	typeRunes(m, "abc")
+
+	pressKey(m, tea.KeyEsc)
+
+	dec := requireReply(t, ch)
+	if dec.Outcome != guard.Deny {
+		t.Errorf("outcome: got %q, want Deny", dec.Outcome)
+	}
+	if dec.SudoPassword != "" {
+		t.Error("deny must not carry a password")
+	}
+	if m.activeApproval != nil {
+		t.Error("approval should be resolved")
+	}
+}
+
+func TestSudoPasswordOnly_CacheOnUsesCache(t *testing.T) {
+	m := newSudoTestModel()
+	m.SetSettings(config.Settings{CacheSudoPassword: true})
+	m.sudoPasswordCache = "pw"
+
+	ch := sendPasswordOnlyReq(m, "main", "sudo apt update")
+
+	dec := requireReply(t, ch)
+	if dec.Outcome != guard.AllowOnce || dec.SudoPassword != "pw" {
+		t.Errorf("got %+v, want AllowOnce with cached pw", dec)
+	}
+	if m.activeApproval != nil {
+		t.Error("no prompt should be created when the cache is used")
+	}
+	if got := lastNotice(m); got != "Using cached sudo password" {
+		t.Errorf("notice: got %q", got)
+	}
+}
+
+func TestSudoPasswordOnly_CacheOnEmptyAsksAndCaches(t *testing.T) {
+	m := newSudoTestModel()
+	m.SetSettings(config.Settings{CacheSudoPassword: true})
+
+	ch := sendPasswordOnlyReq(m, "main", "sudo apt update")
+	requireNoReply(t, ch)
+	if m.activeApproval == nil || !m.activeApproval.sudoStage {
+		t.Fatal("expected password stage when the cache is empty")
+	}
+
+	typeRunes(m, "pw")
+	pressKey(m, tea.KeyEnter)
+	requireReply(t, ch)
+	if m.sudoPasswordCache != "pw" {
+		t.Errorf("cache: got %q, want pw", m.sudoPasswordCache)
+	}
+}
+
+func TestSudoPasswordOnly_DialogHint(t *testing.T) {
+	m := newSudoTestModel()
+	sendPasswordOnlyReq(m, "main", "sudo apt update")
+	view := StripAnsi(m.View())
+	if !strings.Contains(view, "Enter: run | Esc: deny") {
+		t.Errorf("password-only hint missing:\n%s", view)
+	}
+	if strings.Contains(view, "Esc: back") {
+		t.Errorf("password-only dialog must not offer Esc: back:\n%s", view)
+	}
+
+	m2 := newSudoTestModel()
+	sendSudoReq(m2, "main", "sudo apt update")
+	typeRunes(m2, "1")
+	if view := StripAnsi(m2.View()); !strings.Contains(view, "Enter: run | Esc: back | Ctrl+C: deny") {
+		t.Errorf("normal hint missing:\n%s", view)
+	}
+}
+
+func TestSudoPasswordOnly_QueuedOpensInPasswordStage(t *testing.T) {
+	m := newSudoTestModel()
+	ch1 := sendSudoReq(m, "main", "sudo true")
+	ch2 := sendPasswordOnlyReq(m, "main", "sudo ls")
+
+	typeRunes(m, "3")
+	requireReply(t, ch1)
+
+	requireNoReply(t, ch2)
+	ap := m.activeApproval
+	if ap == nil || !ap.sudoStage {
+		t.Fatal("expected queued password-only request in password stage")
+	}
+	typeRunes(m, "pw")
+	pressKey(m, tea.KeyEnter)
+	if dec := requireReply(t, ch2); dec.Outcome != guard.AllowOnce || dec.SudoPassword != "pw" {
+		t.Errorf("got %+v, want AllowOnce with pw", dec)
+	}
+}

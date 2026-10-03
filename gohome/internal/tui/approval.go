@@ -64,7 +64,7 @@ func newApprovalPrompt(req guard.ApprovalRequest, reply chan guard.ApprovalDecis
 	pwi.Prompt = ""
 	pwi.EchoMode = textinput.EchoPassword
 
-	return &approvalPrompt{
+	ap := &approvalPrompt{
 		req:           req,
 		reply:         reply,
 		pattern:       req.SuggestedPattern,
@@ -73,6 +73,13 @@ func newApprovalPrompt(req guard.ApprovalRequest, reply chan guard.ApprovalDecis
 		needsSudo:     req.NeedsSudoPassword,
 		passwordInput: pwi,
 	}
+	// Whitelisted sudo commands skip the menu and open the password stage.
+	if req.PasswordOnly {
+		ap.sudoStage = true
+		ap.sudoOutcome = guard.AllowOnce
+		ap.passwordInput.Focus()
+	}
+	return ap
 }
 
 // approvalSummaryLine builds a single contextual line describing the tool call
@@ -211,7 +218,11 @@ func renderSudoDialog(ap *approvalPrompt, width int, focusedSessionID string) st
 		sb.WriteString(sudoHeaderStyle.Render(ap.sudoErr))
 	}
 	sb.WriteString("\n")
-	sb.WriteString("Enter: run | Esc: back | Ctrl+C: deny")
+	if ap.req.PasswordOnly {
+		sb.WriteString("Enter: run | Esc: deny")
+	} else {
+		sb.WriteString("Enter: run | Esc: back | Ctrl+C: deny")
+	}
 
 	return sudoBoxStyle.Width(boxW).Render(sb.String())
 }

@@ -35,6 +35,7 @@ func NewGuard(wl *Whitelist, fe Frontend, dl *Denylist) *Guard {
 
 // Check decides whether the given tool call is allowed.
 // Order: denylist (hard reject) -> yolo -> whitelist -> prompt user.
+// Whitelisted sudo commands still ask the frontend for the password.
 func (g *Guard) Check(ctx context.Context, sessionID, tool string, input json.RawMessage) (Decision, error) {
 	// 1. Denylist: reject immediately, overrides everything.
 	if g.denylist != nil {
@@ -52,12 +53,6 @@ func (g *Guard) Check(ctx context.Context, sessionID, tool string, input json.Ra
 		return Decision{Allow: true, Reason: "yolo"}, nil
 	}
 
-	// 3. Whitelisted: allow, no frontend call.
-	if g.whitelist.Allows(tool, input) {
-		return Decision{Allow: true, Reason: "whitelisted"}, nil
-	}
-
-	// 4. Build approval request and ask the frontend.
 	summary := summaryFor(tool, input)
 	needsSudo := tool == "shell" && IsSudoCommand(summary)
 	req := ApprovalRequest{
@@ -65,10 +60,19 @@ func (g *Guard) Check(ctx context.Context, sessionID, tool string, input json.Ra
 		Tool:              tool,
 		Input:             input,
 		Summary:           summary,
-		SuggestedPattern:  Suggest(tool, input),
 		NeedsSudoPassword: needsSudo,
 	}
 
+	// 3. Whitelisted: allow. Sudo commands still need the password.
+	if g.whitelist.Allows(tool, input) {
+		if !needsSudo {
+			return Decision{Allow: true, Reason: "whitelisted"}, nil
+		}
+		return g.askSudoPassword(ctx, req)
+	}
+
+	// 4. Ask the frontend for approval.
+	req.SuggestedPattern = Suggest(tool, input)
 	dec, err := g.frontend.RequestApproval(ctx, req)
 	if err != nil {
 		return Decision{}, err
@@ -93,6 +97,20 @@ func (g *Guard) Check(ctx context.Context, sessionID, tool string, input json.Ra
 	default:
 		return Decision{Allow: false, Reason: "unknown_outcome"}, nil
 	}
+}
+
+// askSudoPassword asks the frontend only for the sudo password of a
+// whitelisted command. No whitelist entry is added.
+func (g *Guard) askSudoPassword(ctx context.Context, req ApprovalRequest) (Decision, error) {
+	req.PasswordOnly = true
+	dec, err := g.frontend.RequestApproval(ctx, req)
+	if err != nil {
+		return Decision{}, err
+	}
+	if dec.Outcome == AllowOnce || dec.Outcome == AllowAlways {
+		return Decision{Allow: true, Reason: "whitelisted", SudoPassword: dec.SudoPassword}, nil
+	}
+	return Decision{Allow: false, Reason: "user_denied"}, nil
 }
 
 // summaryFor builds a short human-readable summary of a tool call.

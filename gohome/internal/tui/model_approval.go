@@ -11,8 +11,15 @@ import (
 // handleApprovalReq processes an incoming approval request. If no approval is
 // currently active, it becomes the active prompt; otherwise it is appended to
 // the FIFO approval queue. It returns a command that re-enables mouse capture
-// if the idle timeout had turned it off.
+// if the idle timeout had turned it off. A password-only request is answered
+// at once from the sudo password cache when caching is on and a password is
+// stored.
 func (m *Model) handleApprovalReq(msg approvalReqMsg) tea.Cmd {
+	if msg.Req.PasswordOnly && m.settings.CacheSudoPassword && m.sudoPasswordCache != "" {
+		m.addNotice(msg.Req.SessionID, "Using cached sudo password")
+		msg.Reply <- guard.ApprovalDecision{Outcome: guard.AllowOnce, SudoPassword: m.sudoPasswordCache}
+		return nil
+	}
 	ap := newApprovalPrompt(msg.Req, msg.Reply)
 	if m.activeApproval == nil {
 		m.activeApproval = ap
@@ -201,6 +208,10 @@ func (m *Model) handleSudoPasswordKey(msg tea.KeyMsg) tea.Cmd {
 		}
 		return m.resolveApproval(m.buildApprovalDecision(ap.sudoOutcome))
 	case tea.KeyEsc:
+		// A password-only prompt has no menu to return to.
+		if ap.req.PasswordOnly {
+			return m.resolveApproval(guard.ApprovalDecision{Outcome: guard.Deny})
+		}
 		ap.sudoStage = false
 		ap.sudoErr = ""
 		ap.passwordInput.SetValue("")
