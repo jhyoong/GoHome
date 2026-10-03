@@ -96,6 +96,10 @@ var approvalBoxStyle = lipgloss.NewStyle().
 
 // renderApprovalOverlay renders the approval prompt box for the given prompt.
 func renderApprovalOverlay(ap *approvalPrompt, width int, focusedSessionID string) string {
+	if ap.sudoStage {
+		return renderSudoDialog(ap, width, focusedSessionID)
+	}
+
 	var sb strings.Builder
 
 	summary := approvalSummaryLine(ap, focusedSessionID)
@@ -122,12 +126,6 @@ func renderApprovalOverlay(ap *approvalPrompt, width int, focusedSessionID strin
 		}
 	}
 	sb.WriteString("\n")
-
-	if ap.needsSudo {
-		sb.WriteString("Password: ")
-		sb.WriteString(ap.passwordInput.View())
-		sb.WriteString("\n")
-	}
 
 	if ap.steering {
 		sb.WriteString("\nSteer message (Enter to send, Esc to cancel):\n")
@@ -158,4 +156,46 @@ func renderApprovalOverlay(ap *approvalPrompt, width int, focusedSessionID strin
 
 	inner := sb.String()
 	return approvalBoxStyle.Width(boxW).Render(inner)
+}
+
+var (
+	sudoBoxStyle = lipgloss.NewStyle().
+			Border(lipgloss.DoubleBorder()).
+			Padding(0, 1).
+			BorderForeground(lipgloss.Color("9"))
+	sudoHeaderStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("9"))
+)
+
+// renderSudoDialog renders the password stage of a sudo approval.
+func renderSudoDialog(ap *approvalPrompt, width int, focusedSessionID string) string {
+	boxW := width - 4
+	if boxW < 20 {
+		boxW = 20
+	}
+
+	header := "SUDO PASSWORD REQUIRED"
+	if ap.req.SessionID != focusedSessionID {
+		header = fmt.Sprintf("[%s] %s", ap.req.SessionID, header)
+	}
+
+	const maxCmdLines = 3
+	cmdLines := WrapText(extractToolArg(ap.req.Tool, string(ap.req.Input)), boxW)
+	if len(cmdLines) > maxCmdLines {
+		cmdLines = cmdLines[:maxCmdLines]
+		cmdLines[maxCmdLines-1] += " ..."
+	}
+
+	var sb strings.Builder
+	sb.WriteString(sudoHeaderStyle.Render(header))
+	sb.WriteString("\n")
+	sb.WriteString(strings.Join(cmdLines, "\n"))
+	sb.WriteString("\n\n")
+	sb.WriteString("Password: ")
+	sb.WriteString(ap.passwordInput.View())
+	sb.WriteString("\n")
+	sb.WriteString(ap.sudoErr)
+	sb.WriteString("\n")
+	sb.WriteString("Enter: run | Esc: back | Ctrl+C: deny")
+
+	return sudoBoxStyle.Width(boxW).Render(sb.String())
 }

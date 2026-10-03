@@ -2,6 +2,7 @@ package tui
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -198,5 +199,54 @@ func TestSudo_PgUpInPasswordStageDoesNotTouchField(t *testing.T) {
 
 	if v := m.activeApproval.passwordInput.Value(); v != "ab" {
 		t.Errorf("password: got %q, want ab", v)
+	}
+}
+
+func TestSudo_DialogRender(t *testing.T) {
+	m := newSudoTestModel()
+	sendSudoReq(m, "main", "sudo apt install vim")
+
+	menu := StripAnsi(m.View())
+	if strings.Contains(menu, "Password:") {
+		t.Error("menu stage should not show the password field")
+	}
+
+	typeRunes(m, "1")
+	typeRunes(m, "abc")
+	view := StripAnsi(m.View())
+	for _, want := range []string{
+		"SUDO PASSWORD REQUIRED",
+		"sudo apt install vim",
+		"Password: ***",
+		"Enter: run | Esc: back | Ctrl+C: deny",
+		"sudo password needed",
+	} {
+		if !strings.Contains(view, want) {
+			t.Errorf("view missing %q:\n%s", want, view)
+		}
+	}
+	if strings.Contains(view, "abc") {
+		t.Error("password text must not be rendered")
+	}
+}
+
+func TestSudo_DialogShowsSubagentLabel(t *testing.T) {
+	m := newSudoTestModel()
+	sendSudoReq(m, "sub-1", "sudo true")
+	typeRunes(m, "1")
+
+	if view := StripAnsi(m.View()); !strings.Contains(view, "[sub-1] SUDO PASSWORD REQUIRED") {
+		t.Errorf("missing subagent label:\n%s", view)
+	}
+}
+
+func TestSudo_DialogShowsError(t *testing.T) {
+	m := newSudoTestModel()
+	sendSudoReq(m, "main", "sudo true")
+	typeRunes(m, "1")
+	pressKey(m, tea.KeyEnter)
+
+	if view := StripAnsi(m.View()); !strings.Contains(view, "Password required") {
+		t.Errorf("missing error line:\n%s", view)
 	}
 }

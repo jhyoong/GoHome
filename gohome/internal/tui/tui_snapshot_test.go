@@ -116,6 +116,43 @@ func TestSnapshots(t *testing.T) {
 		golden.RequireEqual(t, []byte(m.View()))
 	})
 
+	// (d3) Sudo password dialog after choosing Allow once.
+	t.Run("sudo_password_dialog", func(t *testing.T) {
+		m := newSized()
+		reply := make(chan guard.ApprovalDecision, 1)
+		m = apply(m, tui.ApprovalReqMsg{
+			Req: guard.ApprovalRequest{
+				SessionID:         "main",
+				Tool:              "shell",
+				Input:             []byte(`{"command":"sudo apt install vim"}`),
+				SuggestedPattern:  "^sudo",
+				NeedsSudoPassword: true,
+			},
+			Reply: reply,
+		})
+		m = apply(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+		m = apply(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("pw")})
+		golden.RequireEqual(t, []byte(m.View()))
+	})
+
+	// (d4) Sudo password dialog from a subagent.
+	t.Run("sudo_password_dialog_subagent", func(t *testing.T) {
+		m := newSized()
+		reply := make(chan guard.ApprovalDecision, 1)
+		m = apply(m, tui.ApprovalReqMsg{
+			Req: guard.ApprovalRequest{
+				SessionID:         "sub-1",
+				Tool:              "shell",
+				Input:             []byte(`{"command":"sudo systemctl restart nginx"}`),
+				SuggestedPattern:  "^sudo",
+				NeedsSudoPassword: true,
+			},
+			Reply: reply,
+		})
+		m = apply(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+		golden.RequireEqual(t, []byte(m.View()))
+	})
+
 	// (e) With a subagent in the session strip.
 	t.Run("with_subagent_strip", func(t *testing.T) {
 		m := newSized()
