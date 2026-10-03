@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.4.4-dev1
+
+### Added
+
+- **Sudo password dialog** -- After choosing **Allow once** or **Allow always** on a sudo command, a separate password dialog opens. Every key goes to the password field; Enter runs the command, Esc goes back to the menu, and Ctrl+C denies. The dialog also shows for subagent sudo commands (#45).
+- **`cacheSudoPassword` setting** -- Opt-in setting (default `false`) that keeps the sudo password in memory until `gohome` exits. If sudo rejects the cached password, the cache is cleared and the next sudo command asks again. The setup wizard offers this option (#45).
+
+### Fixed
+
+- **Password keys triggered approval menu shortcuts** -- Sudo approval is now two steps, so typing the password can no longer select menu options such as allow or deny (#45).
+- **"Allow always" on a sudo command broke later sudo runs** -- Whitelisted sudo commands now skip the menu but still open the password dialog, instead of running without a password (M4, #45).
+- **Terminal prompts drew over the TUI** -- Shell commands now run in a new session with no controlling terminal on Unix, so programs that prompt on the terminal (sudo without a password, ssh password prompts) fail instead of taking over the screen (#45).
+- **Approval and sudo dialog text overflowed** -- Text now wraps to the real content width (#45).
+- **Mouse wheel moved the approval menu** -- Mouse capture stays on during approvals, so the wheel scrolls the chat; hold Shift to select text (#45).
+
 ## v0.4.3
 
 ### Added
