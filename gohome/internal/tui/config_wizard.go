@@ -20,6 +20,7 @@ const (
 	wizardStepKeyValue
 	wizardStepModelName
 	wizardStepConfigName
+	wizardStepSudoCache
 	wizardStepConfirm
 	wizardStepDenylistOffer
 	wizardStepDenylistDone
@@ -38,6 +39,7 @@ type ConfigWizard struct {
 	keyValue   string
 	modelName  string
 	configName string
+	sudoCache  bool
 
 	selectList *SelectListComponent
 	textBuf    string
@@ -108,6 +110,22 @@ func (w *ConfigWizard) buildStep() {
 	case wizardStepConfigName:
 		w.prompt = "Enter config name (key in modelConfig map, e.g. claude):"
 
+	case wizardStepSudoCache:
+		w.prompt = "Cache sudo password in memory for the session?"
+		items := []SelectItem{
+			{Value: "no", Label: "No", Description: "ask for the password on every sudo command"},
+			{Value: "yes", Label: "Yes", Description: "ask once, reuse until gohome exits"},
+		}
+		w.selectList = NewSelectList(items, func(item SelectItem) {
+			w.sudoCache = item.Value == "yes"
+			w.step++
+			w.buildStep()
+		})
+		w.selectList.onCancel = func() {
+			w.step--
+			w.buildStep()
+		}
+
 	case wizardStepConfirm:
 		w.rebuildConfirmStep()
 
@@ -167,6 +185,11 @@ func (w *ConfigWizard) summaryText() string {
 		fmt.Fprintf(&sb, "  API key:      %s\n", w.keyValue)
 	}
 	fmt.Fprintf(&sb, "  Model name:   %s\n", w.modelName)
+	sudo := "off"
+	if w.sudoCache {
+		sudo = "on"
+	}
+	fmt.Fprintf(&sb, "  Sudo cache:   %s\n", sudo)
 	return sb.String()
 }
 
@@ -183,8 +206,9 @@ func (w *ConfigWizard) save() {
 	}
 
 	s := config.Settings{
-		ModelConfig:  map[string]config.ModelConfig{w.configName: mc},
-		DefaultModel: w.configName,
+		ModelConfig:       map[string]config.ModelConfig{w.configName: mc},
+		DefaultModel:      w.configName,
+		CacheSudoPassword: w.sudoCache,
 	}
 
 	data, err := json.MarshalIndent(s, "", "  ")
@@ -223,7 +247,7 @@ func (w *ConfigWizard) scaffoldDenylist() {
 func (w *ConfigWizard) Render(width int) []string {
 	var lines []string
 	stepNum := int(w.step) + 1
-	lines = append(lines, fmt.Sprintf("Setup Wizard (step %d/9)", stepNum))
+	lines = append(lines, fmt.Sprintf("Setup Wizard (step %d/10)", stepNum))
 	lines = append(lines, "")
 	lines = append(lines, w.prompt)
 
