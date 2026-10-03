@@ -25,7 +25,7 @@ Pre-built binaries are attached to each [GitHub release](https://github.com/jhyo
 
 ```sh
 # Download (replace the URL with the latest release and your platform)
-curl -L -o gohome https://github.com/jhyoong/GoHome/releases/download/v0.4.2/gohome-darwin-arm64
+curl -L -o gohome https://github.com/jhyoong/GoHome/releases/download/v0.4.3/gohome-darwin-arm64
 
 # Make it executable
 chmod +x gohome
@@ -50,7 +50,7 @@ The source tree lives under `gohome/` at the repo root. Because the module layou
 ```sh
 git clone https://github.com/jhyoong/GoHome
 cd GoHome
-go build -ldflags "-X main.version=v0.4.2" -o bin/gohome ./gohome/cmd/gohome
+go build -ldflags "-X main.version=v0.4.3" -o bin/gohome ./gohome/cmd/gohome
 ```
 
 > **Windows note:** Do not use `-ldflags "-s -w"` (strip flags) when building for Windows. Stripped binaries score higher on antivirus heuristics. See [Windows Defender False Positive](docs/windows-defender.md) for details.
