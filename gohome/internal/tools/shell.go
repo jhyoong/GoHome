@@ -127,7 +127,7 @@ func (s ShellTool) Execute(ctx context.Context, in json.RawMessage, sink Progres
 		if err != nil {
 			return Result{IsError: true, Content: "shell: sudo password pipe: " + err.Error()}, nil
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		passwordFile = f
 		script = wrapSudoPreauth(inp.Command)
 	}
