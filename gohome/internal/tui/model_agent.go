@@ -124,6 +124,7 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 		}
 		if matchedTool == "shell" && m.sudoPasswordCache != "" && sudoRejected(content) {
 			m.sudoPasswordCache = ""
+			// Append directly: AddTimelineEntry would force a scroll to the bottom.
 			sv.Timeline = append(sv.Timeline, TimelineEntry{
 				Kind: KindNotice,
 				Text: "Cached sudo password was rejected and cleared",

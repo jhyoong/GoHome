@@ -356,6 +356,23 @@ func lastNotice(m *Model) string {
 	return ""
 }
 
+// sendToolRoundtrip sends a tool call event followed by its result on the
+// given session.
+func sendToolRoundtrip(m *Model, sessionID, tool, callID, result string) {
+	m.Update(AgentEventMsg{SessionID: sessionID, Ev: agent.Event{
+		Kind:       agent.EventToolCallDone,
+		SessionID:  sessionID,
+		ToolName:   tool,
+		ToolCallID: callID,
+		InputJSON:  `{}`,
+	}})
+	m.Update(AgentEventMsg{SessionID: sessionID, Ev: agent.Event{
+		Kind:      agent.EventToolResult,
+		SessionID: sessionID,
+		Result:    &agent.ToolResult{ToolUseID: callID, Content: result, IsError: true},
+	}})
+}
+
 func TestSudo_CacheOffAlwaysAsks(t *testing.T) {
 	m := newSudoTestModel()
 	enterSudoPassword(t, m, "sudo true", "pw")
@@ -386,6 +403,57 @@ func TestSudo_CacheOnSkipsDialog(t *testing.T) {
 	if got := lastNotice(m); got != "Using cached sudo password" {
 		t.Errorf("notice: got %q", got)
 	}
+	if m.activeApproval != nil {
+		t.Error("approval should be resolved without a dialog")
+	}
+}
+
+func TestSudo_CacheOnAllowAlways(t *testing.T) {
+	m := newSudoTestModel()
+	m.SetSettings(config.Settings{CacheSudoPassword: true})
+	enterSudoPassword(t, m, "sudo true", "pw")
+
+	ch := sendSudoReq(m, "main", "sudo ls")
+	typeRunes(m, "2")
+
+	dec := requireReply(t, ch)
+	if dec.Outcome != guard.AllowAlways {
+		t.Errorf("outcome: got %q, want AllowAlways", dec.Outcome)
+	}
+	if dec.SavedPattern != "^sudo" {
+		t.Errorf("pattern: got %q, want ^sudo", dec.SavedPattern)
+	}
+	if dec.SudoPassword != "pw" {
+		t.Errorf("password: got %q, want pw", dec.SudoPassword)
+	}
+	if m.activeApproval != nil {
+		t.Error("approval should be resolved without a dialog")
+	}
+}
+
+func TestSudo_SubagentRejectionClearsCache(t *testing.T) {
+	m := newSudoTestModel()
+	m.SetSettings(config.Settings{CacheSudoPassword: true})
+	enterSudoPassword(t, m, "sudo true", "pw")
+	m.Update(AgentEventMsg{SessionID: "sub-1", Ev: agent.Event{
+		Kind:      agent.EventSessionStarted,
+		SessionID: "sub-1",
+	}})
+
+	sendToolRoundtrip(m, "sub-1", "shell", "call-1", "Password:Sorry, try again.\n")
+
+	if m.sudoPasswordCache != "" {
+		t.Error("cache should be cleared after a subagent rejection")
+	}
+	found := false
+	for _, e := range m.sessions["sub-1"].Timeline {
+		if e.Kind == KindNotice && e.Text == "Cached sudo password was rejected and cleared" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("rejection notice missing from sub-1 timeline")
+	}
 }
 
 func TestSudo_RejectedPasswordClearsCache(t *testing.T) {
@@ -393,7 +461,7 @@ func TestSudo_RejectedPasswordClearsCache(t *testing.T) {
 	m.SetSettings(config.Settings{CacheSudoPassword: true})
 	enterSudoPassword(t, m, "sudo true", "wrong")
 
-	sendToolRoundtrip(m, "shell", "call-1", "Password:Sorry, try again.\nsudo: no password was provided\n")
+	sendToolRoundtrip(m, "main", "shell", "call-1", "Password:Sorry, try again.\nsudo: no password was provided\n")
 
 	if m.sudoPasswordCache != "" {
 		t.Error("cache should be cleared after rejection")
@@ -410,28 +478,12 @@ func TestSudo_RejectedPasswordClearsCache(t *testing.T) {
 	}
 }
 
-// sendToolRoundtrip sends a tool call event followed by its result.
-func sendToolRoundtrip(m *Model, tool, callID, result string) {
-	m.Update(AgentEventMsg{SessionID: "main", Ev: agent.Event{
-		Kind:       agent.EventToolCallDone,
-		SessionID:  "main",
-		ToolName:   tool,
-		ToolCallID: callID,
-		InputJSON:  `{}`,
-	}})
-	m.Update(AgentEventMsg{SessionID: "main", Ev: agent.Event{
-		Kind:      agent.EventToolResult,
-		SessionID: "main",
-		Result:    &agent.ToolResult{ToolUseID: callID, Content: result, IsError: true},
-	}})
-}
-
 func TestSudo_NonShellResultKeepsCache(t *testing.T) {
 	m := newSudoTestModel()
 	m.SetSettings(config.Settings{CacheSudoPassword: true})
 	enterSudoPassword(t, m, "sudo true", "pw")
 
-	sendToolRoundtrip(m, "read", "call-1", "notes.txt: Sorry, try again.")
+	sendToolRoundtrip(m, "main", "read", "call-1", "notes.txt: Sorry, try again.")
 
 	if m.sudoPasswordCache != "pw" {
 		t.Errorf("cache should be kept for non-shell results, got %q", m.sudoPasswordCache)
