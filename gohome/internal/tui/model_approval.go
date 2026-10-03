@@ -13,9 +13,6 @@ import (
 // the FIFO approval queue.
 func (m *Model) handleApprovalReq(msg approvalReqMsg) {
 	ap := newApprovalPrompt(msg.Req, msg.Reply)
-	if ap.needsSudo && m.sudoPasswordCache != "" {
-		ap.passwordInput.SetValue(m.sudoPasswordCache)
-	}
 	if m.activeApproval == nil {
 		m.activeApproval = ap
 	} else {
@@ -27,6 +24,9 @@ func (m *Model) handleApprovalReq(msg approvalReqMsg) {
 // It returns a Cmd (may be nil).
 func (m *Model) handleApprovalKey(msg tea.KeyMsg) tea.Cmd {
 	ap := m.activeApproval
+	if ap.sudoStage {
+		return m.handleSudoPasswordKey(msg)
+	}
 	var cmds []tea.Cmd
 
 	// --- steer sub-mode ---
@@ -73,18 +73,7 @@ func (m *Model) handleApprovalKey(msg tea.KeyMsg) tea.Cmd {
 	}
 
 	// PgUp/PgDown scroll the timeline even during approval.
-	if msg.Type == tea.KeyPgUp || msg.Type == tea.KeyPgDown {
-		scrollAmt := m.chat.maxHeight / 2
-		if scrollAmt < 1 {
-			scrollAmt = 1
-		}
-		m.chat.DisableAutoScroll(m.winW)
-		if msg.Type == tea.KeyPgUp {
-			m.chat.ScrollUp(scrollAmt)
-		} else {
-			m.chat.ScrollDown(scrollAmt)
-			m.chat.ReEnableAutoScrollIfAtBottom(m.winW)
-		}
+	if m.scrollApprovalPage(msg) {
 		return tea.Batch(cmds...)
 	}
 
@@ -101,9 +90,9 @@ func (m *Model) handleApprovalKey(msg tea.KeyMsg) tea.Cmd {
 	case msg.Type == tea.KeyEnter:
 		switch ap.selected {
 		case 0:
-			cmds = append(cmds, m.resolveApproval(m.buildApprovalDecision(guard.AllowOnce)))
+			cmds = append(cmds, m.allowApproval(guard.AllowOnce))
 		case 1:
-			cmds = append(cmds, m.resolveApproval(m.buildApprovalDecision(guard.AllowAlways)))
+			cmds = append(cmds, m.allowApproval(guard.AllowAlways))
 		case 2:
 			cmds = append(cmds, m.resolveApproval(guard.ApprovalDecision{Outcome: guard.Deny}))
 		case 3:
@@ -113,9 +102,9 @@ func (m *Model) handleApprovalKey(msg tea.KeyMsg) tea.Cmd {
 	case msg.Type == tea.KeyEsc:
 		cmds = append(cmds, m.resolveApproval(guard.ApprovalDecision{Outcome: guard.Deny}))
 	case keyRune(msg) == '1':
-		cmds = append(cmds, m.resolveApproval(m.buildApprovalDecision(guard.AllowOnce)))
+		cmds = append(cmds, m.allowApproval(guard.AllowOnce))
 	case keyRune(msg) == '2':
-		cmds = append(cmds, m.resolveApproval(m.buildApprovalDecision(guard.AllowAlways)))
+		cmds = append(cmds, m.allowApproval(guard.AllowAlways))
 	case keyRune(msg) == '3':
 		cmds = append(cmds, m.resolveApproval(guard.ApprovalDecision{Outcome: guard.Deny}))
 	case keyRune(msg) == '4':
@@ -128,14 +117,69 @@ func (m *Model) handleApprovalKey(msg tea.KeyMsg) tea.Cmd {
 		ap.patternInput.SetValue(ap.pattern)
 		ap.patternInput.Focus()
 		ap.patternInput.CursorEnd()
-	default:
-		if ap.needsSudo {
-			var tiCmd tea.Cmd
-			ap.passwordInput, tiCmd = ap.passwordInput.Update(msg)
-			cmds = append(cmds, tiCmd)
-		}
 	}
 	return tea.Batch(cmds...)
+}
+
+// scrollApprovalPage scrolls the timeline on PgUp/PgDown while an approval is
+// active. It reports whether the key was handled.
+func (m *Model) scrollApprovalPage(msg tea.KeyMsg) bool {
+	if msg.Type != tea.KeyPgUp && msg.Type != tea.KeyPgDown {
+		return false
+	}
+	scrollAmt := m.chat.maxHeight / 2
+	if scrollAmt < 1 {
+		scrollAmt = 1
+	}
+	m.chat.DisableAutoScroll(m.winW)
+	if msg.Type == tea.KeyPgUp {
+		m.chat.ScrollUp(scrollAmt)
+	} else {
+		m.chat.ScrollDown(scrollAmt)
+		m.chat.ReEnableAutoScrollIfAtBottom(m.winW)
+	}
+	return true
+}
+
+// allowApproval resolves an Allow decision. Sudo commands first open the
+// password stage; the decision is sent when the password is submitted.
+func (m *Model) allowApproval(outcome guard.ApprovalOutcome) tea.Cmd {
+	ap := m.activeApproval
+	if !ap.needsSudo {
+		return m.resolveApproval(m.buildApprovalDecision(outcome))
+	}
+	ap.sudoStage = true
+	ap.sudoOutcome = outcome
+	ap.sudoErr = ""
+	ap.passwordInput.SetValue("")
+	return ap.passwordInput.Focus()
+}
+
+// handleSudoPasswordKey routes keys while the password stage is open. Every
+// key except Enter, Esc and PgUp/PgDown goes to the password field.
+func (m *Model) handleSudoPasswordKey(msg tea.KeyMsg) tea.Cmd {
+	ap := m.activeApproval
+	if m.scrollApprovalPage(msg) {
+		return nil
+	}
+	switch msg.Type {
+	case tea.KeyEnter:
+		if ap.passwordInput.Value() == "" {
+			ap.sudoErr = "Password required"
+			return nil
+		}
+		return m.resolveApproval(m.buildApprovalDecision(ap.sudoOutcome))
+	case tea.KeyEsc:
+		ap.sudoStage = false
+		ap.sudoErr = ""
+		ap.passwordInput.SetValue("")
+		ap.passwordInput.Blur()
+		return nil
+	}
+	ap.sudoErr = ""
+	var cmd tea.Cmd
+	ap.passwordInput, cmd = ap.passwordInput.Update(msg)
+	return cmd
 }
 
 // buildApprovalDecision creates an ApprovalDecision for the given outcome,
@@ -157,7 +201,7 @@ func (m *Model) resolveApproval(dec guard.ApprovalDecision) tea.Cmd {
 	if m.activeApproval == nil {
 		return nil
 	}
-	if m.activeApproval.needsSudo && dec.SudoPassword != "" {
+	if m.settings.CacheSudoPassword && m.activeApproval.needsSudo && dec.SudoPassword != "" {
 		m.sudoPasswordCache = dec.SudoPassword
 	}
 	m.activeApproval.reply <- dec

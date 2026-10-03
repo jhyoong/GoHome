@@ -1,7 +1,7 @@
 Session:  main done 
 ╭────────────────────────────────────────────────────────────────────────────╮
 │ shell: sudo apt install vim                                                │
-│ Password: >                                                                │
+│ Password:                                                                  │
 │                                                                            │
 │ > [1] Allow once                                                           │
 │   [2] Allow always  ^sudo  (e edit)                                        │

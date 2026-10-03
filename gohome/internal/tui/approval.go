@@ -41,8 +41,13 @@ type approvalPrompt struct {
 	steering   bool
 	steerInput textinput.Model
 
-	// sudo password sub-mode: command needs sudo password
+	// sudo password sub-mode: command needs sudo password.
+	// sudoStage is set after the user picks Allow; while set, every key goes
+	// to passwordInput. sudoOutcome remembers which Allow option was picked.
 	needsSudo     bool
+	sudoStage     bool
+	sudoOutcome   guard.ApprovalOutcome
+	sudoErr       string
 	passwordInput textinput.Model
 }
 
@@ -56,11 +61,8 @@ func newApprovalPrompt(req guard.ApprovalRequest, reply chan guard.ApprovalDecis
 	si.Placeholder = "steer message"
 
 	pwi := textinput.New()
-	pwi.Placeholder = ""
+	pwi.Prompt = ""
 	pwi.EchoMode = textinput.EchoPassword
-	if req.NeedsSudoPassword {
-		pwi.Focus()
-	}
 
 	return &approvalPrompt{
 		req:           req,
