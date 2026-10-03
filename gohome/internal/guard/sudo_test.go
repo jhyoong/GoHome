@@ -20,6 +20,11 @@ func TestIsSudoCommand(t *testing.T) {
 		{"no sudo", "ls -la", false},
 		{"sudo alone", "sudo", true},
 		{"sudo-S already", "sudo -S apt install vim", true},
+		{"sudo on second line", "echo hi\nsudo ls", true},
+		{"sudo in command substitution", "x=$(sudo cat /etc/shadow)", true},
+		{"sudo in subshell", "(sudo ls)", true},
+		{"sudo after newline and spaces", "echo hi\n  sudo ls", true},
+		{"pseudo in subshell", "(pseudo ls)", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
