@@ -80,7 +80,7 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 			toolUseID = ev.Result.ToolUseID
 		}
 		set := false
-		var matchedChildID string
+		var matchedChildID, matchedTool string
 		for i := len(sv.Timeline) - 1; i >= 0; i-- {
 			e := &sv.Timeline[i]
 			if e.Kind != KindTool || e.ToolResult != "" {
@@ -99,6 +99,7 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 				e.Duration = ev.Result.Duration
 			}
 			matchedChildID = e.ChildSessionID
+			matchedTool = e.ToolName
 			set = true
 			break
 		}
@@ -121,7 +122,7 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 		if sv.Depth > 0 {
 			m.updateShadowResult(msg.SessionID, toolUseID, content, isErr)
 		}
-		if m.sudoPasswordCache != "" && sudoRejected(content) {
+		if matchedTool == "shell" && m.sudoPasswordCache != "" && sudoRejected(content) {
 			m.sudoPasswordCache = ""
 			sv.Timeline = append(sv.Timeline, TimelineEntry{
 				Kind: KindNotice,

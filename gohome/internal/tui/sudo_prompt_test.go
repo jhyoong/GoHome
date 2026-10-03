@@ -393,14 +393,7 @@ func TestSudo_RejectedPasswordClearsCache(t *testing.T) {
 	m.SetSettings(config.Settings{CacheSudoPassword: true})
 	enterSudoPassword(t, m, "sudo true", "wrong")
 
-	m.Update(AgentEventMsg{SessionID: "main", Ev: agent.Event{
-		Kind:      agent.EventToolResult,
-		SessionID: "main",
-		Result: &agent.ToolResult{
-			Content: "Password:Sorry, try again.\nsudo: no password was provided\n",
-			IsError: true,
-		},
-	}})
+	sendToolRoundtrip(m, "shell", "call-1", "Password:Sorry, try again.\nsudo: no password was provided\n")
 
 	if m.sudoPasswordCache != "" {
 		t.Error("cache should be cleared after rejection")
@@ -414,6 +407,37 @@ func TestSudo_RejectedPasswordClearsCache(t *testing.T) {
 	requireNoReply(t, ch)
 	if !m.activeApproval.sudoStage {
 		t.Fatal("expected password stage after cache was cleared")
+	}
+}
+
+// sendToolRoundtrip sends a tool call event followed by its result.
+func sendToolRoundtrip(m *Model, tool, callID, result string) {
+	m.Update(AgentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind:       agent.EventToolCallDone,
+		SessionID:  "main",
+		ToolName:   tool,
+		ToolCallID: callID,
+		InputJSON:  `{}`,
+	}})
+	m.Update(AgentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind:      agent.EventToolResult,
+		SessionID: "main",
+		Result:    &agent.ToolResult{ToolUseID: callID, Content: result, IsError: true},
+	}})
+}
+
+func TestSudo_NonShellResultKeepsCache(t *testing.T) {
+	m := newSudoTestModel()
+	m.SetSettings(config.Settings{CacheSudoPassword: true})
+	enterSudoPassword(t, m, "sudo true", "pw")
+
+	sendToolRoundtrip(m, "read", "call-1", "notes.txt: Sorry, try again.")
+
+	if m.sudoPasswordCache != "pw" {
+		t.Errorf("cache should be kept for non-shell results, got %q", m.sudoPasswordCache)
+	}
+	if got := lastNotice(m); got == "Cached sudo password was rejected and cleared" {
+		t.Error("unexpected rejection notice for non-shell result")
 	}
 }
 
