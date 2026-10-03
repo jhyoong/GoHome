@@ -529,3 +529,65 @@ func TestSudo_QueuedApprovalStartsFresh(t *testing.T) {
 			ap.sudoStage, ap.passwordInput.Value(), ap.sudoErr)
 	}
 }
+
+func TestApprovalReenablesMouseCapture(t *testing.T) {
+	m := newSudoTestModel()
+	m.mouseActive = false
+
+	ch := make(chan guard.ApprovalDecision, 1)
+	_, cmd := m.Update(ApprovalReqMsg{
+		Req:   guard.ApprovalRequest{SessionID: "main", Tool: "shell", Input: json.RawMessage(`{"command":"ls"}`)},
+		Reply: ch,
+	})
+
+	if !m.mouseActive {
+		t.Error("expected mouse capture re-enabled when approval arrives")
+	}
+	if cmd == nil {
+		t.Error("expected a command to enable mouse capture")
+	}
+}
+
+func TestApprovalKeepsMouseOffWhenDisabled(t *testing.T) {
+	m := newSudoTestModel()
+	m.mouseEnabled = false
+	m.mouseActive = false
+
+	ch := make(chan guard.ApprovalDecision, 1)
+	_, cmd := m.Update(ApprovalReqMsg{
+		Req:   guard.ApprovalRequest{SessionID: "main", Tool: "shell", Input: json.RawMessage(`{"command":"ls"}`)},
+		Reply: ch,
+	})
+
+	if m.mouseActive {
+		t.Error("mouse capture must stay off when /mouse disabled it")
+	}
+	if cmd != nil {
+		t.Error("expected no command when mouse is disabled")
+	}
+}
+
+func TestMouseIdleIgnoredDuringApproval(t *testing.T) {
+	m := newSudoTestModel()
+	sendSudoReq(m, "main", "sudo true")
+	m.mouseIdleSeq = 5
+
+	m.Update(mouseIdleMsg{seq: 5})
+
+	if !m.mouseActive {
+		t.Error("mouse capture must stay on while an approval is active")
+	}
+}
+
+func TestResolveApprovalSchedulesMouseIdle(t *testing.T) {
+	m := newSudoTestModel()
+	ch := sendSudoReq(m, "main", "sudo true")
+	before := m.mouseIdleSeq
+
+	typeRunes(m, "3")
+	requireReply(t, ch)
+
+	if m.mouseIdleSeq == before {
+		t.Error("expected a fresh mouse idle timer after resolving the approval")
+	}
+}

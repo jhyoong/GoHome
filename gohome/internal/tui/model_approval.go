@@ -10,14 +10,22 @@ import (
 
 // handleApprovalReq processes an incoming approval request. If no approval is
 // currently active, it becomes the active prompt; otherwise it is appended to
-// the FIFO approval queue.
-func (m *Model) handleApprovalReq(msg approvalReqMsg) {
+// the FIFO approval queue. It returns a command that re-enables mouse capture
+// if the idle timeout had turned it off.
+func (m *Model) handleApprovalReq(msg approvalReqMsg) tea.Cmd {
 	ap := newApprovalPrompt(msg.Req, msg.Reply)
 	if m.activeApproval == nil {
 		m.activeApproval = ap
 	} else {
 		m.approvalQueue = append(m.approvalQueue, ap)
 	}
+	// Keep wheel events as mouse events so they cannot move the menu.
+	// With capture off, many terminals send wheel scrolls as Up/Down keys.
+	if m.mouseEnabled && !m.mouseActive {
+		m.mouseActive = true
+		return func() tea.Msg { return tea.EnableMouseCellMotion() }
+	}
+	return nil
 }
 
 // handleApprovalKey routes a key press when an approval prompt is active.
@@ -231,12 +239,17 @@ func (m *Model) resolveApproval(dec guard.ApprovalDecision) tea.Cmd {
 	m.activeApproval = nil
 	m.promoteApproval()
 
+	var cmds []tea.Cmd
+	// The last approval closed: resume the normal mouse idle timeout.
+	if m.activeApproval == nil && m.mouseEnabled && m.mouseActive {
+		cmds = append(cmds, m.scheduleMouseIdle())
+	}
 	if m.activeApproval == nil && (dec.Outcome == guard.AllowOnce || dec.Outcome == guard.AllowAlways) {
 		m.spinner.Start("Processing...")
 		m.spinner.SetOnCancel(m.cancelFocusedSession)
-		return m.spinnerTickCmd()
+		cmds = append(cmds, m.spinnerTickCmd())
 	}
-	return nil
+	return tea.Batch(cmds...)
 }
 
 // promoteApproval pops the next approval from the FIFO queue (if any) and

@@ -442,13 +442,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case approvalReqMsg:
-		m.handleApprovalReq(msg)
+		if cmd := m.handleApprovalReq(msg); cmd != nil {
+			return m, cmd
+		}
 
 	case mouseHintExpiredMsg:
 		m.mouseHintUntil = time.Time{}
 
 	case mouseIdleMsg:
-		if msg.seq == m.mouseIdleSeq && m.mouseEnabled && m.mouseActive {
+		if msg.seq == m.mouseIdleSeq && m.mouseEnabled && m.mouseActive && m.activeApproval == nil {
 			m.mouseActive = false
 			return m, func() tea.Msg { return tea.DisableMouse() }
 		}
@@ -470,11 +472,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.chat.ReEnableAutoScrollIfAtBottom(m.winW)
 			}
 			// Schedule idle timeout: disable mouse capture after 2s of no wheel activity.
-			m.mouseIdleSeq++
-			seq := m.mouseIdleSeq
-			cmds = append(cmds, tea.Tick(2*time.Second, func(time.Time) tea.Msg {
-				return mouseIdleMsg{seq: seq}
-			}))
+			cmds = append(cmds, m.scheduleMouseIdle())
 			return m, tea.Batch(cmds...)
 		case tea.MouseButtonLeft:
 			m.mouseHintUntil = time.Now().Add(3 * time.Second)
@@ -720,6 +718,15 @@ func (m *Model) render() string {
 
 // Chat returns the chat component (exported for tests).
 func (m *Model) Chat() *ChatComponent { return m.chat }
+
+// scheduleMouseIdle starts a fresh idle timer; older timers become stale.
+func (m *Model) scheduleMouseIdle() tea.Cmd {
+	m.mouseIdleSeq++
+	seq := m.mouseIdleSeq
+	return tea.Tick(2*time.Second, func(time.Time) tea.Msg {
+		return mouseIdleMsg{seq: seq}
+	})
+}
 
 // MouseEnabled returns whether mouse tracking is currently enabled (exported for tests).
 func (m *Model) MouseEnabled() bool { return m.mouseEnabled }
