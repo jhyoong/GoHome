@@ -3,14 +3,14 @@
     "FileVersion": {
       "Major": 0,
       "Minor": 4,
-      "Patch": 3,
-      "Build": 0
+      "Patch": 4,
+      "Build": 1
     },
     "ProductVersion": {
       "Major": 0,
       "Minor": 4,
-      "Patch": 3,
-      "Build": 0
+      "Patch": 4,
+      "Build": 1
     },
     "FileFlagsMask": "3f",
     "FileFlags": "",
@@ -22,12 +22,12 @@
     "Comments": "",
     "CompanyName": "gohome (open-source)",
     "FileDescription": "Terminal coding agent",
-    "FileVersion": "0.4.3.0",
+    "FileVersion": "0.4.4.1",
     "InternalName": "gohome",
     "LegalCopyright": "MIT License",
     "OriginalFilename": "gohome.exe",
     "ProductName": "gohome",
-    "ProductVersion": "0.4.3.0"
+    "ProductVersion": "0.4.4.1"
   },
   "VarFileInfo": {
     "Translation": {
