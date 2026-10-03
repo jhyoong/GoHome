@@ -292,6 +292,10 @@ When a shell command uses `sudo`, the approval menu works as normal. After you c
 
 Sudo commands allowed by the whitelist (for example after **Allow always**) skip the menu but still open the password dialog; there, Esc denies the command. Shell commands run without a terminal, so programs that prompt on the terminal (for example sudo without a password, or an ssh password prompt) fail instead of taking over the screen.
 
+When you enter a password, `gohome` first checks it with `sudo -v` in the same shell, then runs the command exactly as written. The password goes to sudo on a separate file descriptor, never on stdin, so commands such as `sudo -n ...` and `echo x | sudo tee file` work. If the check fails, the command does not run; the output shows sudo's own error (for example "Sorry, try again.") followed by `gohome: sudo pre-authentication failed, command not run`.
+
+Limits: sudo started by another program (`bash -c "sudo ..."`, `xargs sudo`, `find -exec sudo`) or inside a subshell (`( ... )`, backticks, or `$(...)` with more than one command), or behind `time` when `/bin/sh` has no `time` keyword (for example dash), may not see the checked password and can fail. A sudoers setting of `timestamp_timeout=0` turns off this check entirely. Detection is text-based, so `sudo` at the start of a line inside a heredoc or a multi-line string, or after `(` in a quoted string, also opens the password dialog.
+
 By default the password is asked for on every sudo command, including whitelisted ones. To reuse it until `gohome` exits, set this in `settings.json` (or choose **Yes** in the setup wizard):
 
 ```json

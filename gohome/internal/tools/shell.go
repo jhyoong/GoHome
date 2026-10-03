@@ -7,8 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
-	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -58,22 +58,40 @@ type shellInput struct {
 	CWD       *string `json:"cwd"`
 }
 
-// sudoWordRe matches "sudo " followed by its first argument at command
-// boundaries (start of string, or after ;, &, or | separators). The
-// non-whitespace capture after "sudo " lets us check whether -S is already
-// present.
-var sudoWordRe = regexp.MustCompile(`(^|[;&|]\s*)sudo\s+(\S*)`)
+// SudoPreauthFailedMarker is printed when sudo -v fails before the command
+// runs. Sudo's own error (for example "Sorry, try again.") is printed above
+// it, which the TUI uses to detect a rejected password.
+const SudoPreauthFailedMarker = "gohome: sudo pre-authentication failed, command not run"
 
-// injectSudoS rewrites "sudo" to "sudo -S" at command boundaries so that
-// sudo reads the password from stdin. If -S is already present, the command
-// is returned unchanged.
-func injectSudoS(command string) string {
-	return sudoWordRe.ReplaceAllStringFunc(command, func(match string) string {
-		if strings.Contains(match, "-S") {
-			return match
-		}
-		return strings.Replace(match, "sudo ", "sudo -S ", 1)
-	})
+// wrapSudoPreauth returns a script that validates the sudo password read
+// from fd 3, closes fd 3, then runs command unchanged. With no terminal,
+// sudo caches credentials per parent process, so later sudo calls from
+// this shell (including "sudo -n") succeed without a password. The final
+// "exit $?" keeps the shell from exec-ing the last command in place of
+// itself, which would change sudo's parent process.
+func wrapSudoPreauth(command string) string {
+	return "sudo -S -v -p '' <&3 || { echo '" + SudoPreauthFailedMarker + "' >&2; exit 1; }\n" +
+		"exec 3<&-\n" +
+		command + "\n" +
+		"exit $?\n"
+}
+
+// sudoPasswordPipe returns the read end of a pipe that holds password
+// followed by a newline. The caller must close it.
+func sudoPasswordPipe(password string) (*os.File, error) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	_, err = w.WriteString(password + "\n")
+	if cerr := w.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		_ = r.Close()
+		return nil, err
+	}
+	return r, nil
 }
 
 func (s ShellTool) Execute(ctx context.Context, in json.RawMessage, sink ProgressSink) (Result, error) {
@@ -102,11 +120,23 @@ func (s ShellTool) Execute(ctx context.Context, in json.RawMessage, sink Progres
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeoutMs)*time.Millisecond)
 	defer cancel()
 
+	script := inp.Command
+	var passwordFile *os.File
+	if pw := SudoPasswordFrom(ctx); pw != "" && runtime.GOOS != "windows" {
+		f, err := sudoPasswordPipe(pw)
+		if err != nil {
+			return Result{IsError: true, Content: "shell: sudo password pipe: " + err.Error()}, nil
+		}
+		defer func() { _ = f.Close() }()
+		passwordFile = f
+		script = wrapSudoPreauth(inp.Command)
+	}
+
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
-		cmd = exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", inp.Command)
+		cmd = exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
 	} else {
-		cmd = exec.CommandContext(ctx, "/bin/sh", "-c", inp.Command)
+		cmd = exec.CommandContext(ctx, "/bin/sh", "-c", script)
 	}
 	detachFromTerminal(cmd)
 
@@ -114,14 +144,9 @@ func (s ShellTool) Execute(ctx context.Context, in json.RawMessage, sink Progres
 		cmd.Dir = *inp.CWD
 	}
 
-	// If a sudo password is stored in the context, pipe it to stdin and
-	// ensure the command uses "sudo -S" so sudo reads from stdin.
-	sudoPassword := SudoPasswordFrom(ctx)
-	if sudoPassword != "" {
-		cmd.Stdin = strings.NewReader(sudoPassword + "\n")
-		if runtime.GOOS != "windows" {
-			cmd.Args[len(cmd.Args)-1] = injectSudoS(inp.Command)
-		}
+	// The password reaches the child as fd 3, never as stdin.
+	if passwordFile != nil {
+		cmd.ExtraFiles = []*os.File{passwordFile}
 	}
 
 	// Pipe stdout+stderr through a reader that fans out to: sink + capture buffer.
