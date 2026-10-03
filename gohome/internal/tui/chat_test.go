@@ -316,9 +316,9 @@ func TestRenderThrottle_SkipsIntermediateRebuilds(t *testing.T) {
 	}})
 	m2 := model2.(*Model)
 
-	// cmd2 should include a tea.Tick (the deferred render) or a SpinnerTickCmd.
-	// The key point is that a command is returned (non-nil) to schedule the
-	// deferred rebuild.
+	// cmd2 should include the tea.Tick that schedules the deferred render.
+	// (The spinner tick was already scheduled by the first delta, so it is
+	// not scheduled again.)
 	if cmd2 == nil {
 		t.Error("expected a non-nil command for throttled render, got nil")
 	}
@@ -513,5 +513,43 @@ func TestRenderThrottle_ReusesFrameUntilFlush(t *testing.T) {
 	m.Update(renderThrottleMsg{})
 	if v3 := m.View(); !strings.Contains(v3, "Hello world") {
 		t.Fatalf("throttle flush should show all text, got:\n%s", v3)
+	}
+}
+
+func TestRenderThrottle_NonDeltaMessageRendersImmediately(t *testing.T) {
+	m := New(nil, "main")
+	m.SetRenderThrottleMs(100)
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	m.Update(agentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind: agent.EventTokenDelta, SessionID: "main", TextDelta: "Hello ",
+	}})
+	m.View()
+	m.Update(agentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind: agent.EventTokenDelta, SessionID: "main", TextDelta: "world",
+	}})
+	if !m.renderPending {
+		t.Fatal("expected second delta to be throttled")
+	}
+
+	// A key press arriving while a redraw is deferred must show current text.
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	if m.renderPending {
+		t.Error("expected non-delta message to clear renderPending")
+	}
+	if v := m.View(); !strings.Contains(v, "Hello world") {
+		t.Fatalf("expected fresh frame with all text, got:\n%s", v)
+	}
+
+	// The same holds for a non-delta agent event, such as a tool call.
+	m.Update(agentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind: agent.EventTokenDelta, SessionID: "main", TextDelta: "!",
+	}})
+	m.Update(agentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind: agent.EventToolCallDone, SessionID: "main", ToolName: "shell",
+		ToolCallID: "t1", InputJSON: `{"command":"ls"}`,
+	}})
+	if v := m.View(); !strings.Contains(v, "Hello world!") || !strings.Contains(v, "$ ls") {
+		t.Fatalf("expected fresh frame after tool event, got:\n%s", v)
 	}
 }

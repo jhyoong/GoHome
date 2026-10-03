@@ -418,3 +418,19 @@ func TestLoad_AutoCompactZeroPreservesGlobal(t *testing.T) {
 		t.Errorf("AutoCompactLeftover: got %d, want 16000", merged.AutoCompactLeftover)
 	}
 }
+
+func TestEffectiveRenderThrottleMs(t *testing.T) {
+	cases := []struct {
+		in, want int
+	}{
+		{0, DefaultRenderThrottleMs},
+		{-1, 0},
+		{-100, 0},
+		{50, 50},
+	}
+	for _, c := range cases {
+		if got := EffectiveRenderThrottleMs(c.in); got != c.want {
+			t.Errorf("EffectiveRenderThrottleMs(%d) = %d, want %d", c.in, got, c.want)
+		}
+	}
+}

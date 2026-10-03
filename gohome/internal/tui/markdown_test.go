@@ -82,3 +82,43 @@ func TestRenderMarkdownTableAlignment(t *testing.T) {
 		t.Errorf("table headers missing: %q", joined)
 	}
 }
+
+func TestHighlightCodeCachesResult(t *testing.T) {
+	clear(highlightCache)
+	code := "func main() {}\n"
+	first := highlightCode(code, "go")
+	if len(highlightCache) != 1 {
+		t.Fatalf("cache size = %d, want 1", len(highlightCache))
+	}
+
+	// Replace the cached value: a hit must return it instead of re-highlighting.
+	key := "go\x00" + code
+	highlightCache[key] = "sentinel"
+	if got := highlightCode(code, "go"); got != "sentinel" {
+		t.Errorf("expected cached value, got %q", got)
+	}
+
+	// Different language is a different key.
+	highlightCode(code, "python")
+	if len(highlightCache) != 2 {
+		t.Errorf("cache size = %d, want 2", len(highlightCache))
+	}
+	if !strings.Contains(StripAnsi(first), "func main") {
+		t.Errorf("highlighted output lost code: %q", first)
+	}
+}
+
+func TestHighlightCodeCacheBounded(t *testing.T) {
+	clear(highlightCache)
+	for i := 0; i < highlightCacheMax; i++ {
+		highlightCode(strings.Repeat("x", i+1), "")
+	}
+	if len(highlightCache) != highlightCacheMax {
+		t.Fatalf("cache size = %d, want %d", len(highlightCache), highlightCacheMax)
+	}
+	// One more entry clears the full cache before inserting.
+	highlightCode("overflow", "")
+	if len(highlightCache) != 1 {
+		t.Errorf("cache size after overflow = %d, want 1", len(highlightCache))
+	}
+}
