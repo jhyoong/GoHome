@@ -498,8 +498,11 @@ func TestSudoRejected(t *testing.T) {
 		"Sorry, try again.":                   true,
 		"sudo: 3 incorrect password attempts": true,
 		"sudo: 1 incorrect password attempt":  true,
-		"Reading package lists... Done":       false,
-		"":                                    false,
+		// Shell tool output after a failed sudo -v pre-auth step.
+		"exit 1\nSorry, try again.\nsudo: no password was provided\nsudo: 1 incorrect password attempt\ngohome: sudo pre-authentication failed, command not run\n": true,
+		"exit 1\nsudo: not found\ngohome: sudo pre-authentication failed, command not run\n":                                                                       false,
+		"Reading package lists... Done": false,
+		"":                              false,
 	}
 	for in, want := range cases {
 		if got := sudoRejected(in); got != want {
