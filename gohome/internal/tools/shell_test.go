@@ -3,6 +3,8 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -151,63 +153,111 @@ func TestBash_ToolMeta(t *testing.T) {
 	}
 }
 
-func TestBash_SudoPasswordPipedToStdin(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("unix shell command")
+// installFakeSudo puts a fake "sudo" first on PATH. "sudo -S -v ..."
+// reads one line from stdin and accepts only "goodpass". Any other call
+// prints "fake-sudo:" and its arguments, so tests can see it ran.
+func installFakeSudo(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	script := `#!/bin/sh
+if [ "$1" = "-S" ] && [ "$2" = "-v" ]; then
+	read -r pw
+	if [ "$pw" = "goodpass" ]; then exit 0; fi
+	echo "Sorry, try again." >&2
+	exit 1
+fi
+echo "fake-sudo: $*"
+`
+	if err := os.WriteFile(filepath.Join(dir, "sudo"), []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake sudo: %v", err)
 	}
-	ctx := WithSudoPassword(context.Background(), "testpass")
-	raw, _ := json.Marshal(map[string]any{"command": "head -1"})
-	bt := &ShellTool{}
-	res, err := bt.Execute(ctx, raw, NullSink{})
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+func execBashWithSudo(t *testing.T, password, command string) Result {
+	t.Helper()
+	ctx := WithSudoPassword(context.Background(), password)
+	raw, _ := json.Marshal(map[string]any{"command": command})
+	res, err := (&ShellTool{}).Execute(ctx, raw, NullSink{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if res.IsError {
-		t.Fatalf("unexpected IsError: %s", res.Content)
-	}
-	if !strings.Contains(res.Content, "testpass") {
-		t.Errorf("expected stdin password in output, got %q", res.Content)
-	}
+	return res
 }
 
-func TestBash_NoSudoPassword_StdinEmpty(t *testing.T) {
+func TestBash_SudoPreauth_CorrectPasswordRunsCommand(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("unix shell command")
 	}
-	raw, _ := json.Marshal(map[string]any{"command": "cat"})
-	bt := &ShellTool{}
-	res, err := bt.Execute(context.Background(), raw, NullSink{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	installFakeSudo(t)
+	res := execBashWithSudo(t, "goodpass", "sudo -n head -3 /etc/shadow")
+	if !strings.HasPrefix(res.Content, "exit 0\n") {
+		t.Errorf("want exit 0, got %q", res.Content)
 	}
-	if res.IsError {
-		t.Fatalf("unexpected IsError: %s", res.Content)
-	}
-	if strings.Contains(res.Content, "testpass") {
-		t.Errorf("should not contain password without context, got %q", res.Content)
+	if !strings.Contains(res.Content, "fake-sudo: -n head -3 /etc/shadow") {
+		t.Errorf("command should run unchanged, got %q", res.Content)
 	}
 }
 
-func TestInjectSudoS(t *testing.T) {
-	tests := []struct {
-		name string
-		in   string
-		want string
-	}{
-		{"plain sudo", "sudo apt install vim", "sudo -S apt install vim"},
-		{"sudo already has -S", "sudo -S apt install vim", "sudo -S apt install vim"},
-		{"piped sudo", "echo foo | sudo tee /etc/bar", "echo foo | sudo -S tee /etc/bar"},
-		{"chained sudo", "cd /tmp && sudo rm -rf stuff", "cd /tmp && sudo -S rm -rf stuff"},
-		{"no sudo", "ls -la", "ls -la"},
-		{"sudo with flags", "sudo -u root ls", "sudo -S -u root ls"},
+func TestBash_SudoPreauth_WrongPasswordSkipsCommand(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix shell command")
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := injectSudoS(tt.in)
-			if got != tt.want {
-				t.Errorf("injectSudoS(%q) = %q, want %q", tt.in, got, tt.want)
-			}
-		})
+	installFakeSudo(t)
+	res := execBashWithSudo(t, "badpass", "echo ran")
+	if !strings.HasPrefix(res.Content, "exit 1\n") {
+		t.Errorf("want exit 1, got %q", res.Content)
+	}
+	if !strings.Contains(res.Content, SudoRejectedMarker) {
+		t.Errorf("want rejection marker, got %q", res.Content)
+	}
+	if strings.Contains(res.Content, "ran") {
+		t.Errorf("command must not run after rejection, got %q", res.Content)
+	}
+}
+
+func TestBash_SudoPreauth_PasswordNotReadable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix shell command")
+	}
+	installFakeSudo(t)
+	// fd 3 is closed before the command; stdin is empty.
+	res := execBashWithSudo(t, "goodpass", "cat <&3 2>/dev/null; cat")
+	if strings.Contains(res.Content, "goodpass") {
+		t.Errorf("password leaked to command, got %q", res.Content)
+	}
+}
+
+func TestBash_SudoPreauth_PipeIntoSudo(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix shell command")
+	}
+	installFakeSudo(t)
+	res := execBashWithSudo(t, "goodpass", "echo data | sudo tee /tmp/x")
+	if !strings.Contains(res.Content, "fake-sudo: tee /tmp/x") {
+		t.Errorf("want sudo to run without -S rewrite, got %q", res.Content)
+	}
+}
+
+func TestBash_SudoPreauth_ExitCodePreserved(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix shell command")
+	}
+	installFakeSudo(t)
+	res := execBashWithSudo(t, "goodpass", "echo a\nsh -c 'exit 7'")
+	if !strings.HasPrefix(res.Content, "exit 7\n") {
+		t.Errorf("want exit 7, got %q", res.Content)
+	}
+}
+
+func TestBash_NoSudoPassword_CommandUnchanged(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix shell command")
+	}
+	installFakeSudo(t)
+	res := execBash(t, map[string]any{"command": "sudo ls"})
+	if !strings.Contains(res.Content, "fake-sudo: ls") {
+		t.Errorf("want plain sudo call, got %q", res.Content)
 	}
 }
 
