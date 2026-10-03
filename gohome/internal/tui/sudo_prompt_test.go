@@ -591,3 +591,41 @@ func TestResolveApprovalSchedulesMouseIdle(t *testing.T) {
 		t.Error("expected a fresh mouse idle timer after resolving the approval")
 	}
 }
+
+func TestViewFitsWindowWithApprovals(t *testing.T) {
+	cases := []struct {
+		name    string
+		command string
+	}{
+		{"short command", "sudo apt install vim"},
+		{"long command", "sudo apt install " + strings.Repeat("package-name ", 20)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := newSudoTestModel()
+			// Fill the timeline so the chat wants all available height.
+			for i := 0; i < 50; i++ {
+				m.AddTimelineEntry("main", TimelineEntry{Kind: KindNotice, Text: "line"})
+			}
+
+			check := func(stage string) {
+				t.Helper()
+				view := m.View()
+				lines := strings.Count(view, "\n") + 1
+				if lines > 24 {
+					t.Errorf("%s: view has %d lines, window is 24", stage, lines)
+				}
+				if !strings.HasPrefix(StripAnsi(view), "Session:") {
+					t.Errorf("%s: first line is not the session strip", stage)
+				}
+			}
+
+			sendSudoReq(m, "main", tc.command)
+			check("approval menu")
+			typeRunes(m, "v")
+			check("expanded menu")
+			typeRunes(m, "1")
+			check("password dialog")
+		})
+	}
+}
