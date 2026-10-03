@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.4.3
+
+### Added
+
+- **`Ctrl+Y` copies the selected timeline entry** -- Replaces the old `c` key binding for copying the entry under the timeline cursor (H6, #42).
+### Fixed
+
+- **Steering corrupted multi-tool turns** -- A steer arriving between tool calls now produces "skipped: user steered" results for the remaining tools, and the steer message is appended after the complete tool result message. Previously `tool_use` blocks were left without matching `tool_result` blocks, which made the history invalid (H1, #42).
+- **Steer messages delayed on text-only turns** -- When the LLM replies without tool calls, pending steers are drained and the loop continues. Stale steers are also drained on cancel so they do not leak into the next run (H2, #42).
+- **Headless `--prompt -` auto-approved tools** -- `--prompt -` now requires `--yolo`, the same as `--prompt "text"` (H3, #42).
+- **Auto-compaction requests rejected by the Anthropic API** -- Tool blocks are converted to plain text before summarization, `MaxTokens` defaults to 4096 when unset, and the split point no longer separates a `tool_use` from its result (H4, #42).
+- **Inconsistent history after resuming a compacted session** -- The `Compaction` event now stores the full post-compaction history, and `Load()` restores it. Older session files fall back to the summary-only behavior (H5, #42).
+- **`c` key swallowed when the editor was empty** -- Typing `c` into an empty editor now inserts the character; copy moved to `Ctrl+Y` (H6, #42).
+- **Spinner tick chains multiplied** -- Only one 80 ms tick chain runs at a time. Previously every token delta started a new chain, so redraws grew with response length (#43).
+- **Render throttle had no effect** -- Throttled deltas now reuse the last rendered frame instead of only deferring `rebuildViewport`. `renderThrottleMs: 0` now applies the 16 ms default (L2, #43).
+
+### Changed
+
+- **Chat render caching** -- Entry renders are cached whenever they are computed, so streaming entries are no longer rendered twice per frame and offscreen entries stay cached after resume or resize. The cursor marker is applied at output time, so moving the cursor no longer invalidates caches (#43).
+- **Syntax highlighting cached** -- Highlighted code blocks are cached by language and code, and the chroma style and formatter are resolved once (#43).
+- **`renderThrottleMs` semantics** -- `0` means the 16 ms default; a negative value redraws on every token (#43).
+
 ## v0.4.2
 
 ### Added
