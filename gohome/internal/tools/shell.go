@@ -58,9 +58,10 @@ type shellInput struct {
 	CWD       *string `json:"cwd"`
 }
 
-// SudoRejectedMarker is printed when sudo rejects the password during
-// pre-authentication. The TUI matches it to clear a cached password.
-const SudoRejectedMarker = "gohome: sudo password rejected"
+// SudoPreauthFailedMarker is printed when sudo -v fails before the command
+// runs. Sudo's own error (for example "Sorry, try again.") is printed above
+// it, which the TUI uses to detect a rejected password.
+const SudoPreauthFailedMarker = "gohome: sudo pre-authentication failed, command not run"
 
 // wrapSudoPreauth returns a script that validates the sudo password read
 // from fd 3, closes fd 3, then runs command unchanged. With no terminal,
@@ -69,7 +70,7 @@ const SudoRejectedMarker = "gohome: sudo password rejected"
 // "exit $?" keeps the shell from exec-ing the last command in place of
 // itself, which would change sudo's parent process.
 func wrapSudoPreauth(command string) string {
-	return "sudo -S -v -p '' <&3 2>/dev/null || { echo '" + SudoRejectedMarker + "' >&2; exit 1; }\n" +
+	return "sudo -S -v -p '' <&3 || { echo '" + SudoPreauthFailedMarker + "' >&2; exit 1; }\n" +
 		"exec 3<&-\n" +
 		command + "\n" +
 		"exit $?\n"

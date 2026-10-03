@@ -208,23 +208,26 @@ func TestBash_SudoPreauth_WrongPasswordSkipsCommand(t *testing.T) {
 	if !strings.HasPrefix(res.Content, "exit 1\n") {
 		t.Errorf("want exit 1, got %q", res.Content)
 	}
-	if !strings.Contains(res.Content, SudoRejectedMarker) {
-		t.Errorf("want rejection marker, got %q", res.Content)
+	if !strings.Contains(res.Content, SudoPreauthFailedMarker) {
+		t.Errorf("want pre-auth failure marker, got %q", res.Content)
+	}
+	if !strings.Contains(res.Content, "Sorry, try again.") {
+		t.Errorf("want sudo's own error kept, got %q", res.Content)
 	}
 	if strings.Contains(res.Content, "ran") {
 		t.Errorf("command must not run after rejection, got %q", res.Content)
 	}
 }
 
-func TestBash_SudoPreauth_PasswordNotReadable(t *testing.T) {
+func TestBash_SudoPreauth_FD3ClosedBeforeCommand(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("unix shell command")
 	}
 	installFakeSudo(t)
-	// fd 3 is closed before the command; stdin is empty.
-	res := execBashWithSudo(t, "goodpass", "cat <&3 2>/dev/null; cat")
-	if strings.Contains(res.Content, "goodpass") {
-		t.Errorf("password leaked to command, got %q", res.Content)
+	// The subshell keeps a redirection error from exiting the shell.
+	res := execBashWithSudo(t, "goodpass", "(exec 0<&3) 2>/dev/null && echo FD3_OPEN || echo FD3_CLOSED")
+	if !strings.Contains(res.Content, "FD3_CLOSED") || strings.Contains(res.Content, "FD3_OPEN") {
+		t.Errorf("fd 3 must be closed before the command, got %q", res.Content)
 	}
 }
 
@@ -247,6 +250,29 @@ func TestBash_SudoPreauth_ExitCodePreserved(t *testing.T) {
 	res := execBashWithSudo(t, "goodpass", "echo a\nsh -c 'exit 7'")
 	if !strings.HasPrefix(res.Content, "exit 7\n") {
 		t.Errorf("want exit 7, got %q", res.Content)
+	}
+}
+
+// Sudo caches credentials per parent process when there is no tty. This
+// guards the trailing "exit $?": the last command must stay a child of the
+// shell that ran "sudo -v".
+func TestBash_SudoPreauth_LastCommandKeepsShellAsParent(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix shell command")
+	}
+	installFakeSudo(t)
+	res := execBashWithSudo(t, "goodpass", "echo self=$$\nsh -c 'echo ppid=$PPID'")
+	var self, ppid string
+	for _, line := range strings.Split(res.Content, "\n") {
+		if v, ok := strings.CutPrefix(line, "self="); ok {
+			self = v
+		}
+		if v, ok := strings.CutPrefix(line, "ppid="); ok {
+			ppid = v
+		}
+	}
+	if self == "" || self != ppid {
+		t.Errorf("want ppid == shell pid, got self=%q ppid=%q in %q", self, ppid, res.Content)
 	}
 }
 
