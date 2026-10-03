@@ -61,7 +61,6 @@ type ChatComponent struct {
 	maxHeight  int
 	autoScroll bool
 	cursor     int
-	lastCursor int
 }
 
 // NewChat creates a new ChatComponent backed by the given timeline pointer.
@@ -71,7 +70,6 @@ func NewChat(timeline *[]TimelineEntry, maxHeight int) *ChatComponent {
 		maxHeight:  maxHeight,
 		autoScroll: true,
 		cursor:     -1,
-		lastCursor: -1,
 	}
 }
 
@@ -258,36 +256,27 @@ func (c *ChatComponent) EnsureCursorVisible(maxWidth int) {
 
 // entryLineCount returns the number of rendered lines for a single timeline entry.
 func (c *ChatComponent) entryLineCount(e *TimelineEntry, maxWidth int) int {
-	if e.cacheValid(maxWidth) {
-		return len(e.cachedLines)
-	}
-	switch e.Kind {
-	case KindUser:
-		return len(WrapText(e.Text, maxWidth-4))
-	case KindAssistant:
-		lines := RenderMarkdown(e.Text, maxWidth-2)
-		if len(lines) == 0 {
-			if strings.TrimSpace(e.Text) == "" {
-				return 0
-			}
-			lines = WrapText(e.Text, maxWidth-2)
+	return len(c.entryLines(e, maxWidth))
+}
+
+// entryLines returns the cached rendered lines for e, rendering and caching
+// them first if the cache is stale. Lines are rendered with a blank marker;
+// Render swaps in the cursor marker at output time so cursor moves do not
+// invalidate the cache.
+func (c *ChatComponent) entryLines(e *TimelineEntry, maxWidth int) []string {
+	if !e.cacheValid(maxWidth) {
+		lines := c.renderEntry(e, maxWidth, "  ")
+		if lines == nil {
+			lines = []string{}
 		}
-		return len(lines)
-	case KindThinking:
-		trimmed := strings.TrimSpace(e.Text)
-		if trimmed == "" {
-			return 0
-		}
-		return len(WrapText(trimmed, maxWidth-2))
-	case KindTool:
-		rendered := c.renderEntry(e, maxWidth, "  ")
-		return len(rendered)
-	case KindNotice:
-		return 1
-	case KindStats:
-		return 1
+		e.cachedLines = lines
+		e.cachedWidth = maxWidth
+		e.cachedExpanded = e.Expanded
+		e.cachedText = e.Text
+		e.cachedResult = e.ToolResult
+		e.cachedDiffStatus = e.Status
 	}
-	return 1
+	return e.cachedLines
 }
 
 func needsSeparator(kind, lastVisibleKind string) bool {
@@ -327,18 +316,6 @@ func (c *ChatComponent) countLines(maxWidth int) int {
 func (c *ChatComponent) Render(maxWidth int) []string {
 	if c.timeline == nil || len(*c.timeline) == 0 {
 		return nil
-	}
-
-	// Invalidate cache for entries whose cursor marker changed.
-	if c.lastCursor != c.cursor && c.timeline != nil {
-		tl := *c.timeline
-		if c.lastCursor >= 0 && c.lastCursor < len(tl) {
-			tl[c.lastCursor].cachedLines = nil
-		}
-		if c.cursor >= 0 && c.cursor < len(tl) {
-			tl[c.cursor].cachedLines = nil
-		}
-		c.lastCursor = c.cursor
 	}
 
 	tl := *c.timeline
@@ -414,19 +391,14 @@ func (c *ChatComponent) Render(maxWidth int) []string {
 			allStartLine = em.startLine
 		}
 
-		marker := "  "
-		if i == c.cursor {
-			marker = "> "
+		lines := c.entryLines(e, maxWidth)
+		if i == c.cursor && len(lines) > 0 {
+			// Every entry's first line starts with the 2-column marker.
+			all = append(all, "> "+strings.TrimPrefix(lines[0], "  "))
+			all = append(all, lines[1:]...)
+		} else {
+			all = append(all, lines...)
 		}
-		if !e.cacheValid(maxWidth) {
-			e.cachedLines = c.renderEntry(e, maxWidth, marker)
-			e.cachedWidth = maxWidth
-			e.cachedExpanded = e.Expanded
-			e.cachedText = e.Text
-			e.cachedResult = e.ToolResult
-			e.cachedDiffStatus = e.Status
-		}
-		all = append(all, e.cachedLines...)
 	}
 
 	// Trim to visible height by slicing precisely at the viewport boundary.

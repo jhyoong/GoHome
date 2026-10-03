@@ -550,7 +550,7 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		critPct = config.DefaultContextCritPct
 	}
 	m.SetContextThresholds(warnPct, critPct)
-	m.SetRenderThrottleMs(settings.RenderThrottleMs)
+	m.SetRenderThrottleMs(config.EffectiveRenderThrottleMs(settings.RenderThrottleMs))
 	m.SetSettings(settings)
 	m.SetGitBranch(gitBranch(cwd))
 	m.SetProjectDir(filepath.Base(cwd))

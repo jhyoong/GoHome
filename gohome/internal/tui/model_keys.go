@@ -168,7 +168,7 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.rebuildViewport()
 					m.spinner.Start("Sending...")
 					m.spinner.SetOnCancel(m.cancelFocusedSession)
-					cmds = append(cmds, SpinnerTickCmd())
+					cmds = append(cmds, m.spinnerTickCmd())
 					cmds = append(cmds, m.sendInputCmd(text))
 				}
 			}

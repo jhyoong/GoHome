@@ -29,3 +29,16 @@ Produce a concise summary that preserves:
 
 Be factual and specific. Do not add commentary or analysis.
 Write the summary as a narrative, not a bulleted list.`
+
+// EffectiveRenderThrottleMs resolves the renderThrottleMs setting: 0 means
+// use DefaultRenderThrottleMs, a negative value disables throttling (0).
+func EffectiveRenderThrottleMs(ms int) int {
+	switch {
+	case ms == 0:
+		return DefaultRenderThrottleMs
+	case ms < 0:
+		return 0
+	default:
+		return ms
+	}
+}
