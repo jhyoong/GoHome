@@ -664,7 +664,7 @@ func TestApplyModelConfig_InvalidBudgetKeepsCurrentModel(t *testing.T) {
 		t.Fatalf("applyModelConfig old: %v", err)
 	}
 
-	bad := config.ModelConfig{ModelName: "new-model", Thinking: "budget", ThinkingBudget: 8192, MaxTokens: 4096}
+	bad := config.ModelConfig{Wire: config.WireAnthropic, ModelName: "new-model", Thinking: "budget", ThinkingBudget: 8192, MaxTokens: 4096}
 	_, err := applyModelConfig(state, "bad", bad, &reqClient{})
 	if err == nil {
 		t.Fatal("expected error for budget >= maxTokens")

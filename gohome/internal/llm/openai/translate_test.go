@@ -2,7 +2,6 @@ package openai
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
@@ -499,8 +498,19 @@ func TestTranslateEvents_ErrorChunk(t *testing.T) {
 	if len(events) != 1 || events[0].Kind != common.EventError {
 		t.Fatalf("want single EventError, got %+v", events)
 	}
-	if events[0].Err == nil || !strings.Contains(events[0].Err.Error(), "rate limited upstream") {
-		t.Fatalf("error missing message: %v", events[0].Err)
+	if events[0].Err == nil || events[0].Err.Error() != "openai: stream error (server_error/429): rate limited upstream" {
+		t.Fatalf("unexpected error: %v", events[0].Err)
+	}
+}
+
+func TestTranslateEvents_ErrorChunkNoTypeOrCode(t *testing.T) {
+	frames := []sseFrame{
+		{data: `{"error":{"message":"boom"}}`},
+		{done: true},
+	}
+	events := collectEvents(translateEvents(context.Background(), makeFrames(frames)))
+	if len(events) != 1 || events[0].Err == nil || events[0].Err.Error() != "openai: stream error: boom" {
+		t.Fatalf("unexpected events: %+v", events)
 	}
 }
 

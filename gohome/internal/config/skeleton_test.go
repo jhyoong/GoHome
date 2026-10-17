@@ -29,14 +29,20 @@ func TestSkeletonJSON_ContainsAllTopLevelFields(t *testing.T) {
 		"shellTimeoutMs", "maxShellTimeoutMs",
 		"contextWarnPct", "contextCritPct",
 		"retryBackoffMs", "renderThrottleMs",
-		"autoCompact", "autoCompactMode",
+		"autoCompactMode",
 		"autoCompactPct",
 		"autoCompactLeftover", "autoCompactPrompt",
-		"cacheSudoPassword",
 	}
 	for _, key := range required {
 		if _, ok := raw[key]; !ok {
 			t.Errorf("missing top-level field %q", key)
+		}
+	}
+	// These bool keys are left out: an explicit false in a project file would
+	// override a global true.
+	for _, key := range []string{"autoCompact", "cacheSudoPassword"} {
+		if _, ok := raw[key]; ok {
+			t.Errorf("skeleton must not set %q", key)
 		}
 	}
 }
@@ -158,5 +164,24 @@ func TestSkeletonJSON_NoPlaceholders(t *testing.T) {
 	data := string(SkeletonJSON())
 	if strings.Contains(data, `"string"`) || strings.Contains(data, `"example"`) || strings.Contains(data, "autoCompactTargetPct") {
 		t.Errorf("skeleton contains placeholder content:\n%s", data)
+	}
+}
+
+func TestEnsureConfigFile_ProjectSkeletonKeepsGlobalBools(t *testing.T) {
+	dir := t.TempDir()
+	g := filepath.Join(dir, "g.json")
+	p := filepath.Join(dir, "proj", ".gohome", "settings.json")
+	if err := os.WriteFile(g, []byte(`{"autoCompact":true,"cacheSudoPassword":true}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureConfigFile(p); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Load(g, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !s.AutoCompact || !s.CacheSudoPassword {
+		t.Errorf("got autoCompact=%v cacheSudoPassword=%v, want true/true", s.AutoCompact, s.CacheSudoPassword)
 	}
 }

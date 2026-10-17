@@ -322,7 +322,6 @@ Section 8 records the status of their items.
 ### L3. Medium - `redacted_thinking` blocks are dropped
 - **Location:** `anthropic/translate.go:128-134,174-196`
 - **Problem:** there is no case at `content_block_stop` and no `data` field.
-- **Status:** Prior L9, still open.
 - **Status:** Fixed on branch `fix/llm-wire-configs`. `redacted_thinking` blocks are read, saved and sent back.
 
 ### L4. Medium - Retry and timeouts

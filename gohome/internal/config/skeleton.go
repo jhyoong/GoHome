@@ -19,12 +19,10 @@ func SkeletonJSON() []byte {
   "contextCritPct": 0.0,
   "retryBackoffMs": [],
   "renderThrottleMs": 0,
-  "autoCompact": false,
   "autoCompactMode": "",
   "autoCompactPct": 0.0,
   "autoCompactLeftover": 0,
-  "autoCompactPrompt": "",
-  "cacheSudoPassword": false
+  "autoCompactPrompt": ""
 }
 `)
 }

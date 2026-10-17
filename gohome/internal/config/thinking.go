@@ -12,7 +12,9 @@ import (
 // An unset thinking value means budget mode when thinkingBudget > 0, and
 // adaptive mode otherwise. In budget mode an unset budget gets
 // DefaultThinkingBudget, and the budget must be at least MinThinkingBudget and
-// below maxTokens (DefaultMaxTokens when unset). The budget is 0 in other modes.
+// below maxTokens (DefaultMaxTokens when unset). These checks apply only to the
+// anthropic wire, the only one that sends the budget. The budget is 0 in other
+// modes.
 func ResolveThinking(name string, cfg ModelConfig) (common.ThinkingMode, int, error) {
 	mode := common.ThinkingMode(cfg.Thinking)
 	switch mode {
@@ -25,6 +27,13 @@ func ResolveThinking(name string, cfg ModelConfig) (common.ThinkingMode, int, er
 	case common.ThinkingModeOff, common.ThinkingModeAdaptive, common.ThinkingModeBudget:
 	default:
 		return "", 0, fmt.Errorf("model config %q: unknown thinking value %q (use \"off\", \"adaptive\" or \"budget\")", name, cfg.Thinking)
+	}
+	// Only the Anthropic wire sends the budget, so other wires skip the checks.
+	if cfg.Wire != WireAnthropic {
+		if mode == common.ThinkingModeBudget {
+			return mode, cfg.ThinkingBudget, nil
+		}
+		return mode, 0, nil
 	}
 	if mode != common.ThinkingModeBudget {
 		return mode, 0, nil

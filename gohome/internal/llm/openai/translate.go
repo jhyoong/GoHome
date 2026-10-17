@@ -202,9 +202,18 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 				if msg == "" {
 					msg = "unknown error"
 				}
+				var detail string
+				switch {
+				case c.Error.Type != "" && c.Error.Code != nil:
+					detail = fmt.Sprintf(" (%s/%v)", c.Error.Type, c.Error.Code)
+				case c.Error.Type != "":
+					detail = fmt.Sprintf(" (%s)", c.Error.Type)
+				case c.Error.Code != nil:
+					detail = fmt.Sprintf(" (%v)", c.Error.Code)
+				}
 				send(common.StreamEvent{
 					Kind: common.EventError,
-					Err:  fmt.Errorf("openai: stream error: %s", msg),
+					Err:  fmt.Errorf("openai: stream error%s: %s", detail, msg),
 				})
 				return
 			}

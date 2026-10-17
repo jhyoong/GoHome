@@ -31,10 +31,14 @@ func TestResolveThinking(t *testing.T) {
 		{"adaptive ignores budget", ModelConfig{Thinking: "adaptive", ThinkingBudget: 4096}, common.ThinkingModeAdaptive, 0},
 		{"budget default", ModelConfig{Thinking: "budget"}, common.ThinkingModeBudget, DefaultThinkingBudget},
 		{"budget explicit", ModelConfig{Thinking: "budget", ThinkingBudget: 1024, MaxTokens: 2048}, common.ThinkingModeBudget, 1024},
+		{"openai wire skips budget checks", ModelConfig{Wire: WireOpenAI, ThinkingBudget: 20000}, common.ThinkingModeBudget, 20000},
 		{"adaptive skips budget checks", ModelConfig{Thinking: "adaptive", ThinkingBudget: 10, MaxTokens: 5}, common.ThinkingModeAdaptive, 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.cfg.Wire == "" {
+				tt.cfg.Wire = WireAnthropic
+			}
 			mode, budget, err := ResolveThinking("m1", tt.cfg)
 			if err != nil {
 				t.Fatalf("ResolveThinking: %v", err)
@@ -61,6 +65,7 @@ func TestResolveThinking_Errors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			tt.cfg.Wire = WireAnthropic
 			_, _, err := ResolveThinking("m1", tt.cfg)
 			if err == nil {
 				t.Fatal("expected error, got nil")
