@@ -8,6 +8,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
@@ -57,9 +58,9 @@ func TestEmit_PlainText_AccumulatesTokenDeltas(t *testing.T) {
 	var buf bytes.Buffer
 	fe := NewFrontend("x", false, &buf)
 
+	fe.Emit("s1", agent.Event{Kind: agent.EventSending})
 	fe.Emit("s1", agent.Event{Kind: agent.EventTokenDelta, TextDelta: "Hello"})
 	fe.Emit("s1", agent.Event{Kind: agent.EventTokenDelta, TextDelta: " world"})
-	fe.Emit("s1", agent.Event{Kind: agent.EventSending})
 	fe.Emit("s1", agent.Event{Kind: agent.EventTurnDone})
 
 	got := fe.FinalText()
@@ -223,5 +224,60 @@ func TestAwaitUserInput_Interactive_UnknownTypeWarning(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "unknown input type") {
 		t.Errorf("expected unknown type warning in output, got %q", buf.String())
+	}
+}
+
+func TestEmit_PlainText_OnlyFinalMainReply(t *testing.T) {
+	var buf bytes.Buffer
+	fe := NewFrontend("x", false, &buf)
+	fe.SetMainSession("main")
+
+	fe.Emit("main", agent.Event{Kind: agent.EventSending})
+	fe.Emit("main", agent.Event{Kind: agent.EventTokenDelta, TextDelta: "let me check"})
+	fe.Emit("child", agent.Event{Kind: agent.EventSending})
+	fe.Emit("child", agent.Event{Kind: agent.EventTokenDelta, TextDelta: "child text"})
+	fe.Emit("main", agent.Event{Kind: agent.EventSending})
+	fe.Emit("main", agent.Event{Kind: agent.EventTokenDelta, TextDelta: "final"})
+	fe.Emit("child", agent.Event{Kind: agent.EventTokenDelta, TextDelta: " more child"})
+
+	if got := fe.FinalText(); got != "final" {
+		t.Errorf("FinalText() = %q, want %q", got, "final")
+	}
+}
+
+func TestAwaitUserInput_Interactive_CtxCancelWhileBlocked(t *testing.T) {
+	pr, pw := io.Pipe()
+	defer func() { _ = pw.Close() }()
+	fe := NewInteractiveFrontend(pr, true, io.Discard)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := fe.AwaitUserInput(ctx)
+		done <- err
+	}()
+	cancel()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("err = %v, want context.Canceled", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("AwaitUserInput did not return after ctx cancel")
+	}
+}
+
+func TestAwaitUserInput_Interactive_LongLine(t *testing.T) {
+	content := strings.Repeat("x", 70*1024)
+	line, _ := json.Marshal(map[string]string{"type": "user_message", "content": content})
+	fe := NewInteractiveFrontend(strings.NewReader(string(line)+"\n"), true, io.Discard)
+
+	got, err := fe.AwaitUserInput(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != content {
+		t.Errorf("got %d bytes, want %d", len(got), len(content))
 	}
 }

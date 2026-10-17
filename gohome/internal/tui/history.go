@@ -41,7 +41,7 @@ func (h *History) Browsing() bool {
 }
 
 func (h *History) Prev() string {
-	if len(h.entries) == 0 {
+	if len(h.entries) == 0 || h.pos < 0 {
 		return h.draft
 	}
 	if h.pos > 0 {

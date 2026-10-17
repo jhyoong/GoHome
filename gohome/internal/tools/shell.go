@@ -73,11 +73,12 @@ const SudoPreauthFailedMarker = "gohome: sudo pre-authentication failed, command
 // sudo caches credentials per parent process, so later sudo calls from
 // this shell (including "sudo -n") succeed without a password. The final
 // "exit $?" keeps the shell from exec-ing the last command in place of
-// itself, which would change sudo's parent process.
+// itself, which would change sudo's parent process. The blank line after
+// command keeps a trailing backslash from joining the exit line.
 func wrapSudoPreauth(command string) string {
 	return "sudo -S -v -p '' <&3 || { echo '" + SudoPreauthFailedMarker + "' >&2; exit 1; }\n" +
 		"exec 3<&-\n" +
-		command + "\n" +
+		command + "\n\n" +
 		"exit $?\n"
 }
 

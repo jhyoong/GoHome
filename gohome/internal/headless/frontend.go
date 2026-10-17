@@ -24,7 +24,16 @@ type Frontend struct {
 	sent    bool
 	buf     strings.Builder
 	mu      sync.Mutex
-	scanner *bufio.Scanner
+	reader  *bufio.Reader
+	// pending holds an in-flight stdin read abandoned by a cancelled ctx, so
+	// the next call waits on it instead of starting a second reader.
+	pending chan lineResult
+	mainID  string
+}
+
+type lineResult struct {
+	line []byte
+	err  error
 }
 
 func NewFrontend(prompt string, verbose bool, output io.Writer) *Frontend {
@@ -40,12 +49,12 @@ func NewInteractiveFrontend(input io.Reader, verbose bool, output io.Writer) *Fr
 		prompt:  "-",
 		verbose: verbose,
 		output:  output,
-		scanner: bufio.NewScanner(input),
+		reader:  bufio.NewReader(input),
 	}
 }
 
 func (f *Frontend) AwaitUserInput(ctx context.Context) (string, error) {
-	if f.scanner != nil {
+	if f.reader != nil {
 		return f.readStdin(ctx)
 	}
 
@@ -64,7 +73,15 @@ func (f *Frontend) RequestApproval(_ context.Context, _ guard.ApprovalRequest) (
 	return guard.ApprovalDecision{Outcome: guard.AllowOnce}, nil
 }
 
-func (f *Frontend) Emit(_ string, ev agent.Event) {
+// SetMainSession sets the depth-0 session whose reply is printed. If it is
+// never set, the first session to emit is taken as the main one.
+func (f *Frontend) SetMainSession(id string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.mainID = id
+}
+
+func (f *Frontend) Emit(sessionID string, ev agent.Event) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -77,16 +94,56 @@ func (f *Frontend) Emit(_ string, ev agent.Event) {
 		return
 	}
 
-	if ev.Kind == agent.EventTokenDelta {
+	if f.mainID == "" {
+		f.mainID = sessionID
+	}
+	if sessionID != f.mainID {
+		return
+	}
+
+	// Each request starts a new reply, so only the final one is kept.
+	switch ev.Kind {
+	case agent.EventSending:
+		f.buf.Reset()
+	case agent.EventTokenDelta:
 		f.buf.WriteString(ev.TextDelta)
 	}
 }
 
-// ctx is unused: bufio.Scanner blocks on io.Reader.Read which is not context-cancellable.
-func (f *Frontend) readStdin(_ context.Context) (string, error) {
-	for f.scanner.Scan() {
-		line := f.scanner.Text()
+// readLine reads one line from stdin in a goroutine so ctx can interrupt the
+// wait. A read abandoned by cancellation is picked up by the next call.
+func (f *Frontend) readLine(ctx context.Context) ([]byte, error) {
+	if f.pending == nil {
+		ch := make(chan lineResult, 1)
+		f.pending = ch
+		go func() {
+			line, err := f.reader.ReadBytes('\n')
+			ch <- lineResult{line: line, err: err}
+		}()
+	}
+	select {
+	case r := <-f.pending:
+		f.pending = nil
+		return r.line, r.err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (f *Frontend) readStdin(ctx context.Context) (string, error) {
+	for {
+		raw, rerr := f.readLine(ctx)
+		if rerr != nil && !errors.Is(rerr, io.EOF) {
+			if errors.Is(rerr, context.Canceled) || errors.Is(rerr, context.DeadlineExceeded) {
+				return "", rerr
+			}
+			return "", fmt.Errorf("reading stdin: %w", rerr)
+		}
+		line := strings.TrimRight(string(raw), "\r\n")
 		if line == "" {
+			if rerr != nil {
+				return "", ErrExit
+			}
 			continue
 		}
 
@@ -106,13 +163,11 @@ func (f *Frontend) readStdin(_ context.Context) (string, error) {
 			return "", ErrExit
 		default:
 			f.emitWarning(fmt.Sprintf("unknown input type: %q", envelope.Type))
-			continue
+		}
+		if rerr != nil {
+			return "", ErrExit
 		}
 	}
-	if err := f.scanner.Err(); err != nil {
-		return "", fmt.Errorf("reading stdin: %w", err)
-	}
-	return "", ErrExit
 }
 
 func (f *Frontend) emitWarning(msg string) {

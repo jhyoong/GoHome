@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
+	"github.com/jhyoong/GoHome/gohome/internal/config"
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 	"github.com/jhyoong/GoHome/gohome/internal/session"
@@ -485,5 +486,150 @@ func TestRunLoop_WriteFailureIsNoticeOnce(t *testing.T) {
 	}
 	if notices != 1 {
 		t.Errorf("session not saved notices = %d, want 1", notices)
+	}
+}
+
+// toolCallClient answers each request with one tool call.
+type toolCallClient struct{}
+
+func (toolCallClient) Stream(_ context.Context, _ common.Request) (<-chan common.StreamEvent, error) {
+	ch := make(chan common.StreamEvent, 2)
+	ch <- common.StreamEvent{Kind: common.EventToolCallDone, ToolCallID: "tc1", ToolName: "shell", InputJSON: `{}`}
+	ch <- common.StreamEvent{Kind: common.EventTurnDone, StopReason: "tool_use"}
+	close(ch)
+	return ch, nil
+}
+
+// denyFrontend denies every approval after calling onApproval.
+type denyFrontend struct {
+	recorderFrontend
+	onApproval func()
+}
+
+func (d *denyFrontend) RequestApproval(_ context.Context, _ guard.ApprovalRequest) (guard.ApprovalDecision, error) {
+	d.onApproval()
+	return guard.ApprovalDecision{Outcome: guard.Deny}, nil
+}
+
+// TestRunLoop_DeniedRunAppliesPendingSwap verifies that a session swap
+// queued during a run is applied when the run ends with a tool denial.
+func TestRunLoop_DeniedRunAppliesPendingSwap(t *testing.T) {
+	wl, err := guard.Compile(guard.WhitelistFile{}, guard.WhitelistFile{}, "")
+	if err != nil {
+		t.Fatalf("guard compile: %v", err)
+	}
+
+	sess := session.NewSession("test-deny", t.TempDir(), "model", "ep")
+	writer, err := session.OpenWriter(t.TempDir() + "/test.jsonl")
+	if err != nil {
+		t.Fatalf("open writer: %v", err)
+	}
+	state := agent.NewSessionState(sess, writer, toolCallClient{})
+	t.Cleanup(func() { _ = state.Writer().Close() })
+
+	newSess := session.NewSession("swapped", t.TempDir(), "model", "ep")
+	newWriterPath := t.TempDir() + "/swapped.jsonl"
+	fe := &denyFrontend{recorderFrontend: recorderFrontend{input: make(chan string, 1)}}
+	fe.onApproval = func() {
+		// The agent is busy here, so the swap is queued.
+		_ = state.Swap("new swapped", func(_ *session.Session, oldWriter *session.Writer) (*session.Session, *session.Writer, error) {
+			_ = oldWriter.Close()
+			newW, err := session.OpenWriter(newWriterPath)
+			if err != nil {
+				return nil, nil, err
+			}
+			return newSess, newW, nil
+		})
+	}
+
+	a := &agent.Agent{
+		Tools:    tools.NewRegistry(),
+		Guard:    guard.NewGuard(wl, fe, nil),
+		Frontend: fe,
+		State:    state,
+		System:   "test",
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var (
+		turnMu     sync.Mutex
+		turnCancel context.CancelFunc
+	)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runLoop(ctx, a, fe, &turnMu, &turnCancel)
+	}()
+
+	fe.input <- "hello"
+
+	deadline := time.After(2 * time.Second)
+	for state.Session().ID != "swapped" {
+		select {
+		case <-deadline:
+			t.Fatalf("session = %q, want swapped (denied run must drain the pending swap)", state.Session().ID)
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("runLoop did not exit after process context cancel")
+	}
+}
+
+// reqClient records the last request and answers with a clean turn end.
+type reqClient struct {
+	mu  sync.Mutex
+	req common.Request
+}
+
+func (c *reqClient) Stream(_ context.Context, req common.Request) (<-chan common.StreamEvent, error) {
+	c.mu.Lock()
+	c.req = req
+	c.mu.Unlock()
+	ch := make(chan common.StreamEvent, 1)
+	ch <- common.StreamEvent{Kind: common.EventTurnDone, StopReason: "end_turn"}
+	close(ch)
+	return ch, nil
+}
+
+// TestApplyModelConfig_DefaultsAndCurrentModel applies a config with no
+// maxTokens or thinkingBudget to a resumed session saved with an old model.
+// The limits get the startup defaults and the turn sends the new model.
+func TestApplyModelConfig_DefaultsAndCurrentModel(t *testing.T) {
+	sess := session.NewSession("resumed", t.TempDir(), "old-model", "old-cfg")
+	state := agent.NewSessionState(sess, nil, nil)
+	client := &reqClient{}
+
+	ctxWin := applyModelConfig(state, "fast", config.ModelConfig{ModelName: "new-model"}, client)
+
+	if ctxWin != config.DefaultContextWindow {
+		t.Errorf("context window = %d, want %d", ctxWin, config.DefaultContextWindow)
+	}
+	ms := state.ModelSettings()
+	if ms.MaxTokens != config.DefaultMaxTokens {
+		t.Errorf("MaxTokens = %d, want %d", ms.MaxTokens, config.DefaultMaxTokens)
+	}
+	if ms.ThinkingBudget != config.DefaultThinkingBudget {
+		t.Errorf("ThinkingBudget = %d, want %d (thinking must stay on)", ms.ThinkingBudget, config.DefaultThinkingBudget)
+	}
+	if sess.Model != "new-model" || sess.ModelConfig != "fast" {
+		t.Errorf("session model = %q/%q, want new-model/fast", sess.Model, sess.ModelConfig)
+	}
+
+	a := &agent.Agent{Tools: tools.NewRegistry(), Frontend: &recorderFrontend{}, State: state}
+	if _, _, err := a.Turn(context.Background(), sess); err != nil {
+		t.Fatalf("Turn: %v", err)
+	}
+	if client.req.Model != "new-model" {
+		t.Errorf("request model = %q, want new-model", client.req.Model)
+	}
+	if client.req.MaxTokens != config.DefaultMaxTokens || client.req.ThinkingBudget != config.DefaultThinkingBudget {
+		t.Errorf("request limits = %d/%d, want %d/%d", client.req.MaxTokens, client.req.ThinkingBudget,
+			config.DefaultMaxTokens, config.DefaultThinkingBudget)
 	}
 }

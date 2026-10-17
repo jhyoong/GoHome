@@ -73,9 +73,15 @@ Minor items found while reviewing the D1-D9 fixes (plan: `docs/reviews/2026-10-1
 33. **Tool entries stay "pending" after an early stream end.** Anthropic sends tool calls before `message_stop`, so the TUI shows them, but the turn is dropped. Mark pending entries as failed when `EventError` arrives. Cancelling mid-stream already did this before the fix.
 34. **"stream ended early" is defined three times** (`anthropic/translate.go`, `openai/translate.go`, `agent/errors.go`). Use one sentinel in `common` so `errors.Is` works across packages.
 35. **The `max_tokens`/`length` notice is not saved.** It is gone after a resume. `StopReason` is saved, so `historyToTimeline` could rebuild it.
-36. **Run continues after a cancelled compaction.** See audit A2.
 
 ### Testing gaps
 37. **Weak assertions.** `stream_end_test.go` checks `err != nil` instead of the specific error. `countToolResultLines` matches substrings instead of decoding JSON. `TestWriterErrReportsWriteFailure` closes the file directly and ignores the double-close error.
 38. **`TestPickResume_SkipsChildAndLoadsChildren` has no recorded failing run.** `TestListExcludesChildren` covers the same case and did fail first.
 39. **A symlinked working directory makes two session folders.** On macOS, `/var/...` and `/private/var/...` name the same directory but map to two session folders, so `/resume` from one path does not see sessions from the other. Resolve the cwd with `filepath.EvalSymlinks` before building the session path. Found during the live test of the D1-D9 fixes; this existed before.
+
+### Agent loop and TUI (found while fixing A1-A10)
+40. **A failed run leaves the user message unanswered.** The message stays in history with no reply (A1 leftover). Decide whether to drop it or mark it.
+41. **Sudo detection matches inside quoted strings.** `echo 'a; sudo b'` is treated as sudo. `VAR=/path/sudo cmd` (for example `SUDO=/usr/bin/sudo make install`) is also detected as sudo. The worst case is an extra password prompt. Fixing this needs a shell parser (`guard/sudo.go`).
+42. **The sudo password dialog's expanded command (Tab) has no height cap or scroll.** The approval menu has both (A8).
+43. **A config cannot turn thinking off.** An unset or `<= 0` thinking budget falls back to the default.
+44. **A resumed session's JSONL keeps the old model name.** The `SessionStart` record is not updated, although requests use the current model.

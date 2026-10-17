@@ -200,6 +200,11 @@ func TestSnapshots(t *testing.T) {
 			Kind:      agent.EventSessionEnded,
 			SessionID: "sub-1",
 		}})
+		// The main run finishes.
+		m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+			Kind:      agent.EventRunDone,
+			SessionID: "main",
+		}})
 		golden.RequireEqual(t, []byte(m.View()))
 	})
 
@@ -265,6 +270,11 @@ func TestSnapshots(t *testing.T) {
 			Result: &agent.ToolResult{
 				Content: "Subagent result text.",
 			},
+		}})
+		// The main run finishes.
+		m = apply(m, tui.AgentEventMsg{SessionID: "main", Ev: agent.Event{
+			Kind:      agent.EventRunDone,
+			SessionID: "main",
 		}})
 		// Focus the completed session.
 		m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlRight})

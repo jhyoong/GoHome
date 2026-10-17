@@ -37,7 +37,9 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 	// so child file names do not collide across runs.
 	childID := parent.NextSubagentID()
 
-	child := session.NewSession(childID, parent.CWD(), parent.Model, parent.ModelConfig)
+	// The child uses the parent's active model settings.
+	ms := a.State.ModelSettings()
+	child := session.NewSession(childID, parent.CWD(), ms.Name, ms.ConfigName)
 	child.Depth = 1
 	child.ParentID = parent.ID
 
@@ -62,8 +64,8 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 		ID:          childID,
 		ParentID:    parent.ID,
 		CWD:         parent.CWD(),
-		Model:       parent.Model,
-		ModelConfig: parent.ModelConfig,
+		Model:       ms.Name,
+		ModelConfig: ms.ConfigName,
 		Depth:       1,
 		StartedAt:   child.StartedAt,
 	})
@@ -77,19 +79,20 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 		sys = a.System
 	}
 
-	// Build the child Agent (shares Guard / Frontend with parent).
+	// Build the child Agent (shares Guard / Frontend with parent). The child
+	// gets no steer channel: steers are for the main run, which picks them up
+	// after the subagent returns.
+	childState := NewSessionState(child, cw, a.State.Client())
+	childState.SetModelSettings(ms)
 	childAgent := &Agent{
-		Tools:           a.Tools.Without("subagent"),
-		Guard:           a.Guard,
-		Frontend:        a.Frontend,
-		State:           NewSessionState(child, cw, a.State.Client()),
-		System:          sys,
-		MaxTokens:       a.MaxTokens,
-		ThinkingBudget:  a.ThinkingBudget,
-		ReasoningEffort: a.ReasoningEffort,
-		CompactCfg:      a.CompactCfg,
-		CompactPrompt:   a.CompactPrompt,
-		Home:            a.Home,
+		Tools:         a.Tools.Without("subagent"),
+		Guard:         a.Guard,
+		Frontend:      noSteerFrontend{a.Frontend},
+		State:         childState,
+		System:        sys,
+		CompactCfg:    a.CompactCfg,
+		CompactPrompt: a.CompactPrompt,
+		Home:          a.Home,
 	}
 
 	// Notify the frontend that a new child session has started.
@@ -147,6 +150,15 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 	resultText := lastAssistantText(child)
 	return resultText, false, nil
 }
+
+// noSteerFrontend wraps a Frontend so SteerCh returns nil. Child agents use
+// it so they never read steers meant for the parent.
+type noSteerFrontend struct {
+	Frontend
+}
+
+// SteerCh returns nil: a child agent has no steer channel.
+func (noSteerFrontend) SteerCh() <-chan string { return nil }
 
 // lastAssistantText concatenates all BlockText blocks from the last assistant
 // message in sess.History. Returns an empty string if there is none.

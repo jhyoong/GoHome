@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
+	"github.com/jhyoong/GoHome/gohome/internal/tools"
 )
 
 // handleApprovalReq processes an incoming approval request. If no approval is
@@ -94,8 +95,9 @@ func (m *Model) handleApprovalKey(msg tea.KeyMsg) tea.Cmd {
 		return tea.Batch(cmds...)
 	}
 
-	// PgUp/PgDown scroll the timeline even during approval.
-	if m.scrollApprovalPage(msg) {
+	// PgUp/PgDown scroll an expanded summary that does not fit, otherwise
+	// the timeline.
+	if m.scrollApprovalSummary(msg) || m.scrollApprovalPage(msg) {
 		return tea.Batch(cmds...)
 	}
 
@@ -141,6 +143,25 @@ func (m *Model) handleApprovalKey(msg tea.KeyMsg) tea.Cmd {
 		ap.patternInput.CursorEnd()
 	}
 	return tea.Batch(cmds...)
+}
+
+// scrollApprovalSummary scrolls an expanded summary that is taller than the
+// prompt box on PgUp/PgDown. It reports whether the key was handled.
+func (m *Model) scrollApprovalSummary(msg tea.KeyMsg) bool {
+	ap := m.activeApproval
+	if !ap.expandedSummary || ap.scrollMax == 0 {
+		return false
+	}
+	step := max(ap.scrollWin-1, 1)
+	switch msg.Type {
+	case tea.KeyPgUp:
+		ap.scroll = max(ap.scroll-step, 0)
+	case tea.KeyPgDown:
+		ap.scroll = min(ap.scroll+step, ap.scrollMax)
+	default:
+		return false
+	}
+	return true
 }
 
 // scrollApprovalPage scrolls the timeline on PgUp/PgDown while an approval is
@@ -203,9 +224,11 @@ func (m *Model) addNotice(sessionID, text string) {
 }
 
 // sudoRejected reports whether shell output contains sudo's standard
-// wrong-password messages.
+// wrong-password messages, or the pre-auth failure marker the shell tool
+// prints, which does not depend on the sudo locale.
 func sudoRejected(output string) bool {
-	return strings.Contains(output, "Sorry, try again") ||
+	return strings.Contains(output, tools.SudoPreauthFailedMarker) ||
+		strings.Contains(output, "Sorry, try again") ||
 		strings.Contains(output, "incorrect password attempt")
 }
 
@@ -277,10 +300,23 @@ func (m *Model) resolveApproval(dec guard.ApprovalDecision) tea.Cmd {
 	}
 	if m.activeApproval == nil && (dec.Outcome == guard.AllowOnce || dec.Outcome == guard.AllowAlways) {
 		m.spinner.Start("Processing...")
-		m.spinner.SetOnCancel(m.cancelFocusedSession)
+		m.spinner.SetOnCancel(m.cancelRun)
 		cmds = append(cmds, m.spinnerTickCmd())
 	}
 	return tea.Batch(cmds...)
+}
+
+// denyAllApprovals replies Deny to the active approval and every queued one,
+// then clears both. Reply channels are buffered, so the sends do not block.
+func (m *Model) denyAllApprovals() {
+	if m.activeApproval != nil {
+		m.activeApproval.reply <- guard.ApprovalDecision{Outcome: guard.Deny}
+		m.activeApproval = nil
+	}
+	for _, ap := range m.approvalQueue {
+		ap.reply <- guard.ApprovalDecision{Outcome: guard.Deny}
+	}
+	m.approvalQueue = nil
 }
 
 // replyFromCache answers a password-only request with the cached sudo

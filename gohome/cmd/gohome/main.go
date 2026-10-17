@@ -172,6 +172,8 @@ func runLoop(
 		}
 
 		if errors.Is(runErr, agent.ErrToolDenied) {
+			// Safety net: a swap queued during the run still applies.
+			drainPendingSwap(a, fe)
 			continue
 		}
 
@@ -182,18 +184,53 @@ func runLoop(
 			}
 		}
 
-		if tag, drainErr := a.State.DrainPending(); tag != "" {
-			if drainErr != nil {
-				slog.Error("session swap failed", "tag", tag, "err", drainErr)
-			} else {
-				newSess := a.State.Session()
-				fe.Emit(newSess.ID, agent.Event{
-					Kind:      agent.EventSessionSwapped,
-					SessionID: newSess.ID,
-				})
-			}
-		}
+		drainPendingSwap(a, fe)
 	}
+}
+
+// drainPendingSwap applies a session swap queued while the agent was busy
+// and tells the frontend about the new session.
+func drainPendingSwap(a *agent.Agent, fe agent.Frontend) {
+	tag, drainErr := a.State.DrainPending()
+	if tag == "" {
+		return
+	}
+	if drainErr != nil {
+		slog.Error("session swap failed", "tag", tag, "err", drainErr)
+		return
+	}
+	newSess := a.State.Session()
+	fe.Emit(newSess.ID, agent.Event{
+		Kind:      agent.EventSessionSwapped,
+		SessionID: newSess.ID,
+	})
+}
+
+// applyModelConfig makes cfg (named name) the active model: it sets the
+// client and the model settings on state. Unset maxTokens and thinkingBudget
+// get the startup defaults. It returns the context window to show.
+func applyModelConfig(state *agent.SessionState, name string, cfg config.ModelConfig, client common.Client) int {
+	maxTokens := cfg.MaxTokens
+	if maxTokens <= 0 {
+		maxTokens = config.DefaultMaxTokens
+	}
+	thinkingBudget := cfg.ThinkingBudget
+	if thinkingBudget <= 0 {
+		thinkingBudget = config.DefaultThinkingBudget
+	}
+	state.SetClient(client)
+	state.SetModelSettings(agent.ModelSettings{
+		Name:            cfg.ModelName,
+		ConfigName:      name,
+		MaxTokens:       maxTokens,
+		ThinkingBudget:  thinkingBudget,
+		ReasoningEffort: cfg.ReasoningEffort,
+	})
+	ctxWin := cfg.ContextWindow
+	if ctxWin <= 0 {
+		ctxWin = config.DefaultContextWindow
+	}
+	return ctxWin
 }
 
 func main() {
@@ -392,6 +429,7 @@ func main() {
 		} else {
 			hfe = headless.NewFrontend(*prompt, *verbose, os.Stdout)
 		}
+		hfe.SetMainSession(sess.ID)
 
 		g := guard.NewGuard(wl, hfe, dl)
 		g.SetYolo(*yolo)
@@ -403,19 +441,8 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 			systemPrompt = settings.SystemPrompt
 		}
 
-		maxTokens := mc.MaxTokens
-		if maxTokens <= 0 {
-			maxTokens = config.DefaultMaxTokens
-		}
-		thinkingBudget := mc.ThinkingBudget
-		if thinkingBudget <= 0 {
-			thinkingBudget = config.DefaultThinkingBudget
-		}
-
-		contextWindow := mc.ContextWindow
-		if contextWindow <= 0 {
-			contextWindow = config.DefaultContextWindow
-		}
+		state := agent.NewSessionState(sess, writer, nil)
+		contextWindow := applyModelConfig(state, cfgName, mc, client)
 		compactCfg := agent.CompactConfig{
 			Enabled:       settings.AutoCompact,
 			Mode:          settings.AutoCompactMode,
@@ -437,19 +464,15 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 			compactCfg.Leftover = config.DefaultAutoCompactLeftover
 		}
 
-		state := agent.NewSessionState(sess, writer, client)
 		a := &agent.Agent{
-			Tools:           registry,
-			Guard:           g,
-			Frontend:        hfe,
-			State:           state,
-			System:          systemPrompt,
-			MaxTokens:       maxTokens,
-			ThinkingBudget:  thinkingBudget,
-			ReasoningEffort: mc.ReasoningEffort,
-			CompactCfg:      compactCfg,
-			CompactPrompt:   settings.AutoCompactPrompt,
-			Home:            home,
+			Tools:         registry,
+			Guard:         g,
+			Frontend:      hfe,
+			State:         state,
+			System:        systemPrompt,
+			CompactCfg:    compactCfg,
+			CompactPrompt: settings.AutoCompactPrompt,
+			Home:          home,
 		}
 		a.RegisterSubagentTool()
 
@@ -556,10 +579,9 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 	m := tui.New(fe, sess.ID)
 	m.SetYoloCallback(g.SetYolo)
 	m.SetModelName(mc.ModelName)
-	contextWindow := mc.ContextWindow
-	if contextWindow <= 0 {
-		contextWindow = config.DefaultContextWindow
-	}
+	// A resumed session also takes the current model config.
+	state := agent.NewSessionState(sess, writer, nil)
+	contextWindow := applyModelConfig(state, cfgName, mc, client)
 	m.SetContextWindow(contextWindow)
 	m.SetYolo(*yolo)
 
@@ -599,15 +621,6 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		systemPrompt = settings.SystemPrompt
 	}
 
-	maxTokens := mc.MaxTokens
-	if maxTokens <= 0 {
-		maxTokens = config.DefaultMaxTokens
-	}
-	thinkingBudget := mc.ThinkingBudget
-	if thinkingBudget <= 0 {
-		thinkingBudget = config.DefaultThinkingBudget
-	}
-
 	compactCfg := agent.CompactConfig{
 		Enabled:       settings.AutoCompact,
 		Mode:          settings.AutoCompactMode,
@@ -629,20 +642,15 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		compactCfg.Leftover = config.DefaultAutoCompactLeftover
 	}
 
-	state := agent.NewSessionState(sess, writer, client)
-
 	a := &agent.Agent{
-		Tools:           registry,
-		Guard:           g,
-		Frontend:        fe,
-		State:           state,
-		System:          systemPrompt,
-		MaxTokens:       maxTokens,
-		ThinkingBudget:  thinkingBudget,
-		ReasoningEffort: mc.ReasoningEffort,
-		CompactCfg:      compactCfg,
-		CompactPrompt:   settings.AutoCompactPrompt,
-		Home:            home,
+		Tools:         registry,
+		Guard:         g,
+		Frontend:      fe,
+		State:         state,
+		System:        systemPrompt,
+		CompactCfg:    compactCfg,
+		CompactPrompt: settings.AutoCompactPrompt,
+		Home:          home,
 	}
 	a.RegisterSubagentTool()
 
@@ -734,29 +742,23 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 			if err != nil {
 				return "", 0, fmt.Errorf("create client for %q: %w", name, err)
 			}
-			state.SetClient(newClient)
-			state.SetModel(cfg.ModelName)
-			state.SetModelConfig(name)
-			a.MaxTokens = cfg.MaxTokens
-			a.ThinkingBudget = cfg.ThinkingBudget
-			a.ReasoningEffort = cfg.ReasoningEffort
-			ctxWin := cfg.ContextWindow
-			if ctxWin <= 0 {
-				ctxWin = config.DefaultContextWindow
-			}
+			ctxWin := applyModelConfig(state, name, cfg, newClient)
 			return cfg.ModelName, ctxWin, nil
 		},
 		OpenConfig: func() (config.AnnotatedSettings, error) {
 			return config.LoadAnnotated(globalCfgPath, config.DefaultProjectPath(cwd))
 		},
-		CancelSession: func(id string) {
+		// CancelSession cancels the main run. Subagents run inside its
+		// context, so they stop with it. A queued session swap is kept:
+		// the TUI already shows the new session, and runLoop applies it
+		// when the run ends.
+		CancelSession: func(string) {
 			turnMu.Lock()
 			defer turnMu.Unlock()
 			if turnCancel != nil {
 				turnCancel()
 				turnCancel = nil
 			}
-			state.ClearPending()
 		},
 	})
 
@@ -807,18 +809,9 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 				fail("Could not create model client", err)
 				return
 			}
-			state.SetClient(newClient)
-			state.SetModel(cfg.ModelName)
-			state.SetModelConfig(name)
-			a.MaxTokens = cfg.MaxTokens
-			a.ThinkingBudget = cfg.ThinkingBudget
-			a.ReasoningEffort = cfg.ReasoningEffort
+			ctxWin := applyModelConfig(state, name, cfg, newClient)
 			m.SetModelName(cfg.ModelName)
 			m.SetConfigName(name)
-			ctxWin := cfg.ContextWindow
-			if ctxWin <= 0 {
-				ctxWin = config.DefaultContextWindow
-			}
 			m.SetContextWindow(ctxWin)
 		})
 	}

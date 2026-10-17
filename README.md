@@ -220,9 +220,11 @@ If `contextWarnPct` >= `contextCritPct`, or either value is outside the (0, 1] r
 | `Enter` | Submit input (or toggle expand/collapse on the selected entry when input is empty) |
 | `Up` / `Down` | Move the cursor through timeline entries when input is empty |
 | `Shift+Enter` | Insert newline |
+| `Esc` `Esc` | Cancel the current run (a single `Esc` shows "Press Esc again to cancel") |
 | `Ctrl+C` (once) | Cancel current LLM turn or close approval prompt |
 | `Ctrl+C` (twice) | Quit |
 | `Ctrl+E` | Open current input in external editor (`$VISUAL` / `$EDITOR` / `vi`) |
+| `Ctrl+P` / `Ctrl+N` | Previous / next submitted prompt (saves and restores the draft) |
 | `Ctrl+H` | Open help overlay |
 | `Ctrl+Right` | Focus next session |
 | `Ctrl+Left` | Focus previous session |
@@ -284,7 +286,7 @@ Before every tool call, `gohome` checks the whitelist. If no rule covers the cal
 - **Deny** — block the call and return an error to the agent.
 - **Deny + steer** — block the call and inject a message into the agent's context.
 
-`/yolo` skips all prompts without writing whitelist entries.
+`/yolo` skips all approval prompts without writing whitelist entries. For `sudo` commands, yolo still opens the password dialog (password only, no approval menu).
 
 ### Denylist
 

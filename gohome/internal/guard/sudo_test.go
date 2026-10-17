@@ -41,6 +41,18 @@ func TestIsSudoCommand(t *testing.T) {
 		{"keyword inside word", "redo sudoku", false},
 		{"keyword without sudo", "for f in *; do echo $f; done", false},
 		{"sudo as argument", "echo do sudoers", false},
+		{"var prefix", "FOO=1 sudo ls", true},
+		{"two var prefixes", "A=1 B=2 sudo ls", true},
+		{"command prefix", "command sudo ls", true},
+		{"exec prefix", "exec sudo ls", true},
+		{"nice prefix", "nice sudo ls", true},
+		{"nohup prefix", "nohup sudo ls", true},
+		{"absolute path", "/usr/bin/sudo ls", true},
+		{"backslash escaped", `\sudo ls`, true},
+		{"var prefix after pipe", "echo x | FOO=1 sudo tee f", true},
+		{"var assignment only", "FOO=sudo ls", false},
+		{"nice as argument", "echo nice sudoers", false},
+		{"path ending in sudo as argument", "ls /usr/bin/sudo", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -48,5 +60,15 @@ func TestIsSudoCommand(t *testing.T) {
 				t.Errorf("IsSudoCommand(%q) = %v, want %v", tt.command, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestIsSudoCommandOn_Windows(t *testing.T) {
+	// The shell tool ignores the sudo password on Windows, so no prompt.
+	if isSudoCommandOn("windows", "sudo ls") {
+		t.Error("windows: sudo must not be detected")
+	}
+	if !isSudoCommandOn("linux", "sudo ls") || !isSudoCommandOn("darwin", "sudo ls") {
+		t.Error("unix: sudo must be detected")
 	}
 }

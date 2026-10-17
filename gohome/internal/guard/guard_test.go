@@ -235,6 +235,7 @@ func TestCheck_DenySteer(t *testing.T) {
 }
 
 func TestCheck_SudoCommand_SetsNeedsSudoPassword(t *testing.T) {
+	withGOOS(t, "linux")
 	fe := &fakeFrontend{
 		response: ApprovalDecision{Outcome: AllowOnce},
 	}
@@ -259,6 +260,7 @@ func TestCheck_NonSudoCommand_DoesNotSetNeedsSudoPassword(t *testing.T) {
 }
 
 func TestCheck_SudoPassword_ThreadedToDecision(t *testing.T) {
+	withGOOS(t, "linux")
 	fe := &fakeFrontend{
 		response: ApprovalDecision{Outcome: AllowOnce, SudoPassword: "secret123"},
 	}
@@ -394,6 +396,7 @@ func TestCheck_Denylist_Nil_NoEffect(t *testing.T) {
 }
 
 func TestCheck_WhitelistedSudo_AsksPasswordOnly(t *testing.T) {
+	withGOOS(t, "linux")
 	fe := &fakeFrontend{response: ApprovalDecision{Outcome: AllowOnce, SudoPassword: "pw"}}
 	g := newTestGuard(whitelistWith(t, nil, []string{"^sudo"}), fe)
 
@@ -418,6 +421,7 @@ func TestCheck_WhitelistedSudo_AsksPasswordOnly(t *testing.T) {
 }
 
 func TestCheck_WhitelistedSudo_DenyBlocks(t *testing.T) {
+	withGOOS(t, "linux")
 	fe := &fakeFrontend{response: ApprovalDecision{Outcome: Deny}}
 	g := newTestGuard(whitelistWith(t, nil, []string{"^sudo"}), fe)
 
@@ -431,6 +435,7 @@ func TestCheck_WhitelistedSudo_DenyBlocks(t *testing.T) {
 }
 
 func TestCheck_WhitelistedSudo_FrontendError(t *testing.T) {
+	withGOOS(t, "linux")
 	fe := &fakeFrontend{err: context.Canceled}
 	g := newTestGuard(whitelistWith(t, nil, []string{"^sudo"}), fe)
 
@@ -455,24 +460,41 @@ func TestCheck_WhitelistedShellNonSudo_NoFrontendCall(t *testing.T) {
 	}
 }
 
-func TestCheck_YoloWhitelistedSudo_NoFrontendCall(t *testing.T) {
-	fe := &fakeFrontend{}
-	g := newTestGuard(whitelistWith(t, nil, []string{"^sudo"}), fe)
+func TestCheck_YoloSudo_AsksPasswordOnly(t *testing.T) {
+	withGOOS(t, "linux")
+	fe := &fakeFrontend{response: ApprovalDecision{Outcome: AllowOnce, SudoPassword: "pw"}}
+	g := newTestGuard(emptyWhitelist(t), fe)
 	g.SetYolo(true)
 
-	dec, err := g.Check(context.Background(), "sess1", "shell", bashCmd("sudo true"))
+	dec, err := g.Check(context.Background(), "sess1", "shell", bashCmd("sudo ls"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !dec.Allow || dec.Reason != "yolo" {
-		t.Errorf("decision: got %+v, want Allow yolo", dec)
+	if !fe.called || !fe.lastReq.PasswordOnly || !fe.lastReq.NeedsSudoPassword {
+		t.Fatalf("yolo sudo: want password-only request, called=%v req=%+v", fe.called, fe.lastReq)
 	}
-	if fe.called {
-		t.Error("yolo: frontend should not be called")
+	if !dec.Allow || dec.Reason != "yolo" || dec.SudoPassword != "pw" {
+		t.Errorf("decision: got %+v, want Allow yolo with pw", dec)
+	}
+}
+
+func TestCheck_YoloSudo_DenyBlocks(t *testing.T) {
+	withGOOS(t, "linux")
+	fe := &fakeFrontend{response: ApprovalDecision{Outcome: Deny}}
+	g := newTestGuard(emptyWhitelist(t), fe)
+	g.SetYolo(true)
+
+	dec, err := g.Check(context.Background(), "sess1", "shell", bashCmd("sudo ls"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if dec.Allow {
+		t.Errorf("decision: got %+v, want deny", dec)
 	}
 }
 
 func TestCheck_WhitelistedSudo_AllowAlwaysAddsNothing(t *testing.T) {
+	withGOOS(t, "linux")
 	projPath := t.TempDir() + "/whitelist.json"
 	wl, err := Compile(WhitelistFile{Shell: []string{"^sudo"}}, WhitelistFile{}, projPath)
 	if err != nil {
@@ -496,6 +518,7 @@ func TestCheck_WhitelistedSudo_AllowAlwaysAddsNothing(t *testing.T) {
 }
 
 func TestCheck_WhitelistedSudo_NoSuggestedPattern(t *testing.T) {
+	withGOOS(t, "linux")
 	fe := &fakeFrontend{response: ApprovalDecision{Outcome: AllowOnce, SudoPassword: "pw"}}
 	g := newTestGuard(whitelistWith(t, nil, []string{"^sudo"}), fe)
 
@@ -510,6 +533,7 @@ func TestCheck_WhitelistedSudo_NoSuggestedPattern(t *testing.T) {
 // A whitelisted prefix chained to sudo must get the full approval prompt, not
 // the password-only one.
 func TestCheck_ChainedSudoAfterWhitelisted_FullPrompt(t *testing.T) {
+	withGOOS(t, "linux")
 	fe := &fakeFrontend{response: ApprovalDecision{Outcome: Deny}}
 	g := newTestGuard(whitelistWith(t, nil, []string{"^git status"}), fe)
 
@@ -526,5 +550,33 @@ func TestCheck_ChainedSudoAfterWhitelisted_FullPrompt(t *testing.T) {
 	}
 	if dec.Allow {
 		t.Errorf("decision: got %+v, want deny", dec)
+	}
+}
+
+// withGOOS overrides the OS the guard decides for. Not safe with t.Parallel.
+func withGOOS(t *testing.T, goos string) {
+	t.Helper()
+	old := hostGOOS
+	hostGOOS = goos
+	t.Cleanup(func() { hostGOOS = old })
+}
+
+func TestCheck_SudoOnWindows_NoPasswordPrompt(t *testing.T) {
+	withGOOS(t, "windows")
+	fe := &fakeFrontend{response: ApprovalDecision{Outcome: AllowOnce}}
+	g := newTestGuard(emptyWhitelist(t), fe)
+
+	_, _ = g.Check(context.Background(), "sess1", "shell", bashCmd("sudo ls"))
+	if fe.lastReq.NeedsSudoPassword {
+		t.Error("NeedsSudoPassword must be false on Windows")
+	}
+
+	fe2 := &fakeFrontend{}
+	g2 := newTestGuard(whitelistWith(t, nil, []string{"^sudo"}), fe2)
+	if _, err := g2.Check(context.Background(), "sess1", "shell", bashCmd("sudo ls")); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fe2.called {
+		t.Error("whitelisted sudo on Windows must not ask for a password")
 	}
 }

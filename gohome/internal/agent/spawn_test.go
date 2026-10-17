@@ -642,3 +642,32 @@ func TestSpawn_ChildIDsUniqueAcrossAgents(t *testing.T) {
 		t.Errorf("child file has %d session_start lines, want 1", n)
 	}
 }
+
+// TestSpawn_ChildDoesNotReadParentSteer verifies that a steer typed while a
+// subagent runs stays in the parent's steer channel. The child must not read
+// it; the parent picks it up after the subagent returns.
+func TestSpawn_ChildDoesNotReadParentSteer(t *testing.T) {
+	home := t.TempDir()
+	client := oneTextTurnClient("child answer")
+	a := buildSpawnParent(t, client, home)
+
+	steerCh := make(chan string, 1)
+	steerCh <- "steer for the parent"
+	a.Frontend.(*fakeRecorder).steerCh = steerCh
+
+	if _, _, err := a.Spawn(context.Background(), "do thing", ""); err != nil {
+		t.Fatalf("Spawn: unexpected error: %v", err)
+	}
+
+	if client.callCount != 1 {
+		t.Errorf("Stream call count = %d, want 1 (child must not act on the steer)", client.callCount)
+	}
+	select {
+	case got := <-steerCh:
+		if got != "steer for the parent" {
+			t.Errorf("steer = %q, want %q", got, "steer for the parent")
+		}
+	default:
+		t.Error("child read the parent's steer message")
+	}
+}

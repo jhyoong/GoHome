@@ -19,11 +19,18 @@ type SessionState struct {
 	busy       bool
 	pending    func(oldSess *session.Session, oldWriter *session.Writer) (*session.Session, *session.Writer, error)
 	pendingTag string
+	model      ModelSettings
 }
 
-// NewSessionState creates a SessionState with an initial session, writer, and LLM client.
+// NewSessionState creates a SessionState with an initial session, writer, and
+// LLM client. The model settings start with the session's model and config
+// name and no limits; use SetModelSettings to set them.
 func NewSessionState(sess *session.Session, writer *session.Writer, client common.Client) *SessionState {
-	return &SessionState{sess: sess, writer: writer, client: client}
+	s := &SessionState{sess: sess, writer: writer, client: client}
+	if sess != nil {
+		s.model = ModelSettings{Name: sess.Model, ConfigName: sess.ModelConfig}
+	}
+	return s
 }
 
 // Session returns the current session.
@@ -56,8 +63,11 @@ func (s *SessionState) MarkIdle() {
 }
 
 // Swap replaces the session and writer. If the agent is busy, the swap
-// function is stored as pending and queued returns true. Otherwise the
-// function is executed immediately and the session/writer are replaced.
+// function is stored as pending (replacing any earlier one) and Swap
+// returns nil; DrainPending runs it later. Otherwise the function is
+// executed immediately and the session/writer are replaced. The new
+// session takes the active model settings, so a resumed session uses the
+// current model.
 func (s *SessionState) Swap(tag string, fn func(oldSess *session.Session, oldWriter *session.Writer) (*session.Session, *session.Writer, error)) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -72,6 +82,7 @@ func (s *SessionState) Swap(tag string, fn func(oldSess *session.Session, oldWri
 	}
 	s.sess = newSess
 	s.writer = newWriter
+	s.syncSessionModel()
 	return nil
 }
 
@@ -93,6 +104,7 @@ func (s *SessionState) DrainPending() (tag string, err error) {
 	}
 	s.sess = newSess
 	s.writer = newWriter
+	s.syncSessionModel()
 	return tag, nil
 }
 
@@ -104,32 +116,53 @@ func (s *SessionState) ClearPending() {
 	s.pendingTag = ""
 }
 
-// Model returns the model name from the current session.
+// ModelSettings is the active model and its per-request limits.
+type ModelSettings struct {
+	Name            string // model name sent to the LLM
+	ConfigName      string // key of the model config in settings
+	MaxTokens       int    // if > 0, overrides the default 4096 per-turn token limit
+	ThinkingBudget  int    // if > 0, enable extended thinking with this token budget
+	ReasoningEffort string
+}
+
+// ModelSettings returns the active model settings.
+func (s *SessionState) ModelSettings() ModelSettings {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.model
+}
+
+// SetModelSettings replaces the active model settings and updates the
+// current session's model and config name to match.
+func (s *SessionState) SetModelSettings(ms ModelSettings) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.model = ms
+	s.syncSessionModel()
+}
+
+// syncSessionModel copies the active model name and config name onto the
+// current session. Callers must hold s.mu.
+func (s *SessionState) syncSessionModel() {
+	if s.sess == nil {
+		return
+	}
+	s.sess.Model = s.model.Name
+	s.sess.ModelConfig = s.model.ConfigName
+}
+
+// Model returns the active model name.
 func (s *SessionState) Model() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.sess.Model
+	return s.model.Name
 }
 
-// SetModel updates the model name on the current session.
-func (s *SessionState) SetModel(name string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.sess.Model = name
-}
-
-// ModelConfig returns the model config name from the current session.
+// ModelConfig returns the active model config name.
 func (s *SessionState) ModelConfig() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.sess.ModelConfig
-}
-
-// SetModelConfig updates the model config name on the current session.
-func (s *SessionState) SetModelConfig(name string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.sess.ModelConfig = name
+	return s.model.ConfigName
 }
 
 // Client returns the current LLM client.

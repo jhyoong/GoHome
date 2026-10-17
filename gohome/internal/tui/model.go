@@ -101,6 +101,14 @@ type Model struct {
 	focused       string
 	childToParent map[string]string
 
+	// mainID is the depth-0 session the agent runs. Subagent views are
+	// read-only; input, cancel, queue and spinner all follow this session.
+	mainID string
+	// mainRuns counts the runs sent to the agent that have not sent RunDone
+	// yet. A cancelled run still sends a late RunDone, so the count keeps it
+	// from ending the next run.
+	mainRuns int
+
 	editor  *EditorComponent
 	chat    *ChatComponent
 	spinner *SpinnerComponent
@@ -163,6 +171,10 @@ type Model struct {
 	// lastCtrlC records the time of the most recent Ctrl+C press.
 	// A second press within 500ms quits; a single press cancels the current turn.
 	lastCtrlC time.Time
+
+	// lastEsc records the time of the most recent Esc press during a run.
+	// A second press within 500ms cancels the run.
+	lastEsc time.Time
 
 	sudoPasswordCache string
 
@@ -228,6 +240,7 @@ func New(fe *Frontend, sessionID string) *Model {
 		order:          []string{sessionID},
 		focused:        sessionID,
 		childToParent:  make(map[string]string),
+		mainID:         sessionID,
 		inputCh:        inputCh,
 		steerCh:        steerCh,
 		mouseEnabled:   true,
@@ -387,19 +400,36 @@ func (m *Model) rebuildViewport() {
 	m.chat.SetCursor(cur)
 }
 
-func (m *Model) cancelFocusedSession() {
-	m.cancelFocusedSessionWith("Cancelled")
+// mainSession returns the view of the session the agent runs.
+func (m *Model) mainSession() *SessionView {
+	return m.getOrCreateSession(m.mainID, 0)
 }
 
-func (m *Model) cancelFocusedSessionWith(statusMsg string) {
+// runActive reports whether the main run is in flight or has not sent its
+// RunDone yet.
+func (m *Model) runActive() bool {
+	return m.mainSession().InFlight || m.mainRuns > 0
+}
+
+func (m *Model) cancelRun() {
+	m.cancelRunWith("Cancelled")
+}
+
+// cancelRunWith cancels the main run, whichever view is focused. Subagents
+// run inside the main run's context, so they stop with it.
+func (m *Model) cancelRunWith(statusMsg string) {
 	if m.slashCB.CancelSession != nil {
-		m.slashCB.CancelSession(m.focused)
+		m.slashCB.CancelSession(m.mainID)
 	}
-	sv := m.sessions[m.focused]
-	if sv != nil {
-		sv.InFlight = false
-		sv.Timeline = append(sv.Timeline, TimelineEntry{Kind: KindNotice, Text: "Cancelled."})
+	main := m.mainSession()
+	main.InFlight = false
+	main.Timeline = append(main.Timeline, TimelineEntry{Kind: KindNotice, Text: "Cancelled."})
+	for _, sv := range m.sessions {
+		if sv.Depth > 0 {
+			sv.InFlight = false
+		}
 	}
+	m.denyAllApprovals()
 	m.pendingMessages = m.pendingMessages[:0]
 	// Drain any pending steer so it does not leak into the next Run call.
 	if m.steerCh != nil {
@@ -701,11 +731,20 @@ func (m *Model) render() string {
 	return strings.Join(sections, "\n")
 }
 
+// approvalMaxHeight is the line budget for the approval box. It is 0 (no
+// limit) only while the terminal height is unknown.
+func (m *Model) approvalMaxHeight() int {
+	if m.winH <= 0 {
+		return 0
+	}
+	return max(m.winH-stripHeight-statusHeight-2, 1)
+}
+
 // renderInputRegion renders the swappable input slot: approval prompt,
 // modal, completed label, or the editor.
 func (m *Model) renderInputRegion() string {
 	if m.activeApproval != nil {
-		return renderApprovalOverlay(m.activeApproval, m.winW, m.focused)
+		return renderApprovalOverlay(m.activeApproval, m.winW, m.approvalMaxHeight(), m.focused)
 	}
 	if m.activeModal != nil {
 		return strings.Join(m.activeModal.Render(m.winW), "\n")

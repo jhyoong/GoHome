@@ -35,7 +35,7 @@ func NewGuard(wl *Whitelist, fe Frontend, dl *Denylist) *Guard {
 
 // Check decides whether the given tool call is allowed.
 // Order: denylist (hard reject) -> yolo -> whitelist -> prompt user.
-// Whitelisted sudo commands still ask the frontend for the password.
+// Sudo commands (whitelisted or yolo) still ask the frontend for the password.
 func (g *Guard) Check(ctx context.Context, sessionID, tool string, input json.RawMessage) (Decision, error) {
 	// 1. Denylist: reject immediately, overrides everything.
 	if g.denylist != nil {
@@ -48,19 +48,26 @@ func (g *Guard) Check(ctx context.Context, sessionID, tool string, input json.Ra
 		}
 	}
 
-	// 2. Yolo: allow everything, no frontend call.
-	if g.yolo.Load() {
-		return Decision{Allow: true, Reason: "yolo"}, nil
-	}
-
 	summary := summaryFor(tool, input)
-	needsSudo := tool == "shell" && IsSudoCommand(summary)
+	needsSudo := tool == "shell" && needsSudoPassword(summary)
 	req := ApprovalRequest{
 		SessionID:         sessionID,
 		Tool:              tool,
 		Input:             input,
 		Summary:           summary,
 		NeedsSudoPassword: needsSudo,
+	}
+
+	// 2. Yolo: allow everything. Sudo commands still ask for the password.
+	if g.yolo.Load() {
+		if !needsSudo {
+			return Decision{Allow: true, Reason: "yolo"}, nil
+		}
+		dec, err := g.askSudoPassword(ctx, req)
+		if dec.Allow {
+			dec.Reason = "yolo"
+		}
+		return dec, err
 	}
 
 	// 3. Whitelisted: allow. Sudo commands still need the password.

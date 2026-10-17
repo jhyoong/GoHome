@@ -49,6 +49,12 @@ type approvalPrompt struct {
 	// see the full summary
 	expandedSummary bool
 
+	// scroll is the first visible line of the expanded summary. scrollMax is
+	// the largest valid scroll, set at render time; 0 means everything fits.
+	scroll    int
+	scrollMax int
+	scrollWin int // visible summary lines when scrollable
+
 	// steer sub-mode: user pressed '4' to deny + steer
 	steering   bool
 	steerInput textinput.Model
@@ -143,7 +149,9 @@ var approvalBoxStyle = lipgloss.NewStyle().
 	BorderForeground(lipgloss.Color("3"))
 
 // renderApprovalOverlay renders the approval prompt box for the given prompt.
-func renderApprovalOverlay(ap *approvalPrompt, width int, focusedSessionID string) string {
+// maxHeight is the most lines the box may use; 0 means no limit. An expanded
+// summary that does not fit is shown as a window that PgUp/PgDn move.
+func renderApprovalOverlay(ap *approvalPrompt, width, maxHeight int, focusedSessionID string) string {
 	if ap.sudoStage {
 		return renderSudoDialog(ap, width, focusedSessionID)
 	}
@@ -159,8 +167,64 @@ func renderApprovalOverlay(ap *approvalPrompt, width int, focusedSessionID strin
 	contentW := boxW - 2
 
 	wrapped := WrapText(summary, contentW)
+	var tail strings.Builder
+	if ap.steering {
+		tail.WriteString("\nSteer message (Enter to send, Esc to cancel):\n")
+		tail.WriteString(ap.steerInput.View())
+	} else if ap.editing {
+		tail.WriteString("\n  [1] Allow once\n")
+		fmt.Fprintf(&tail, "  [2] Allow always  %s\n", ap.patternInput.View())
+		tail.WriteString("  [3] Deny\n")
+		tail.WriteString("  [4] Deny + steer\n")
+		if ap.patternErr != "" {
+			fmt.Fprintf(&tail, "Error: %s\n", ap.patternErr)
+		}
+		tail.WriteString("(Enter to confirm, Esc to cancel)")
+	} else {
+		marker := func(i int) string {
+			if ap.selected == i {
+				return "> "
+			}
+			return "  "
+		}
+		fmt.Fprintf(&tail, "\n%s[1] Allow once\n", marker(0))
+		if ap.pattern != "" {
+			fmt.Fprintf(&tail, "%s[2] Allow always  %s  (e edit)\n", marker(1), ap.pattern)
+		} else {
+			fmt.Fprintf(&tail, "%s[2] Allow always\n", marker(1))
+		}
+		fmt.Fprintf(&tail, "%s[3] Deny\n", marker(2))
+		fmt.Fprintf(&tail, "%s[4] Deny + steer\n", marker(3))
+		if ap.patternErr != "" {
+			fmt.Fprintf(&tail, "Error: %s\n", ap.patternErr)
+		}
+		tail.WriteString("Esc: deny | arrows to navigate")
+	}
+
+	// Lines left for the summary: the box minus its border, the blank line
+	// before the options, the options and the control warning.
+	avail := 0
+	if maxHeight > 0 {
+		used := 2 + 1 + strings.Count(tail.String(), "\n") + 1
+		if ap.hasControls {
+			used++
+		}
+		avail = max(maxHeight-used, 1)
+	}
+
+	ap.scrollMax = 0
 	if ap.expandedSummary {
-		sb.WriteString(strings.Join(wrapped, "\n"))
+		if avail > 0 && len(wrapped) > avail {
+			// Keep one line for the position hint.
+			win := max(avail-1, 1)
+			ap.scrollMax = len(wrapped) - win
+			ap.scrollWin = win
+			ap.scroll = min(max(ap.scroll, 0), ap.scrollMax)
+			sb.WriteString(strings.Join(wrapped[ap.scroll:ap.scroll+win], "\n"))
+			fmt.Fprintf(&sb, "\n(lines %d-%d of %d, PgUp/PgDn to scroll)", ap.scroll+1, ap.scroll+win, len(wrapped))
+		} else {
+			sb.WriteString(strings.Join(wrapped, "\n"))
+		}
 	} else {
 		const maxSummaryLines = 3
 		capped, truncated := capLines(wrapped, maxSummaryLines, contentW)
@@ -173,39 +237,7 @@ func renderApprovalOverlay(ap *approvalPrompt, width int, focusedSessionID strin
 	if ap.hasControls {
 		sb.WriteString(sudoHeaderStyle.Render(controlCharWarning) + "\n")
 	}
-
-	if ap.steering {
-		sb.WriteString("\nSteer message (Enter to send, Esc to cancel):\n")
-		sb.WriteString(ap.steerInput.View())
-	} else if ap.editing {
-		sb.WriteString("\n  [1] Allow once\n")
-		fmt.Fprintf(&sb, "  [2] Allow always  %s\n", ap.patternInput.View())
-		sb.WriteString("  [3] Deny\n")
-		sb.WriteString("  [4] Deny + steer\n")
-		if ap.patternErr != "" {
-			fmt.Fprintf(&sb, "Error: %s\n", ap.patternErr)
-		}
-		sb.WriteString("(Enter to confirm, Esc to cancel)")
-	} else {
-		marker := func(i int) string {
-			if ap.selected == i {
-				return "> "
-			}
-			return "  "
-		}
-		fmt.Fprintf(&sb, "\n%s[1] Allow once\n", marker(0))
-		if ap.pattern != "" {
-			fmt.Fprintf(&sb, "%s[2] Allow always  %s  (e edit)\n", marker(1), ap.pattern)
-		} else {
-			fmt.Fprintf(&sb, "%s[2] Allow always\n", marker(1))
-		}
-		fmt.Fprintf(&sb, "%s[3] Deny\n", marker(2))
-		fmt.Fprintf(&sb, "%s[4] Deny + steer\n", marker(3))
-		if ap.patternErr != "" {
-			fmt.Fprintf(&sb, "Error: %s\n", ap.patternErr)
-		}
-		sb.WriteString("Esc: deny | arrows to navigate")
-	}
+	sb.WriteString(tail.String())
 
 	inner := sb.String()
 	return approvalBoxStyle.Width(boxW).Render(inner)

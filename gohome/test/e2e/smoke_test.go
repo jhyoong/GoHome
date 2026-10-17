@@ -153,13 +153,13 @@ func newE2EAgent(t *testing.T, cfg e2eConfig, fe agent.Frontend, history []commo
 	sess.History = history
 
 	state := agent.NewSessionState(sess, w, client)
+	state.SetModelSettings(agent.ModelSettings{Name: sess.Model, ConfigName: sess.ModelConfig, MaxTokens: 256})
 	a := &agent.Agent{
-		Tools:     reg,
-		Guard:     g,
-		Frontend:  fe,
-		State:     state,
-		System:    "You are a helpful assistant.",
-		MaxTokens: 256,
+		Tools:    reg,
+		Guard:    g,
+		Frontend: fe,
+		State:    state,
+		System:   "You are a helpful assistant.",
 	}
 
 	return a, sess
@@ -306,13 +306,13 @@ func TestE2EHeadlessMultiTurn(t *testing.T) {
 	sess := session.NewSession("e2e-multi", tmpDir, cfg.model, string(cfg.wire))
 
 	state := agent.NewSessionState(sess, w, client)
+	state.SetModelSettings(agent.ModelSettings{Name: sess.Model, ConfigName: sess.ModelConfig, MaxTokens: 64})
 	a := &agent.Agent{
-		Tools:     reg,
-		Guard:     g,
-		Frontend:  hfe,
-		State:     state,
-		System:    "You are a helpful assistant.",
-		MaxTokens: 64,
+		Tools:    reg,
+		Guard:    g,
+		Frontend: hfe,
+		State:    state,
+		System:   "You are a helpful assistant.",
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -512,7 +512,9 @@ func TestE2EWriteReadChain(t *testing.T) {
 	}
 
 	a, sess := newE2EAgent(t, cfg, fe, history, tools.WriteTool{})
-	a.MaxTokens = 1024
+	ms := a.State.ModelSettings()
+	ms.MaxTokens = 1024
+	a.State.SetModelSettings(ms)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
@@ -721,18 +723,18 @@ func TestE2ESubagentSpawn(t *testing.T) {
 	}
 
 	state := agent.NewSessionState(sess, w, client)
+	state.SetModelSettings(agent.ModelSettings{Name: sess.Model, ConfigName: sess.ModelConfig, MaxTokens: 256})
 
 	reg := tools.NewRegistry()
 	reg.Register(tools.ReadTool{})
 
 	a := &agent.Agent{
-		Tools:     reg,
-		Guard:     g,
-		Frontend:  fe,
-		State:     state,
-		System:    "You are a helpful assistant. When asked to delegate, use the subagent tool.",
-		MaxTokens: 256,
-		Home:      tmpDir,
+		Tools:    reg,
+		Guard:    g,
+		Frontend: fe,
+		State:    state,
+		System:   "You are a helpful assistant. When asked to delegate, use the subagent tool.",
+		Home:     tmpDir,
 	}
 
 	reg.Register(tools.NewSubagentTool(a))
@@ -829,13 +831,13 @@ func TestE2ESessionResume(t *testing.T) {
 	w1.Emit(session.UserMessage{Content: sess1.History[0].Content})
 
 	state1 := agent.NewSessionState(sess1, w1, client)
+	state1.SetModelSettings(agent.ModelSettings{Name: sess1.Model, ConfigName: sess1.ModelConfig, MaxTokens: 128})
 	a1 := &agent.Agent{
-		Tools:     reg1,
-		Guard:     g1,
-		Frontend:  fe1,
-		State:     state1,
-		System:    "You are a helpful assistant.",
-		MaxTokens: 128,
+		Tools:    reg1,
+		Guard:    g1,
+		Frontend: fe1,
+		State:    state1,
+		System:   "You are a helpful assistant.",
 	}
 
 	ctx1, cancel1 := context.WithTimeout(context.Background(), 60*time.Second)
@@ -879,13 +881,13 @@ func TestE2ESessionResume(t *testing.T) {
 	reg2.Register(tools.ReadTool{})
 
 	state2 := agent.NewSessionState(loaded, w2, client)
+	state2.SetModelSettings(agent.ModelSettings{Name: loaded.Model, ConfigName: loaded.ModelConfig, MaxTokens: 128})
 	a2 := &agent.Agent{
-		Tools:     reg2,
-		Guard:     g2,
-		Frontend:  fe2,
-		State:     state2,
-		System:    "You are a helpful assistant.",
-		MaxTokens: 128,
+		Tools:    reg2,
+		Guard:    g2,
+		Frontend: fe2,
+		State:    state2,
+		System:   "You are a helpful assistant.",
 	}
 
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 60*time.Second)
@@ -964,13 +966,13 @@ func TestE2EInteractiveWithTools(t *testing.T) {
 	sess := session.NewSession("e2e-interactive-tools", tmpDir, cfg.model, string(cfg.wire))
 
 	state := agent.NewSessionState(sess, w, client)
+	state.SetModelSettings(agent.ModelSettings{Name: sess.Model, ConfigName: sess.ModelConfig, MaxTokens: 256})
 	a := &agent.Agent{
-		Tools:     reg,
-		Guard:     g,
-		Frontend:  hfe,
-		State:     state,
-		System:    "You are a helpful assistant.",
-		MaxTokens: 256,
+		Tools:    reg,
+		Guard:    g,
+		Frontend: hfe,
+		State:    state,
+		System:   "You are a helpful assistant.",
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
