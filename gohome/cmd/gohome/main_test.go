@@ -348,3 +348,40 @@ func TestSetupLogging_KeepsExistingDirPerms(t *testing.T) {
 		t.Errorf("existing dir mode changed to %o", got)
 	}
 }
+
+// writeSession writes a minimal session file with one user message.
+func writeSession(t *testing.T, home, cwd string, start session.SessionStart, text string) {
+	t.Helper()
+	w, err := session.OpenWriter(session.SessionPath(home, cwd, start.ID, start.StartedAt))
+	if err != nil {
+		t.Fatalf("OpenWriter: %v", err)
+	}
+	w.Emit(start)
+	w.Emit(session.UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: text}}})
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+}
+
+// TestPickResume_SkipsChildAndLoadsChildren reproduces audit item D2: the
+// child starts after its parent, but --resume must pick the parent, and the
+// parent's children must load for display.
+func TestPickResume_SkipsChildAndLoadsChildren(t *testing.T) {
+	home := t.TempDir()
+	cwd := "/home/user/proj"
+	now := time.Now().UTC()
+	writeSession(t, home, cwd, session.SessionStart{ID: "p1", CWD: cwd, StartedAt: now.Add(-time.Minute)}, "parent")
+	writeSession(t, home, cwd, session.SessionStart{ID: "p1-sub-1", ParentID: "p1", CWD: cwd, Depth: 1, StartedAt: now}, "child")
+
+	sess, _, _, err := pickResume(home, cwd)
+	if err != nil {
+		t.Fatalf("pickResume: %v", err)
+	}
+	if sess == nil || sess.ID != "p1" {
+		t.Fatalf("pickResume picked %+v, want p1", sess)
+	}
+	children := loadChildren(home, cwd, sess.ID)
+	if len(children) != 1 || children[0].ID != "p1-sub-1" {
+		t.Fatalf("loadChildren = %v, want [p1-sub-1]", children)
+	}
+}

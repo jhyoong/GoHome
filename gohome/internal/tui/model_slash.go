@@ -99,13 +99,16 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 		sb := NewSessionBrowser(listings)
 		sb.SetOnSelect(func(id string) {
 			m.activeModal = nil
-			var history []common.Message
+			var (
+				history  []common.Message
+				children []*session.Session
+			)
 			if m.slashCB.ResumeSession != nil {
 				var (
 					resolvedID string
 					err        error
 				)
-				resolvedID, history, err = m.slashCB.ResumeSession(id)
+				resolvedID, history, children, err = m.slashCB.ResumeSession(id)
 				if err != nil {
 					m.statusMsg = fmt.Sprintf("/resume: %v", err)
 					return
@@ -114,13 +117,8 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 					id = resolvedID
 				}
 			}
-			sv := m.getOrCreateSession(id, 0)
-			sv.Timeline = historyToTimeline(history)
-			m.focused = id
-			m.cursor = len(sv.Timeline) - 1
+			m.LoadResumedSession(id, history, children)
 			m.statusMsg = "Resumed: " + id
-			m.chat.ScrollToBottom()
-			m.rebuildViewport()
 		})
 		sb.SetOnCancel(func() {
 			m.activeModal = nil
@@ -244,4 +242,35 @@ func (m *Model) slashPalette() string {
 		parts[i] = matches[i]
 	}
 	return strings.Join(parts, "  ")
+}
+
+// LoadResumedSession shows a resumed session in the focused view and adds a
+// view for each of its subagent children, the same way live subagents
+// appear. Children are linked to the parent's subagent tool entries in order
+// (subagents run one at a time) and marked completed, so they are read-only.
+func (m *Model) LoadResumedSession(id string, history []common.Message, children []*session.Session) {
+	sv := m.getOrCreateSession(id, 0)
+	sv.Timeline = historyToTimeline(history)
+
+	next := 0
+	for _, child := range children {
+		childSV := m.getOrCreateSession(child.ID, 1)
+		childSV.Timeline = historyToTimeline(child.History)
+		childSV.InFlight = false
+		childSV.Completed = true
+		for ; next < len(sv.Timeline); next++ {
+			e := &sv.Timeline[next]
+			if e.Kind == KindTool && e.ToolName == "subagent" && e.ChildSessionID == "" {
+				e.ChildSessionID = child.ID
+				m.childToParent[child.ID] = id
+				next++
+				break
+			}
+		}
+	}
+
+	m.focused = id
+	m.cursor = len(sv.Timeline) - 1
+	m.chat.ScrollToBottom()
+	m.rebuildViewport()
 }

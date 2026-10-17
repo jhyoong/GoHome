@@ -100,6 +100,17 @@ func pickResume(home, cwd string) (*session.Session, []common.Message, string, e
 	return sess, history, listing.Path, nil
 }
 
+// loadChildren loads the subagent sessions of parentID for display. A failure
+// is logged and treated as no children, so resume still works.
+func loadChildren(home, cwd, parentID string) []*session.Session {
+	children, err := session.LoadChildren(home, cwd, parentID)
+	if err != nil {
+		slog.Warn("resume: failed to load subagent sessions", "parent", parentID, "err", err)
+		return nil
+	}
+	return children
+}
+
 // runLoop is the agent's REPL: it waits for user input, appends it to the
 // session history, persists it, and runs the agent. It returns when ctx is
 // cancelled.
@@ -571,6 +582,9 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 	m.SetCWD(cwd)
 	m.SetHomeDir(userHome)
 	m.SetConfigName(cfgName)
+	if isResumed {
+		m.LoadResumedSession(sess.ID, sess.History, loadChildren(home, cwd, sess.ID))
+	}
 
 	// Build tea program and wire frontend.
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
@@ -640,10 +654,10 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		ListSessions: func() ([]session.Listing, error) {
 			return session.List(home, cwd)
 		},
-		ResumeSession: func(id string) (string, []common.Message, error) {
+		ResumeSession: func(id string) (string, []common.Message, []*session.Session, error) {
 			listings, err := session.List(home, cwd)
 			if err != nil {
-				return "", nil, err
+				return "", nil, nil, err
 			}
 			var path string
 			for _, l := range listings {
@@ -653,11 +667,11 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 				}
 			}
 			if path == "" {
-				return "", nil, fmt.Errorf("session %q not found", id)
+				return "", nil, nil, fmt.Errorf("session %q not found", id)
 			}
 			loaded, history, err := session.Load(path)
 			if err != nil {
-				return "", nil, err
+				return "", nil, nil, err
 			}
 
 			resolvedID := loaded.ID
@@ -673,9 +687,9 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 				return loaded, newWriter, nil
 			})
 			if err != nil {
-				return "", nil, err
+				return "", nil, nil, err
 			}
-			return resolvedID, history, nil
+			return resolvedID, history, loadChildren(home, cwd, resolvedID), nil
 		},
 		NewSession: func() (string, error) {
 			id := session.NewID()

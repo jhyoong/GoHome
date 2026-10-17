@@ -84,7 +84,7 @@ func TestSlashResumeLoadsHistory(t *testing.T) {
 				{ID: "s1", Title: "test session"},
 			}, nil
 		},
-		ResumeSession: func(id string) (string, []common.Message, error) {
+		ResumeSession: func(id string) (string, []common.Message, []*session.Session, error) {
 			return id, []common.Message{
 				{Role: common.RoleUser, Content: []common.Block{
 					{Kind: common.BlockText, Text: "previous question"},
@@ -92,7 +92,7 @@ func TestSlashResumeLoadsHistory(t *testing.T) {
 				{Role: common.RoleAssistant, Content: []common.Block{
 					{Kind: common.BlockText, Text: "previous answer"},
 				}},
-			}, nil
+			}, nil, nil
 		},
 	})
 
@@ -129,8 +129,8 @@ func TestStatusMsgClearedOnSend(t *testing.T) {
 				{ID: "s1", Title: "test session"},
 			}, nil
 		},
-		ResumeSession: func(id string) (string, []common.Message, error) {
-			return id, nil, nil
+		ResumeSession: func(id string) (string, []common.Message, []*session.Session, error) {
+			return id, nil, nil, nil
 		},
 	})
 

@@ -10,7 +10,7 @@ import (
 // external coordination (session management, model switching, etc.).
 type SlashCallbacks struct {
 	NewSession    func() (string, error)
-	ResumeSession func(id string) (string, []common.Message, error)
+	ResumeSession func(id string) (string, []common.Message, []*session.Session, error)
 	CancelSession func(id string)
 	SetModel      func(name string) (model string, contextWindow int, err error)
 	ListSessions  func() ([]session.Listing, error)
