@@ -78,3 +78,17 @@ func TestNewID(t *testing.T) {
 		t.Fatal("NewID: two calls returned the same ID")
 	}
 }
+
+func TestNextSubagentID(t *testing.T) {
+	a := NewSession("aaaa", "/tmp", "m", "e")
+	b := NewSession("bbbb", "/tmp", "m", "e")
+	if got := a.NextSubagentID(); got != "aaaa-sub-1" {
+		t.Errorf("first ID = %q, want aaaa-sub-1", got)
+	}
+	if got := a.NextSubagentID(); got != "aaaa-sub-2" {
+		t.Errorf("second ID = %q, want aaaa-sub-2", got)
+	}
+	if got := b.NextSubagentID(); got != "bbbb-sub-1" {
+		t.Errorf("other parent ID = %q, want bbbb-sub-1", got)
+	}
+}

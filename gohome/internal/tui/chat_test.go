@@ -553,3 +553,22 @@ func TestRenderThrottle_NonDeltaMessageRendersImmediately(t *testing.T) {
 		t.Fatalf("expected fresh frame after tool event, got:\n%s", v)
 	}
 }
+
+func TestAgentNoticeEventAddsNoticeEntry(t *testing.T) {
+	m := New(nil, "main")
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	model, _ := m.Update(agentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind:      agent.EventNotice,
+		SessionID: "main",
+		Notice:    "Response cut off",
+	}})
+	sv := model.(*Model).sessions["main"]
+	if len(sv.Timeline) == 0 {
+		t.Fatal("timeline is empty")
+	}
+	last := sv.Timeline[len(sv.Timeline)-1]
+	if last.Kind != KindNotice || last.Text != "Response cut off" {
+		t.Errorf("last entry = %+v, want notice %q", last, "Response cut off")
+	}
+}

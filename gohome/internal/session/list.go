@@ -1,9 +1,9 @@
 package session
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -18,12 +18,70 @@ type Listing struct {
 	LastActive time.Time `json:"lastActive"`
 	Title      string    `json:"title"`
 	Depth      int       `json:"depth"`
+	ParentID   string    `json:"parentId"`
 }
 
-// List returns all resumable sessions stored under home for the given cwd.
+// List returns the top-level persisted sessions stored under home for the
+// given cwd. Subagent sessions (Depth > 0) are skipped; see ListChildren.
 // Sessions are sorted by StartedAt descending (most recent first).
 // If the sessions directory does not exist, an empty slice is returned with no error.
 func List(home, cwd string) ([]Listing, error) {
+	all, err := listAll(home, cwd)
+	if err != nil {
+		return nil, err
+	}
+	var listings []Listing
+	for _, l := range all {
+		if l.Depth == 0 {
+			listings = append(listings, l)
+		}
+	}
+	sort.Slice(listings, func(i, j int) bool {
+		return listings[i].StartedAt.After(listings[j].StartedAt)
+	})
+	return listings, nil
+}
+
+// ListChildren returns the subagent sessions whose ParentID is parentID,
+// sorted by StartedAt ascending (the order they were spawned).
+func ListChildren(home, cwd, parentID string) ([]Listing, error) {
+	all, err := listAll(home, cwd)
+	if err != nil {
+		return nil, err
+	}
+	var children []Listing
+	for _, l := range all {
+		if l.Depth > 0 && l.ParentID == parentID {
+			children = append(children, l)
+		}
+	}
+	sort.SliceStable(children, func(i, j int) bool {
+		return children[i].StartedAt.Before(children[j].StartedAt)
+	})
+	return children, nil
+}
+
+// LoadChildren loads every subagent session of parentID, in spawn order.
+// Files that fail to load are skipped with a warning.
+func LoadChildren(home, cwd, parentID string) ([]*Session, error) {
+	listings, err := ListChildren(home, cwd, parentID)
+	if err != nil {
+		return nil, err
+	}
+	var children []*Session
+	for _, l := range listings {
+		child, _, err := Load(l.Path)
+		if err != nil {
+			slog.Warn("session: skipping unloadable subagent session", "path", l.Path, "err", err)
+			continue
+		}
+		children = append(children, child)
+	}
+	return children, nil
+}
+
+// listAll parses every session file under home for cwd, unsorted.
+func listAll(home, cwd string) ([]Listing, error) {
 	dir := filepath.Join(home, "sessions", ProjectSlug(cwd))
 	entries, err := os.ReadDir(dir)
 	if os.IsNotExist(err) {
@@ -44,21 +102,18 @@ func List(home, cwd string) ([]Listing, error) {
 		path := filepath.Join(dir, entry.Name())
 		listing, err := parseListing(path)
 		if err != nil {
-			// Skip unreadable/malformed files rather than surfacing an error.
+			// Skip unreadable/malformed files rather than failing the list.
+			slog.Warn("session: skipping unreadable file", "path", path, "err", err)
 			continue
 		}
 		listings = append(listings, listing)
 	}
-
-	sort.Slice(listings, func(i, j int) bool {
-		return listings[i].StartedAt.After(listings[j].StartedAt)
-	})
 	return listings, nil
 }
 
 // parseListing reads a JSONL file in a single pass to build a Listing.
-// It reads all lines: session_start for metadata, first user_message for title,
-// last line for LastActive timestamp.
+// session_start gives the metadata, the first user_message the title, and the
+// last timestamp seen on any line gives LastActive.
 func parseListing(path string) (Listing, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -72,19 +127,15 @@ func parseListing(path string) (Listing, error) {
 	var lastTS string
 	foundTitle := false
 
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
+	err = forEachLine(f, func(raw []byte) {
+		line := string(raw)
 
 		var envelope struct {
 			Type string `json:"type"`
 			TS   string `json:"ts"`
 		}
-		if err := json.Unmarshal([]byte(line), &envelope); err != nil {
-			continue
+		if err := json.Unmarshal(raw, &envelope); err != nil {
+			return
 		}
 		if envelope.TS != "" {
 			lastTS = envelope.TS
@@ -102,6 +153,7 @@ func parseListing(path string) (Listing, error) {
 			if err := json.Unmarshal([]byte(line), &ev); err == nil {
 				listing.ID = ev.ID
 				listing.Depth = ev.Depth
+				listing.ParentID = ev.ParentID
 				if !ev.StartedAt.IsZero() {
 					listing.StartedAt = ev.StartedAt
 				} else if t, err := time.Parse(time.RFC3339, ev.TS); err == nil {
@@ -128,8 +180,8 @@ func parseListing(path string) (Listing, error) {
 				}
 			}
 		}
-	}
-	if err := scanner.Err(); err != nil {
+	})
+	if err != nil {
 		return Listing{}, err
 	}
 
@@ -154,26 +206,25 @@ func isBlank(path string) (bool, error) {
 	}
 	defer func() { _ = f.Close() }()
 
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
+	blank := true
+	err = forEachLine(f, func(raw []byte) {
+		if !blank {
+			return
 		}
 		var envelope struct {
 			Type string `json:"type"`
 		}
-		if err := json.Unmarshal([]byte(line), &envelope); err != nil {
-			continue
+		if err := json.Unmarshal(raw, &envelope); err != nil {
+			return
 		}
 		if envelope.Type == "user_message" {
-			return false, nil
+			blank = false
 		}
-	}
-	if err := scanner.Err(); err != nil {
+	})
+	if err != nil {
 		return false, err
 	}
-	return true, nil
+	return blank, nil
 }
 
 // cleanBlank removes all session JSONL files under home/sessions/<slug> that

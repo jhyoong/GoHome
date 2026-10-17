@@ -15,8 +15,8 @@ import (
 //
 // It satisfies the tools.SubagentSpawner interface.
 //
-// Note: SubagentSpawn / SubagentDone events are emitted on the PARENT writer
-// (a.Writer) rather than carrying a ToolUseID, because the Tool.Execute
+// Note: SubagentSpawn / SubagentDone events are emitted on the parent session's
+// writer (a.State.Writer()) without a ToolUseID, because the Tool.Execute
 // signature does not expose the tool_use block ID. Parent/child linkage is
 // established via the child session's ParentID and the ChildID field.
 func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, bool, error) {
@@ -28,13 +28,14 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 		return "", true, fmt.Errorf("subagent (depth %d) cannot spawn another subagent", parent.Depth)
 	}
 
-	// Generate a unique child ID.
-	childID := fmt.Sprintf("sub-%d", a.nextSubIndex())
-
 	// Fallback: create a minimal parent placeholder (should not occur in normal use).
 	if parent == nil {
 		parent = session.NewSession("", ".", "", "")
 	}
+
+	// Generate a unique child ID: "<parentID>-sub-N". Parent IDs are random,
+	// so child file names do not collide across runs.
+	childID := parent.NextSubagentID()
 
 	child := session.NewSession(childID, parent.CWD(), parent.Model, parent.ModelConfig)
 	child.Depth = 1

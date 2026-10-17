@@ -102,12 +102,15 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 
 			// If steered, synthesise a skip result instead of executing.
 			if steerText != "" {
-				resultBlocks = append(resultBlocks, common.Block{
-					Kind:       common.BlockToolResult,
-					ToolUseID:  block.ToolUseID,
-					ResultText: "skipped: user steered",
-					IsError:    true,
-				})
+				resultBlocks = append(resultBlocks,
+					a.recordToolResult(sess, block.ToolUseID, "skipped: user steered", true, 0))
+				continue
+			}
+
+			// Invalid input JSON: do not send it through the guard or the tool.
+			if block.InvalidInput {
+				resultBlocks = append(resultBlocks,
+					a.recordToolResult(sess, block.ToolUseID, invalidToolInputMsg, true, 0))
 				continue
 			}
 
@@ -117,32 +120,8 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 				anyDenied = true
 			}
 
-			if w := a.State.Writer(); w != nil {
-				w.Emit(session.ToolResult{
-					ToolUseID: block.ToolUseID,
-					Content:   content,
-					IsError:   isError,
-				})
-			}
-
-			a.Frontend.Emit(sess.ID, Event{
-				Kind:       EventToolResult,
-				SessionID:  sess.ID,
-				ToolCallID: block.ToolUseID,
-				Result: &ToolResult{
-					ToolUseID: block.ToolUseID,
-					Content:   content,
-					IsError:   isError,
-					Duration:  elapsed,
-				},
-			})
-
-			resultBlocks = append(resultBlocks, common.Block{
-				Kind:       common.BlockToolResult,
-				ToolUseID:  block.ToolUseID,
-				ResultText: content,
-				IsError:    isError,
-			})
+			resultBlocks = append(resultBlocks,
+				a.recordToolResult(sess, block.ToolUseID, content, isError, elapsed))
 		}
 
 		// Append collected results as a single RoleTool message.
@@ -180,6 +159,9 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 		}
 	}
 }
+
+// invalidToolInputMsg is the tool result for a call whose input was not valid JSON.
+const invalidToolInputMsg = "arguments were truncated or invalid JSON, retry"
 
 // drainSteer does a non-blocking read of the steer channel. If a message is
 // available it returns the text. Returns "" when nothing was available.
@@ -279,4 +261,35 @@ func safeExecute(
 		}
 	}()
 	return tool.Execute(ctx, input, sink)
+}
+
+// recordToolResult persists a tool result, emits it to the frontend, and
+// returns the block to append to the RoleTool message.
+func (a *Agent) recordToolResult(sess *session.Session, toolUseID, content string, isError bool, elapsed time.Duration) common.Block {
+	if w := a.State.Writer(); w != nil {
+		w.Emit(session.ToolResult{
+			ToolUseID: toolUseID,
+			Content:   content,
+			IsError:   isError,
+		})
+	}
+
+	a.Frontend.Emit(sess.ID, Event{
+		Kind:       EventToolResult,
+		SessionID:  sess.ID,
+		ToolCallID: toolUseID,
+		Result: &ToolResult{
+			ToolUseID: toolUseID,
+			Content:   content,
+			IsError:   isError,
+			Duration:  elapsed,
+		},
+	})
+
+	return common.Block{
+		Kind:       common.BlockToolResult,
+		ToolUseID:  toolUseID,
+		ResultText: content,
+		IsError:    isError,
+	}
 }

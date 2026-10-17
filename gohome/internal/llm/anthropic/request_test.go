@@ -384,3 +384,46 @@ func TestBuildAnthropicBody_MaxTokensNegative(t *testing.T) {
 		t.Fatal("expected error for MaxTokens=-1")
 	}
 }
+
+// TestBuildAnthropicBody_InvalidToolInput verifies that a history holding a
+// tool_use block with invalid (truncated) input JSON still encodes, with the
+// input replaced by {}.
+func TestBuildAnthropicBody_InvalidToolInput(t *testing.T) {
+	req := common.Request{
+		Model: "claude-3-5-haiku-20241022",
+		Messages: []common.Message{
+			{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "clean up"}}},
+			{Role: common.RoleAssistant, Content: []common.Block{{
+				Kind:      common.BlockToolUse,
+				ToolUseID: "toolu_01",
+				ToolName:  "shell",
+				InputJSON: `{"command": "rm -rf build`,
+			}}},
+			{Role: common.RoleTool, Content: []common.Block{{
+				Kind:       common.BlockToolResult,
+				ToolUseID:  "toolu_01",
+				ResultText: "error",
+				IsError:    true,
+			}}},
+		},
+		MaxTokens: 1024,
+	}
+
+	data, err := buildAnthropicBody(req)
+	if err != nil {
+		t.Fatalf("buildAnthropicBody error: %v", err)
+	}
+
+	var body struct {
+		Messages []struct {
+			Content []map[string]json.RawMessage `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(data, &body); err != nil {
+		t.Fatalf("unmarshal body: %v", err)
+	}
+	got := string(body.Messages[1].Content[0]["input"])
+	if got != "{}" {
+		t.Errorf("tool_use input: got %s, want {}", got)
+	}
+}

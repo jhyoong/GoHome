@@ -1,6 +1,8 @@
 package session
 
 import (
+	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -13,6 +15,15 @@ type Writer struct {
 	done      chan struct{}
 	closeOnce sync.Once
 	closeErr  error
+
+	// mu guards closed: Emit holds the read lock while sending so Close
+	// cannot close ch underneath it.
+	mu     sync.RWMutex
+	closed bool
+
+	// errMu guards err, the first write, encode or sync error.
+	errMu sync.Mutex
+	err   error
 }
 
 // OpenWriter opens (or creates) the JSONL file at path, creating parent directories
@@ -35,16 +46,44 @@ func OpenWriter(path string) (*Writer, error) {
 }
 
 // Emit sends ev to the background writer. It does not block unless the
-// channel buffer (64) is full.
+// channel buffer (64) is full. Events emitted after Close are dropped.
 func (w *Writer) Emit(ev any) {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	if w.closed {
+		slog.Debug("session: dropping event emitted after close", "type", fmt.Sprintf("%T", ev))
+		return
+	}
 	w.ch <- ev
+}
+
+// Err returns the first write, encode or sync error seen by the background
+// writer, or nil if none has occurred.
+func (w *Writer) Err() error {
+	w.errMu.Lock()
+	defer w.errMu.Unlock()
+	return w.err
+}
+
+func (w *Writer) setErr(err error) {
+	if err == nil {
+		return
+	}
+	w.errMu.Lock()
+	defer w.errMu.Unlock()
+	if w.err == nil {
+		w.err = err
+	}
 }
 
 // Close flushes all queued events and closes the file.
 // It is idempotent: the second and subsequent calls are no-ops that return nil.
 func (w *Writer) Close() error {
 	w.closeOnce.Do(func() {
+		w.mu.Lock()
+		w.closed = true
 		close(w.ch)
+		w.mu.Unlock()
 		<-w.done
 		w.closeErr = w.f.Close()
 	})
@@ -66,12 +105,15 @@ func (w *Writer) run() {
 		line, err := encode(ev)
 		if err != nil {
 			// Skip unencodable events rather than crashing the goroutine.
+			w.setErr(err)
 			continue
 		}
-		_, _ = w.f.Write(line)
-		_, _ = w.f.Write([]byte("\n"))
+		_, err = w.f.Write(line)
+		w.setErr(err)
+		_, err = w.f.Write([]byte("\n"))
+		w.setErr(err)
 		if isCritical(ev) {
-			_ = w.f.Sync()
+			w.setErr(w.f.Sync())
 		}
 	}
 }

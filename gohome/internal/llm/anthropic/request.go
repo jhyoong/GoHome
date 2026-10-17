@@ -153,8 +153,10 @@ func translateAssistantMessage(m common.Message) (anthropicMessage, error) {
 		case common.BlockThinking:
 			content = append(content, anthropicThinkingBlock{Type: "thinking", Thinking: b.Text, Signature: b.Signature})
 		case common.BlockToolUse:
+			// Invalid input (e.g. a truncated call saved by an older version)
+			// would fail to marshal and break every later request, so send {}.
 			var inputRaw json.RawMessage
-			if b.InputJSON != "" {
+			if b.InputJSON != "" && json.Valid([]byte(b.InputJSON)) {
 				inputRaw = json.RawMessage(b.InputJSON)
 			} else {
 				inputRaw = json.RawMessage("{}")

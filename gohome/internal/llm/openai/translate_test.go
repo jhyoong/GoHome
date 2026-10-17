@@ -433,3 +433,58 @@ func TestTranslateEvents_CtxCancellationNoLeak(t *testing.T) {
 	for range out {
 	}
 }
+
+// TestTranslateEvents_EOFWithoutDoneOrFinishReason reproduces a truncated tool
+// call: the stream ends with no finish_reason and no [DONE]. It must emit an
+// error and must not emit the partial tool call as complete.
+func TestTranslateEvents_EOFWithoutDoneOrFinishReason(t *testing.T) {
+	frames := []sseFrame{
+		{data: `{"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_01","type":"function","function":{"name":"shell","arguments":""}}]},"finish_reason":null}]}`},
+		{data: `{"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"command\": \"rm -rf build"}}]},"finish_reason":null}]}`},
+	}
+
+	events := collectEvents(translateEvents(context.Background(), makeFrames(frames)))
+
+	var gotErr bool
+	for _, e := range events {
+		switch e.Kind {
+		case common.EventToolCallDone:
+			t.Errorf("unexpected EventToolCallDone for truncated call: %q", e.InputJSON)
+		case common.EventTurnDone:
+			t.Error("unexpected EventTurnDone for truncated stream")
+		case common.EventError:
+			gotErr = true
+		}
+	}
+	if !gotErr {
+		t.Fatal("expected EventError for stream with no finish_reason and no [DONE]")
+	}
+}
+
+// TestTranslateEvents_EOFWithFinishReasonNoDone verifies that a stream that
+// sent a finish_reason but no [DONE] still counts as complete.
+func TestTranslateEvents_EOFWithFinishReasonNoDone(t *testing.T) {
+	frames := []sseFrame{
+		{data: `{"choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":null}]}`},
+		{data: `{"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`},
+	}
+
+	events := collectEvents(translateEvents(context.Background(), makeFrames(frames)))
+
+	var turnDone *common.StreamEvent
+	for _, e := range events {
+		switch e.Kind {
+		case common.EventTurnDone:
+			cp := e
+			turnDone = &cp
+		case common.EventError:
+			t.Fatalf("unexpected error event: %v", e.Err)
+		}
+	}
+	if turnDone == nil {
+		t.Fatal("no EventTurnDone received")
+	}
+	if turnDone.StopReason != "stop" {
+		t.Errorf("StopReason: got %q, want stop", turnDone.StopReason)
+	}
+}

@@ -3,6 +3,7 @@ package session
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -234,5 +235,125 @@ func TestCleanBlankNoDir(t *testing.T) {
 	}
 	if removed != 0 {
 		t.Errorf("expected 0 removed, got %d", removed)
+	}
+}
+
+func TestListLongLine(t *testing.T) {
+	home := t.TempDir()
+	cwd := "/tmp/proj"
+	path := SessionPath(home, cwd, "big", time.Now().UTC())
+	w, err := OpenWriter(path)
+	if err != nil {
+		t.Fatalf("OpenWriter: %v", err)
+	}
+	w.Emit(SessionStart{ID: "big", CWD: cwd, Model: "m", ModelConfig: "e", StartedAt: time.Now().UTC()})
+	w.Emit(UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: "hello"}}})
+	w.Emit(ToolResult{ToolUseID: "tu1", Content: strings.Repeat("x", 70*1024)})
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	got, err := List(home, cwd)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != "big" {
+		t.Fatalf("List = %+v, want the big session", got)
+	}
+}
+
+// writeChildJSONL writes a depth-1 subagent session file linked to parentID.
+func writeChildJSONL(t *testing.T, home, cwd, id, parentID string, startedAt time.Time, task string) string {
+	t.Helper()
+	path := SessionPath(home, cwd, id, startedAt)
+	w, err := OpenWriter(path)
+	if err != nil {
+		t.Fatalf("OpenWriter: %v", err)
+	}
+	w.Emit(SessionStart{ID: id, ParentID: parentID, CWD: cwd, Model: "m", ModelConfig: "e", Depth: 1, StartedAt: startedAt})
+	w.Emit(UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: task}}})
+	w.Emit(SessionEnd{Reason: "done"})
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	return path
+}
+
+func TestListExcludesChildren(t *testing.T) {
+	home := t.TempDir()
+	cwd := "/home/user/myproject"
+	now := time.Now().UTC()
+
+	writeTestJSONL(t, home, cwd, "parent", now.Add(-time.Minute), "parent task")
+	// The child starts after its parent, so without filtering it sorts first.
+	writeChildJSONL(t, home, cwd, "parent-sub-1", "parent", now, "child task")
+
+	listings, err := List(home, cwd)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(listings) != 1 || listings[0].ID != "parent" {
+		t.Fatalf("List = %+v, want only the parent session", listings)
+	}
+}
+
+func TestListChildren(t *testing.T) {
+	home := t.TempDir()
+	cwd := "/home/user/myproject"
+	now := time.Now().UTC()
+
+	writeTestJSONL(t, home, cwd, "p1", now.Add(-time.Hour), "parent one")
+	writeTestJSONL(t, home, cwd, "p2", now.Add(-time.Hour), "parent two")
+	// Written out of order to check sorting by StartedAt ascending.
+	writeChildJSONL(t, home, cwd, "p1-sub-2", "p1", now.Add(-10*time.Minute), "second")
+	writeChildJSONL(t, home, cwd, "p1-sub-1", "p1", now.Add(-20*time.Minute), "first")
+	writeChildJSONL(t, home, cwd, "p2-sub-1", "p2", now.Add(-15*time.Minute), "other parent")
+
+	children, err := ListChildren(home, cwd, "p1")
+	if err != nil {
+		t.Fatalf("ListChildren: %v", err)
+	}
+	if len(children) != 2 {
+		t.Fatalf("ListChildren len = %d, want 2: %+v", len(children), children)
+	}
+	if children[0].ID != "p1-sub-1" || children[1].ID != "p1-sub-2" {
+		t.Errorf("ListChildren order = [%s %s], want [p1-sub-1 p1-sub-2]", children[0].ID, children[1].ID)
+	}
+	if children[0].ParentID != "p1" || children[0].Depth != 1 {
+		t.Errorf("child listing = %+v, want ParentID p1 and Depth 1", children[0])
+	}
+}
+
+func TestListChildrenNoDir(t *testing.T) {
+	children, err := ListChildren(t.TempDir(), "/no/such/project", "p1")
+	if err != nil {
+		t.Fatalf("ListChildren: %v", err)
+	}
+	if len(children) != 0 {
+		t.Errorf("expected no children, got %d", len(children))
+	}
+}
+
+func TestLoadChildren(t *testing.T) {
+	home := t.TempDir()
+	cwd := "/home/user/myproject"
+	now := time.Now().UTC()
+
+	writeTestJSONL(t, home, cwd, "p1", now.Add(-time.Hour), "parent")
+	writeChildJSONL(t, home, cwd, "p1-sub-2", "p1", now.Add(-10*time.Minute), "second")
+	writeChildJSONL(t, home, cwd, "p1-sub-1", "p1", now.Add(-20*time.Minute), "first")
+
+	children, err := LoadChildren(home, cwd, "p1")
+	if err != nil {
+		t.Fatalf("LoadChildren: %v", err)
+	}
+	if len(children) != 2 {
+		t.Fatalf("LoadChildren len = %d, want 2", len(children))
+	}
+	if children[0].ID != "p1-sub-1" || children[1].ID != "p1-sub-2" {
+		t.Errorf("LoadChildren order = [%s %s], want [p1-sub-1 p1-sub-2]", children[0].ID, children[1].ID)
+	}
+	if len(children[0].History) != 1 || children[0].History[0].Content[0].Text != "first" {
+		t.Errorf("child history = %+v, want the task message", children[0].History)
 	}
 }

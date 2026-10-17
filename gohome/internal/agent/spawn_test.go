@@ -130,7 +130,7 @@ func TestSpawn_CustomSystemPrompt(t *testing.T) {
 }
 
 // TestSpawn_IncrementingChildIDs verifies that successive Spawn calls generate
-// sub-1, sub-2, ... IDs (via the atomic counter).
+// <parentID>-sub-1, <parentID>-sub-2, ... IDs.
 func TestSpawn_IncrementingChildIDs(t *testing.T) {
 	home := t.TempDir()
 	// Two sequential turns for two spawns.
@@ -443,8 +443,8 @@ func TestSpawn_EmitsSessionEndedEvent(t *testing.T) {
 	if !found {
 		t.Fatalf("no EventSessionEnded found in frontend events; got kinds: %v", eventKinds(fe.events))
 	}
-	if sessionID != "sub-1" {
-		t.Errorf("EventSessionEnded.SessionID = %q, want %q", sessionID, "sub-1")
+	if sessionID != "parent-sess-sub-1" {
+		t.Errorf("EventSessionEnded.SessionID = %q, want %q", sessionID, "parent-sess-sub-1")
 	}
 }
 
@@ -487,13 +487,13 @@ func TestSpawn_EmitsSessionEndedOnCancel(t *testing.T) {
 
 	var found bool
 	for _, ev := range fe.events {
-		if ev.Kind == EventSessionEnded && ev.SessionID == "sub-1" {
+		if ev.Kind == EventSessionEnded && ev.SessionID == "parent-sub-1" {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Errorf("no EventSessionEnded for sub-1 after cancel; got kinds: %v", eventKinds(fe.events))
+		t.Errorf("no EventSessionEnded for parent-sub-1 after cancel; got kinds: %v", eventKinds(fe.events))
 	}
 }
 
@@ -557,14 +557,14 @@ func TestSpawn_EndReasonCancelled(t *testing.T) {
 	_, _, _ = a.Spawn(ctx, "task", "")
 
 	for _, ev := range fe.events {
-		if ev.Kind == EventSessionEnded && ev.SessionID == "sub-1" {
+		if ev.Kind == EventSessionEnded && ev.SessionID == "parent-sub-1" {
 			if ev.EndReason != "cancelled" {
 				t.Errorf("EndReason = %q, want %q", ev.EndReason, "cancelled")
 			}
 			return
 		}
 	}
-	t.Fatal("no EventSessionEnded found for sub-1")
+	t.Fatal("no EventSessionEnded found for parent-sub-1")
 }
 
 // eventKinds returns a slice of EventKind strings for test diagnostics.
@@ -599,4 +599,46 @@ func readJSONLLines(t *testing.T, path string) []map[string]json.RawMessage {
 		out = append(out, m)
 	}
 	return out
+}
+
+// TestSpawn_ChildIDsUniqueAcrossAgents reproduces audit item D2: two agents
+// (two runs) spawning on the same day must not write to the same child file.
+func TestSpawn_ChildIDsUniqueAcrossAgents(t *testing.T) {
+	home := t.TempDir()
+
+	var childIDs []string
+	for _, parentID := range []string{"aaaaaaaa", "bbbbbbbb"} {
+		a := buildSpawnParent(t, oneTextTurnClient("ok"), home)
+		a.State.Session().ID = parentID
+		if _, _, err := a.Spawn(context.Background(), "task", ""); err != nil {
+			t.Fatalf("Spawn for %s: %v", parentID, err)
+		}
+		fe := a.Frontend.(*fakeRecorder)
+		for _, ev := range fe.events {
+			if ev.Kind == EventSessionStarted {
+				childIDs = append(childIDs, ev.SessionID)
+			}
+		}
+	}
+
+	want := []string{"aaaaaaaa-sub-1", "bbbbbbbb-sub-1"}
+	if len(childIDs) != 2 || childIDs[0] != want[0] || childIDs[1] != want[1] {
+		t.Fatalf("child IDs = %v, want %v", childIDs, want)
+	}
+
+	// Each child has its own file containing exactly one session_start.
+	children, err := session.ListChildren(home, home, "aaaaaaaa")
+	if err != nil {
+		t.Fatalf("ListChildren: %v", err)
+	}
+	if len(children) != 1 || children[0].ID != "aaaaaaaa-sub-1" {
+		t.Fatalf("ListChildren(aaaaaaaa) = %+v, want one child aaaaaaaa-sub-1", children)
+	}
+	data, err := os.ReadFile(children[0].Path)
+	if err != nil {
+		t.Fatalf("read child file: %v", err)
+	}
+	if n := strings.Count(string(data), `"type":"session_start"`); n != 1 {
+		t.Errorf("child file has %d session_start lines, want 1", n)
+	}
 }

@@ -2,8 +2,11 @@ package session
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"time"
@@ -18,10 +21,14 @@ import (
 //   - session_start  -> Session metadata (id, cwd, model, modelConfig, depth, parentId, startedAt)
 //   - user_message   -> common.Message{Role: RoleUser}
 //   - assistant_message -> common.Message{Role: RoleAssistant}
-//   - tool_result    -> common.Message{Role: RoleTool, single BlockToolResult}
+//   - tool_result    -> BlockToolResult; consecutive results are merged into
+//     one common.Message{Role: RoleTool}, matching the live agent loop
+//   - compaction     -> replaces the history so far
 //
 // Events approval, subagent_spawn, subagent_done, session_end are ignored for
-// history reconstruction.
+// history reconstruction. subagent_spawn events are counted so new child IDs
+// continue the numbering. After replay, any tool_use without a recorded
+// result gets a synthetic error result so the history is valid to resend.
 func Load(path string) (*Session, []common.Message, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -31,20 +38,17 @@ func Load(path string) (*Session, []common.Message, error) {
 
 	var sess *Session
 	var history []common.Message
+	spawned := 0
 
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
+	err = forEachLine(f, func(raw []byte) {
+		line := string(raw)
 
 		var envelope struct {
 			Type string `json:"type"`
 			TS   string `json:"ts"`
 		}
 		if err := json.Unmarshal([]byte(line), &envelope); err != nil {
-			continue
+			return
 		}
 
 		switch envelope.Type {
@@ -60,7 +64,7 @@ func Load(path string) (*Session, []common.Message, error) {
 				TS          string    `json:"ts"`
 			}
 			if err := json.Unmarshal([]byte(line), &ev); err != nil {
-				continue
+				return
 			}
 			sess = NewSession(ev.ID, ev.CWD, ev.Model, ev.ModelConfig)
 			sess.ParentID = ev.ParentID
@@ -77,7 +81,7 @@ func Load(path string) (*Session, []common.Message, error) {
 				Content []common.Block `json:"content"`
 			}
 			if err := json.Unmarshal([]byte(line), &ev); err != nil {
-				continue
+				return
 			}
 			history = append(history, common.Message{
 				Role:    common.RoleUser,
@@ -89,7 +93,7 @@ func Load(path string) (*Session, []common.Message, error) {
 				Content []common.Block `json:"content"`
 			}
 			if err := json.Unmarshal([]byte(line), &ev); err != nil {
-				continue
+				return
 			}
 			history = append(history, common.Message{
 				Role:    common.RoleAssistant,
@@ -103,19 +107,27 @@ func Load(path string) (*Session, []common.Message, error) {
 				IsError   bool   `json:"isError"`
 			}
 			if err := json.Unmarshal([]byte(line), &ev); err != nil {
-				continue
+				return
 			}
-			history = append(history, common.Message{
-				Role: common.RoleTool,
-				Content: []common.Block{
-					{
-						Kind:       common.BlockToolResult,
-						ToolUseID:  ev.ToolUseID,
-						ResultText: ev.Content,
-						IsError:    ev.IsError,
-					},
-				},
-			})
+			blk := common.Block{
+				Kind:       common.BlockToolResult,
+				ToolUseID:  ev.ToolUseID,
+				ResultText: ev.Content,
+				IsError:    ev.IsError,
+			}
+			// The live loop sends all results of one assistant turn as a
+			// single RoleTool message, so merge consecutive results.
+			if n := len(history); n > 0 && history[n-1].Role == common.RoleTool {
+				history[n-1].Content = append(history[n-1].Content, blk)
+			} else {
+				history = append(history, common.Message{
+					Role:    common.RoleTool,
+					Content: []common.Block{blk},
+				})
+			}
+
+		case "subagent_spawn":
+			spawned++
 
 		case "compaction":
 			var ev struct {
@@ -123,7 +135,7 @@ func Load(path string) (*Session, []common.Message, error) {
 				History []common.Message `json:"history"`
 			}
 			if err := json.Unmarshal([]byte(line), &ev); err != nil {
-				continue
+				return
 			}
 			if len(ev.History) > 0 {
 				history = make([]common.Message, len(ev.History))
@@ -139,18 +151,37 @@ func Load(path string) (*Session, []common.Message, error) {
 				}
 			}
 
-			// Ignored for history reconstruction:
-			// approval, subagent_spawn, subagent_done, session_end
 		}
-	}
-	if err := scanner.Err(); err != nil {
+	})
+	if err != nil {
 		return nil, nil, fmt.Errorf("session: scan %s: %w", path, err)
 	}
 	if sess == nil {
 		return nil, nil, fmt.Errorf("session: no session_start found in %s", path)
 	}
 
+	history = repairToolResults(slog.Default(), sess.ID, history)
 	sess.History = history
+	sess.subagents = spawned
 	validateHistory(slog.Default(), sess.ID, history)
 	return sess, history, nil
+}
+
+// forEachLine calls fn for every non-empty line in r. Unlike bufio.Scanner it
+// has no line length limit, so large tool results and compaction events are
+// read intact. The slice passed to fn is only valid during the call.
+func forEachLine(r io.Reader, fn func(line []byte)) error {
+	br := bufio.NewReader(r)
+	for {
+		line, err := br.ReadBytes('\n')
+		if trimmed := bytes.TrimRight(line, "\r\n"); len(trimmed) > 0 {
+			fn(trimmed)
+		}
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+	}
 }

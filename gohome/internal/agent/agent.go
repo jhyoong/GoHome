@@ -1,8 +1,6 @@
 package agent
 
 import (
-	"sync/atomic"
-
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
 	"github.com/jhyoong/GoHome/gohome/internal/tools"
 )
@@ -23,13 +21,4 @@ type Agent struct {
 
 	// Home is the gohome home directory used to compute subagent JSONL paths.
 	Home string
-
-	// subagentCounter is atomically incremented each time Spawn is called to
-	// generate unique child IDs like "sub-1", "sub-2", ... per parent.
-	subagentCounter atomic.Int32
-}
-
-// nextSubIndex atomically increments and returns the new subagent index.
-func (a *Agent) nextSubIndex() int32 {
-	return a.subagentCounter.Add(1)
 }

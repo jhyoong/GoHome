@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"time"
 
@@ -23,7 +24,7 @@ func (a *Agent) emitTurnError(sessionID string, err error) {
 // events until the turn ends (EventTurnDone) or an error occurs.
 //
 // It mutates sess.History by appending the assistant message, persists an
-// AssistantMessage to a.Writer (if non-nil), and forwards events to a.Frontend.
+// AssistantMessage to a.State.Writer() (if non-nil), and forwards events to a.Frontend.
 //
 // Returns the stopReason string (e.g. "end_turn", "tool_use") or an error if
 // the stream failed. A cancelled context causes the event loop to stop early;
@@ -75,8 +76,13 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, *commo
 
 		case ev, ok := <-events:
 			if !ok {
-				// Channel closed without EventTurnDone — treat as end_turn.
-				goto done
+				// Channel closed without EventTurnDone: the stream was cut off.
+				if ctx.Err() != nil {
+					return "", nil, ctx.Err()
+				}
+				err := ErrStreamEndedEarly
+				a.emitTurnError(sess.ID, err)
+				return "", nil, err
 			}
 
 			switch ev.Kind {
@@ -104,18 +110,26 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, *commo
 				})
 
 			case common.EventToolCallDone:
+				// Invalid input (e.g. cut off by max_tokens) is stored as {}
+				// and marked so Run returns an error result instead of running it.
+				input := ev.InputJSON
+				invalid := input != "" && !json.Valid([]byte(input))
+				if invalid {
+					input = "{}"
+				}
 				toolBlocks = append(toolBlocks, common.Block{
-					Kind:      common.BlockToolUse,
-					ToolUseID: ev.ToolCallID,
-					ToolName:  ev.ToolName,
-					InputJSON: ev.InputJSON,
+					Kind:         common.BlockToolUse,
+					ToolUseID:    ev.ToolCallID,
+					ToolName:     ev.ToolName,
+					InputJSON:    input,
+					InvalidInput: invalid,
 				})
 				a.Frontend.Emit(sess.ID, Event{
 					Kind:       EventToolCallDone,
 					SessionID:  sess.ID,
 					ToolCallID: ev.ToolCallID,
 					ToolName:   ev.ToolName,
-					InputJSON:  ev.InputJSON,
+					InputJSON:  input,
 				})
 
 			case common.EventTurnDone:
@@ -192,6 +206,13 @@ done:
 			Kind:      EventUsageUpdated,
 			SessionID: sess.ID,
 			Usage:     usage,
+		})
+	}
+	if stopReason == "max_tokens" || stopReason == "length" {
+		a.Frontend.Emit(sess.ID, Event{
+			Kind:      EventNotice,
+			SessionID: sess.ID,
+			Notice:    "Response cut off: the model reached its output token limit (" + stopReason + ").",
 		})
 	}
 	a.Frontend.Emit(sess.ID, Event{

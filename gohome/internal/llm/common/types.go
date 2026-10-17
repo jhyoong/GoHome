@@ -31,6 +31,9 @@ type Block struct {
 	InputJSON  string    `json:"inputJson,omitempty"`
 	ResultText string    `json:"resultText,omitempty"`
 	IsError    bool      `json:"isError,omitempty"`
+	// InvalidInput marks a tool_use whose streamed input was not valid JSON
+	// (InputJSON then holds "{}"). In memory only; never persisted or sent.
+	InvalidInput bool `json:"-"`
 }
 
 type Message struct {

@@ -22,6 +22,7 @@ import (
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
+	"github.com/jhyoong/GoHome/gohome/internal/session"
 	"github.com/jhyoong/GoHome/gohome/internal/tui"
 )
 
@@ -266,6 +267,29 @@ func TestSnapshots(t *testing.T) {
 			},
 		}})
 		// Focus the completed session.
+		m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlRight})
+		golden.RequireEqual(t, []byte(m.View()))
+	})
+
+	// Resumed subagent child: read-only view loaded from disk with the parent.
+	t.Run("resumed_subagent_view", func(t *testing.T) {
+		m := newSized()
+		child := session.NewSession("main-sub-1", "/tmp", "m", "e")
+		child.Depth = 1
+		child.ParentID = "main"
+		child.History = []common.Message{
+			{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "investigate"}}},
+			{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "Subagent result text."}}},
+		}
+		m.LoadResumedSession("main", []common.Message{
+			{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "look into it"}}},
+			{Role: common.RoleAssistant, Content: []common.Block{
+				{Kind: common.BlockToolUse, ToolUseID: "tu1", ToolName: "subagent", InputJSON: `{"task":"investigate"}`},
+			}},
+			{Role: common.RoleTool, Content: []common.Block{
+				{Kind: common.BlockToolResult, ToolUseID: "tu1", ResultText: "Subagent result text."},
+			}},
+		}, []*session.Session{child})
 		m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlRight})
 		golden.RequireEqual(t, []byte(m.View()))
 	})

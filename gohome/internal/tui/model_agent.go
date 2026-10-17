@@ -154,6 +154,12 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 		sv.warned80 = false
 		sv.warned95 = false
 
+	case agent.EventNotice:
+		sv.Timeline = append(sv.Timeline, TimelineEntry{
+			Kind: KindNotice,
+			Text: sanitizeText(ev.Notice),
+		})
+
 	case agent.EventTurnDone:
 		if ev.TurnStats != nil && ev.TurnStats.Elapsed > 0 {
 			tps := float64(ev.TurnStats.OutputTokens) / ev.TurnStats.Elapsed.Seconds()

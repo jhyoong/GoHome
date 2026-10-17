@@ -2,6 +2,7 @@ package session
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -287,5 +288,141 @@ func TestLoadMissingFile(t *testing.T) {
 	_, _, err := Load("/nonexistent/path/session.jsonl")
 	if err == nil {
 		t.Error("expected error for missing file, got nil")
+	}
+}
+
+// writeEvents writes the given events to a new JSONL file and returns its path.
+func writeEvents(t *testing.T, events ...any) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "s.jsonl")
+	w, err := OpenWriter(path)
+	if err != nil {
+		t.Fatalf("OpenWriter: %v", err)
+	}
+	for _, ev := range events {
+		w.Emit(ev)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	return path
+}
+
+func TestLoad_LongLine(t *testing.T) {
+	big := strings.Repeat("x", 70*1024)
+	path := writeEvents(t,
+		SessionStart{ID: "long", CWD: "/tmp", Model: "m", ModelConfig: "e", StartedAt: time.Now().UTC()},
+		UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}},
+		AssistantMessage{Content: []common.Block{
+			{Kind: common.BlockToolUse, ToolUseID: "tu1", ToolName: "shell", InputJSON: `{}`},
+		}},
+		ToolResult{ToolUseID: "tu1", Content: big},
+	)
+
+	_, history, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(history) != 3 {
+		t.Fatalf("len(history) = %d, want 3", len(history))
+	}
+	if got := history[2].Content[0].ResultText; got != big {
+		t.Errorf("result text length = %d, want %d", len(got), len(big))
+	}
+}
+
+func TestLoad_GroupsParallelToolResults(t *testing.T) {
+	path := writeEvents(t,
+		SessionStart{ID: "grp", CWD: "/tmp", Model: "m", ModelConfig: "e", StartedAt: time.Now().UTC()},
+		UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}},
+		AssistantMessage{Content: []common.Block{
+			{Kind: common.BlockToolUse, ToolUseID: "tu1", ToolName: "shell", InputJSON: `{}`},
+			{Kind: common.BlockToolUse, ToolUseID: "tu2", ToolName: "shell", InputJSON: `{}`},
+		}},
+		ToolResult{ToolUseID: "tu1", Content: "one"},
+		ToolResult{ToolUseID: "tu2", Content: "two"},
+		UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: "next"}}},
+	)
+
+	_, history, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(history) != 4 {
+		t.Fatalf("len(history) = %d, want 4 (user, assistant, one tool, user)", len(history))
+	}
+	tool := history[2]
+	if tool.Role != common.RoleTool || len(tool.Content) != 2 {
+		t.Fatalf("history[2] = %+v, want one RoleTool message with 2 blocks", tool)
+	}
+	if tool.Content[0].ToolUseID != "tu1" || tool.Content[1].ToolUseID != "tu2" {
+		t.Errorf("tool result order = %q, %q", tool.Content[0].ToolUseID, tool.Content[1].ToolUseID)
+	}
+}
+
+func TestLoad_RepairsMissingToolResults(t *testing.T) {
+	path := writeEvents(t,
+		SessionStart{ID: "rep", CWD: "/tmp", Model: "m", ModelConfig: "e", StartedAt: time.Now().UTC()},
+		UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}},
+		AssistantMessage{Content: []common.Block{
+			{Kind: common.BlockToolUse, ToolUseID: "tu1", ToolName: "shell", InputJSON: `{}`},
+			{Kind: common.BlockToolUse, ToolUseID: "tu2", ToolName: "shell", InputJSON: `{}`},
+			{Kind: common.BlockToolUse, ToolUseID: "tu3", ToolName: "shell", InputJSON: `{}`},
+		}},
+		ToolResult{ToolUseID: "tu2", Content: "two"},
+		UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: "steer"}}},
+		AssistantMessage{Content: []common.Block{
+			{Kind: common.BlockToolUse, ToolUseID: "tu4", ToolName: "shell", InputJSON: `{}`},
+		}},
+	)
+
+	_, history, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	// user, assistant, tool(tu1,tu2,tu3), user, assistant, tool(tu4)
+	if len(history) != 6 {
+		t.Fatalf("len(history) = %d, want 6: %+v", len(history), history)
+	}
+	tool := history[2]
+	if tool.Role != common.RoleTool || len(tool.Content) != 3 {
+		t.Fatalf("history[2] = %+v, want RoleTool with 3 blocks", tool)
+	}
+	byID := map[string]common.Block{}
+	for _, b := range tool.Content {
+		byID[b.ToolUseID] = b
+	}
+	if b := byID["tu2"]; b.ResultText != "two" || b.IsError {
+		t.Errorf("recorded result altered: %+v", b)
+	}
+	for _, id := range []string{"tu1", "tu3"} {
+		b, ok := byID[id]
+		if !ok || b.ResultText != "skipped: no result recorded" || !b.IsError {
+			t.Errorf("%s not a synthetic skipped result: %+v", id, b)
+		}
+	}
+	last := history[5]
+	if last.Role != common.RoleTool || len(last.Content) != 1 || last.Content[0].ToolUseID != "tu4" {
+		t.Errorf("trailing tool_use not repaired: %+v", last)
+	}
+}
+
+// TestLoad_ContinuesSubagentNumbering checks that a resumed parent does not
+// reuse child IDs already recorded by subagent_spawn markers.
+func TestLoad_ContinuesSubagentNumbering(t *testing.T) {
+	path := writeEvents(t,
+		SessionStart{ID: "p1", CWD: "/tmp", Model: "m", ModelConfig: "e"},
+		UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}},
+		SubagentSpawn{ChildID: "p1-sub-1", Task: "a"},
+		SubagentDone{ChildID: "p1-sub-1"},
+		SubagentSpawn{ChildID: "p1-sub-2", Task: "b"},
+		SubagentDone{ChildID: "p1-sub-2"},
+	)
+	sess, _, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got := sess.NextSubagentID(); got != "p1-sub-3" {
+		t.Errorf("NextSubagentID = %q, want %q", got, "p1-sub-3")
 	}
 }

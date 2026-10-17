@@ -2,8 +2,10 @@ package agent
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 	"github.com/jhyoong/GoHome/gohome/internal/session"
@@ -497,5 +499,102 @@ func TestCompact_TooFewForPrefix(t *testing.T) {
 	}
 	if len(sess.History) != 6 {
 		t.Errorf("history length changed: got %d, want 6", len(sess.History))
+	}
+}
+
+// TestCompact_ResumedParallelToolResults covers a history replayed from a
+// session file: 2 parallel tool calls must not leave orphaned tool results.
+func TestCompact_ResumedParallelToolResults(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "s.jsonl")
+	w, err := session.OpenWriter(path)
+	if err != nil {
+		t.Fatalf("OpenWriter: %v", err)
+	}
+	text := func(s string) []common.Block { return []common.Block{{Kind: common.BlockText, Text: s}} }
+	w.Emit(session.SessionStart{ID: "resumed", CWD: "/tmp", Model: "m", ModelConfig: "e", StartedAt: time.Now().UTC()})
+	w.Emit(session.UserMessage{Content: text("old")})
+	w.Emit(session.AssistantMessage{Content: text("old reply")})
+	w.Emit(session.UserMessage{Content: text("do two things")})
+	w.Emit(session.AssistantMessage{Content: []common.Block{
+		{Kind: common.BlockToolUse, ToolUseID: "tu1", ToolName: "shell", InputJSON: `{}`},
+		{Kind: common.BlockToolUse, ToolUseID: "tu2", ToolName: "shell", InputJSON: `{}`},
+	}})
+	w.Emit(session.ToolResult{ToolUseID: "tu1", Content: "one"})
+	w.Emit(session.ToolResult{ToolUseID: "tu2", Content: "two"})
+	w.Emit(session.AssistantMessage{Content: text("done")})
+	w.Emit(session.UserMessage{Content: text("thanks")})
+	w.Emit(session.AssistantMessage{Content: text("welcome")})
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	_, history, err := session.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	client := &fakeClient{sequences: [][]common.StreamEvent{{
+		{Kind: common.EventTextDelta, TextDelta: "summary"},
+		{Kind: common.EventTurnDone, StopReason: "end_turn"},
+	}}}
+	a, sess, _ := newTestAgent(t, client, &fakeRecorder{})
+	sess.History = history
+
+	if err := a.compact(context.Background(), sess); err != nil {
+		t.Fatalf("compact: %v", err)
+	}
+	assertNoOrphanToolResults(t, sess.History)
+}
+
+// TestCompact_SplitStepsBackOverAllToolMessages covers histories where one
+// assistant turn is followed by several RoleTool messages (older replay shape).
+func TestCompact_SplitStepsBackOverAllToolMessages(t *testing.T) {
+	text := func(s string) []common.Block { return []common.Block{{Kind: common.BlockText, Text: s}} }
+	tool := func(id string) common.Message {
+		return common.Message{Role: common.RoleTool, Content: []common.Block{
+			{Kind: common.BlockToolResult, ToolUseID: id, ResultText: id},
+		}}
+	}
+	client := &fakeClient{sequences: [][]common.StreamEvent{{
+		{Kind: common.EventTextDelta, TextDelta: "summary"},
+		{Kind: common.EventTurnDone, StopReason: "end_turn"},
+	}}}
+	a, sess, _ := newTestAgent(t, client, &fakeRecorder{})
+	sess.History = []common.Message{
+		{Role: common.RoleUser, Content: text("old")},
+		{Role: common.RoleAssistant, Content: text("old reply")},
+		{Role: common.RoleUser, Content: text("do two things")},
+		{Role: common.RoleAssistant, Content: []common.Block{
+			{Kind: common.BlockToolUse, ToolUseID: "tu1", ToolName: "shell", InputJSON: `{}`},
+			{Kind: common.BlockToolUse, ToolUseID: "tu2", ToolName: "shell", InputJSON: `{}`},
+		}},
+		tool("tu1"),
+		tool("tu2"),
+		{Role: common.RoleAssistant, Content: text("done")},
+		{Role: common.RoleUser, Content: text("thanks")},
+		{Role: common.RoleAssistant, Content: text("welcome")},
+	}
+
+	if err := a.compact(context.Background(), sess); err != nil {
+		t.Fatalf("compact: %v", err)
+	}
+	assertNoOrphanToolResults(t, sess.History)
+}
+
+func assertNoOrphanToolResults(t *testing.T, history []common.Message) {
+	t.Helper()
+	for i, msg := range history {
+		if msg.Role != common.RoleTool {
+			continue
+		}
+		if i == 0 {
+			t.Fatalf("history starts with a tool message")
+		}
+		j := i
+		for j > 0 && history[j-1].Role == common.RoleTool {
+			j--
+		}
+		if j == 0 || history[j-1].Role != common.RoleAssistant {
+			t.Fatalf("tool message %d is not preceded by an assistant message: %+v", i, history)
+		}
 	}
 }
