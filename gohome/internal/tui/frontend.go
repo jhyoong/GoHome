@@ -86,6 +86,10 @@ func (f *Frontend) RequestApproval(ctx context.Context, req guard.ApprovalReques
 	if f.prog == nil {
 		return guard.ApprovalDecision{Outcome: guard.Deny}, fmt.Errorf("tui: no program wired")
 	}
+	// A cancelled run must not show a prompt nobody will wait for.
+	if err := ctx.Err(); err != nil {
+		return guard.ApprovalDecision{Outcome: guard.Deny}, err
+	}
 	reply := make(chan guard.ApprovalDecision, 1)
 	f.prog.Send(ApprovalReqMsg{Req: req, Reply: reply})
 	select {

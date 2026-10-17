@@ -400,6 +400,7 @@ func (m *Model) cancelFocusedSessionWith(statusMsg string) {
 		sv.InFlight = false
 		sv.Timeline = append(sv.Timeline, TimelineEntry{Kind: KindNotice, Text: "Cancelled."})
 	}
+	m.denyAllApprovals()
 	m.pendingMessages = m.pendingMessages[:0]
 	// Drain any pending steer so it does not leak into the next Run call.
 	if m.steerCh != nil {

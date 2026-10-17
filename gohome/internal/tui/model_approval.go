@@ -283,6 +283,19 @@ func (m *Model) resolveApproval(dec guard.ApprovalDecision) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+// denyAllApprovals replies Deny to the active approval and every queued one,
+// then clears both. Reply channels are buffered, so the sends do not block.
+func (m *Model) denyAllApprovals() {
+	if m.activeApproval != nil {
+		m.activeApproval.reply <- guard.ApprovalDecision{Outcome: guard.Deny}
+		m.activeApproval = nil
+	}
+	for _, ap := range m.approvalQueue {
+		ap.reply <- guard.ApprovalDecision{Outcome: guard.Deny}
+	}
+	m.approvalQueue = nil
+}
+
 // replyFromCache answers a password-only request with the cached sudo
 // password when caching is on and a password is stored. It reports whether
 // the request was answered. Answering ahead of other queued approvals is

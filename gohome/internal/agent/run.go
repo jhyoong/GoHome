@@ -70,6 +70,10 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 
 		// No tool calls: check for a pending steer before exiting.
 		if len(toolUseBlocks) == 0 {
+			// A cancel during compaction must not start another turn.
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			steerText := a.drainSteer()
 			if steerText != "" {
 				steerMsg := common.Message{
@@ -98,6 +102,14 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 			// Check for steering before each tool call (except the first).
 			if i > 0 && steerText == "" {
 				steerText = a.drainSteer()
+			}
+
+			// Cancelled (during compaction or an earlier call): record a
+			// skip result for each remaining call so history stays valid.
+			if ctx.Err() != nil {
+				resultBlocks = append(resultBlocks,
+					a.recordToolResult(sess, block.ToolUseID, "skipped: cancelled", true, 0))
+				continue
 			}
 
 			// If steered, synthesise a skip result instead of executing.
@@ -130,6 +142,10 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 				Role:    common.RoleTool,
 				Content: resultBlocks,
 			})
+		}
+
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
 
 		// Final steer check after all tool calls (catches messages that arrived
