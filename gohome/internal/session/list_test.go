@@ -3,6 +3,7 @@ package session
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -234,5 +235,29 @@ func TestCleanBlankNoDir(t *testing.T) {
 	}
 	if removed != 0 {
 		t.Errorf("expected 0 removed, got %d", removed)
+	}
+}
+
+func TestListLongLine(t *testing.T) {
+	home := t.TempDir()
+	cwd := "/tmp/proj"
+	path := SessionPath(home, cwd, "big", time.Now().UTC())
+	w, err := OpenWriter(path)
+	if err != nil {
+		t.Fatalf("OpenWriter: %v", err)
+	}
+	w.Emit(SessionStart{ID: "big", CWD: cwd, Model: "m", ModelConfig: "e", StartedAt: time.Now().UTC()})
+	w.Emit(UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: "hello"}}})
+	w.Emit(ToolResult{ToolUseID: "tu1", Content: strings.Repeat("x", 70*1024)})
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	got, err := List(home, cwd)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != "big" {
+		t.Fatalf("List = %+v, want the big session", got)
 	}
 }

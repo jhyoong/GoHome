@@ -83,8 +83,9 @@ func (a *Agent) compact(ctx context.Context, sess *session.Session) error {
 	splitIdx := len(sess.History) - keepCount
 
 	// Don't split a tool-use/tool-result pair: if splitIdx lands on a
-	// RoleTool message, include its preceding assistant message too.
-	if splitIdx > 0 && sess.History[splitIdx].Role == common.RoleTool {
+	// RoleTool message, include its preceding assistant message too. Step back
+	// over every consecutive RoleTool message, not just one.
+	for splitIdx > 0 && sess.History[splitIdx].Role == common.RoleTool {
 		splitIdx--
 	}
 
