@@ -286,3 +286,29 @@ func TestTranslateEvents_EOFWithoutMessageStop(t *testing.T) {
 		}
 	}
 }
+
+func TestTranslateEvents_RedactedThinking(t *testing.T) {
+	frames := []sseFrame{
+		{event: "content_block_start", data: `{"type":"content_block_start","index":0,"content_block":{"type":"redacted_thinking","data":"opaque=="}}`},
+		{event: "content_block_stop", data: `{"type":"content_block_stop","index":0}`},
+		{event: "content_block_start", data: `{"type":"content_block_start","index":1,"content_block":{"type":"thinking","thinking":""}}`},
+		{event: "content_block_delta", data: `{"type":"content_block_delta","index":1,"delta":{"type":"signature_delta","signature":"sig-x"}}`},
+		{event: "content_block_stop", data: `{"type":"content_block_stop","index":1}`},
+		{event: "message_stop", data: `{"type":"message_stop"}`},
+	}
+
+	events := collectEvents(translateEvents(context.Background(), makeFrames(frames)))
+
+	if len(events) != 3 {
+		t.Fatalf("expected 3 events, got %d: %v", len(events), events)
+	}
+	if events[0].Kind != common.EventRedactedThinking || events[0].Data != "opaque==" {
+		t.Errorf("event 0 = %+v, want EventRedactedThinking with data", events[0])
+	}
+	if events[1].Kind != common.EventThinkingDone || events[1].Signature != "sig-x" {
+		t.Errorf("event 1 = %+v, want EventThinkingDone with signature", events[1])
+	}
+	if events[2].Kind != common.EventTurnDone {
+		t.Errorf("event 2 kind = %q, want EventTurnDone", events[2].Kind)
+	}
+}

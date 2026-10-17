@@ -83,5 +83,12 @@ Minor items found while reviewing the D1-D9 fixes (plan: `docs/reviews/2026-10-1
 40. **A failed run leaves the user message unanswered.** The message stays in history with no reply (A1 leftover). Decide whether to drop it or mark it.
 41. **Sudo detection matches inside quoted strings.** `echo 'a; sudo b'` is treated as sudo. `VAR=/path/sudo cmd` (for example `SUDO=/usr/bin/sudo make install`) is also detected as sudo. The worst case is an extra password prompt. Fixing this needs a shell parser (`guard/sudo.go`).
 42. **The sudo password dialog's expanded command (Tab) has no height cap or scroll.** The approval menu has both (A8).
-43. **A config cannot turn thinking off.** An unset or `<= 0` thinking budget falls back to the default.
 44. **A resumed session's JSONL keeps the old model name.** The `SessionStart` record is not updated, although requests use the current model.
+
+### LLM wire and config (found while fixing L1-L9)
+45. **No prompt caching.** No `cache_control` is sent, and the Anthropic system prompt is a plain string.
+46. **Mid-stream `overloaded_error` is not retried.** Only errors before the stream starts are retried.
+47. **OpenAI reasoning models expect `max_completion_tokens`.** gohome always sends `max_tokens`. This is from training knowledge, not checked against live docs.
+48. **A new tool-call id at an index already in use concatenates arguments.** Seen only from servers that do not follow the spec (`openai/translate.go`).
+49. **SSE parsing does not handle bare-CR line endings or multi-line OpenAI `data:` payloads.** Both are rare.
+50. **The idle-read watchdog can fire if the stream consumer stalls.** If the TUI or headless stdout is blocked for longer than the idle timeout, the stream is cut even though the server is still sending.

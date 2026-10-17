@@ -219,7 +219,7 @@ func TestSetModelSettingsUpdatesSession(t *testing.T) {
 	w := openTestWriter(t)
 	st := NewSessionState(sess, w, nil)
 
-	want := ModelSettings{Name: "m2", ConfigName: "cfg-new", MaxTokens: 100, ThinkingBudget: 50, ReasoningEffort: "high"}
+	want := ModelSettings{Name: "m2", ConfigName: "cfg-new", MaxTokens: 100, Thinking: common.ThinkingModeBudget, ThinkingBudget: 50, ReasoningEffort: "high"}
 	st.SetModelSettings(want)
 	if got := st.ModelSettings(); got != want {
 		t.Errorf("ModelSettings = %+v, want %+v", got, want)

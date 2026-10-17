@@ -215,6 +215,7 @@ func TestBuildAnthropicBody_Thinking(t *testing.T) {
 		Model:          "claude-sonnet-4-20250514",
 		Messages:       []common.Message{{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}}},
 		MaxTokens:      16384,
+		Thinking:       common.ThinkingModeBudget,
 		ThinkingBudget: 10240,
 	}
 
@@ -247,11 +248,13 @@ func TestBuildAnthropicBody_Thinking(t *testing.T) {
 	}
 }
 
-func TestBuildAnthropicBody_NoThinkingWhenZeroBudget(t *testing.T) {
+func TestBuildAnthropicBody_NoThinkingWhenOff(t *testing.T) {
 	req := common.Request{
-		Model:     "claude-sonnet-4-20250514",
-		Messages:  []common.Message{{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}}},
-		MaxTokens: 4096,
+		Model:          "claude-sonnet-4-20250514",
+		Messages:       []common.Message{{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}}},
+		MaxTokens:      4096,
+		Thinking:       common.ThinkingModeOff,
+		ThinkingBudget: 2048,
 	}
 
 	data, err := buildAnthropicBody(req)
@@ -265,7 +268,7 @@ func TestBuildAnthropicBody_NoThinkingWhenZeroBudget(t *testing.T) {
 	}
 
 	if _, ok := body["thinking"]; ok {
-		t.Error("thinking field should be omitted when budget is zero")
+		t.Error("thinking field should be omitted when thinking is off")
 	}
 }
 
@@ -425,5 +428,120 @@ func TestBuildAnthropicBody_InvalidToolInput(t *testing.T) {
 	got := string(body.Messages[1].Content[0]["input"])
 	if got != "{}" {
 		t.Errorf("tool_use input: got %s, want {}", got)
+	}
+}
+
+// TestBuildAnthropicBody_AdaptiveThinking checks adaptive mode sends
+// {type:"adaptive", display:"summarized"} with no budget_tokens.
+func TestBuildAnthropicBody_AdaptiveThinking(t *testing.T) {
+	req := common.Request{
+		Model:          "claude-opus-4-7",
+		Messages:       []common.Message{{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}}},
+		MaxTokens:      16384,
+		Thinking:       common.ThinkingModeAdaptive,
+		ThinkingBudget: 10240,
+	}
+
+	data, err := buildAnthropicBody(req)
+	if err != nil {
+		t.Fatalf("buildAnthropicBody error: %v", err)
+	}
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(data, &body); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	raw, ok := body["thinking"]
+	if !ok {
+		t.Fatal("thinking field missing from request body")
+	}
+	var thinking map[string]any
+	if err := json.Unmarshal(raw, &thinking); err != nil {
+		t.Fatalf("unmarshal thinking: %v", err)
+	}
+	want := map[string]any{"type": "adaptive", "display": "summarized"}
+	if len(thinking) != len(want) || thinking["type"] != want["type"] || thinking["display"] != want["display"] {
+		t.Errorf("thinking = %v, want %v", thinking, want)
+	}
+}
+
+// TestBuildAnthropicBody_OutputConfigEffort checks reasoningEffort is sent
+// unchanged as output_config.effort, and output_config is omitted when empty.
+func TestBuildAnthropicBody_OutputConfigEffort(t *testing.T) {
+	base := common.Request{
+		Model:     "claude-opus-4-7",
+		Messages:  []common.Message{{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}}},
+		MaxTokens: 4096,
+		Thinking:  common.ThinkingModeAdaptive,
+	}
+
+	withEffort := base
+	withEffort.ReasoningEffort = "xhigh"
+	data, err := buildAnthropicBody(withEffort)
+	if err != nil {
+		t.Fatalf("buildAnthropicBody error: %v", err)
+	}
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(data, &body); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	raw, ok := body["output_config"]
+	if !ok {
+		t.Fatal("output_config missing when reasoningEffort is set")
+	}
+	var oc map[string]any
+	if err := json.Unmarshal(raw, &oc); err != nil {
+		t.Fatalf("unmarshal output_config: %v", err)
+	}
+	if len(oc) != 1 || oc["effort"] != "xhigh" {
+		t.Errorf("output_config = %v, want {effort: xhigh}", oc)
+	}
+
+	data, err = buildAnthropicBody(base)
+	if err != nil {
+		t.Fatalf("buildAnthropicBody error: %v", err)
+	}
+	body = nil
+	if err := json.Unmarshal(data, &body); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if _, ok := body["output_config"]; ok {
+		t.Error("output_config should be omitted when reasoningEffort is empty")
+	}
+}
+
+func TestTranslateAssistantMessage_RedactedThinking(t *testing.T) {
+	req := common.Request{
+		Model: "claude-x",
+		Messages: []common.Message{
+			{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}},
+			{Role: common.RoleAssistant, Content: []common.Block{
+				{Kind: common.BlockRedactedThinking, Data: "opaque=="},
+				{Kind: common.BlockThinking, Signature: "sig-1"},
+				{Kind: common.BlockText, Text: "hello"},
+			}},
+		},
+		MaxTokens: 1024,
+	}
+	data, err := buildAnthropicBody(req)
+	if err != nil {
+		t.Fatalf("buildAnthropicBody: %v", err)
+	}
+	var body struct {
+		Messages []struct {
+			Content []json.RawMessage `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(data, &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	content := body.Messages[1].Content
+	if len(content) != 3 {
+		t.Fatalf("content len = %d, want 3", len(content))
+	}
+	if got := string(content[0]); got != `{"type":"redacted_thinking","data":"opaque=="}` {
+		t.Errorf("redacted block = %s", got)
+	}
+	if got := string(content[1]); got != `{"type":"thinking","thinking":"","signature":"sig-1"}` {
+		t.Errorf("thinking block = %s", got)
 	}
 }

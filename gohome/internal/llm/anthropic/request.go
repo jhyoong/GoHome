@@ -43,9 +43,16 @@ type anthropicMessage struct {
 }
 
 // anthropicThinking is the Anthropic wire shape for the thinking parameter.
+// Budget mode sets BudgetTokens; adaptive mode sets Display.
 type anthropicThinking struct {
 	Type         string `json:"type"`
-	BudgetTokens int    `json:"budget_tokens"`
+	BudgetTokens int    `json:"budget_tokens,omitempty"`
+	Display      string `json:"display,omitempty"`
+}
+
+// anthropicOutputConfig is the Anthropic wire shape for output_config.
+type anthropicOutputConfig struct {
+	Effort string `json:"effort"`
 }
 
 // anthropicThinkingBlock is the Anthropic wire shape for a thinking content block.
@@ -53,6 +60,13 @@ type anthropicThinkingBlock struct {
 	Type      string `json:"type"`
 	Thinking  string `json:"thinking"`
 	Signature string `json:"signature"`
+}
+
+// anthropicRedactedThinkingBlock is the Anthropic wire shape for a
+// redacted_thinking content block. Data is sent back unchanged.
+type anthropicRedactedThinkingBlock struct {
+	Type string `json:"type"`
+	Data string `json:"data"`
 }
 
 // anthropicBody is the Anthropic wire shape for a messages request body.
@@ -64,6 +78,8 @@ type anthropicBody struct {
 	MaxTokens int                `json:"max_tokens"`
 	Stream    bool               `json:"stream"`
 	Thinking  *anthropicThinking `json:"thinking,omitempty"`
+
+	OutputConfig *anthropicOutputConfig `json:"output_config,omitempty"`
 }
 
 // buildAnthropicBody translates a common.Request to Anthropic wire-format JSON.
@@ -96,11 +112,17 @@ func buildAnthropicBody(req common.Request) ([]byte, error) {
 	if len(tools) > 0 {
 		body.Tools = tools
 	}
-	if req.ThinkingBudget > 0 {
+	switch req.Thinking {
+	case common.ThinkingModeAdaptive:
+		body.Thinking = &anthropicThinking{Type: "adaptive", Display: "summarized"}
+	case common.ThinkingModeBudget:
 		body.Thinking = &anthropicThinking{
 			Type:         "enabled",
 			BudgetTokens: req.ThinkingBudget,
 		}
+	}
+	if req.ReasoningEffort != "" {
+		body.OutputConfig = &anthropicOutputConfig{Effort: req.ReasoningEffort}
 	}
 
 	return json.Marshal(body)
@@ -152,6 +174,8 @@ func translateAssistantMessage(m common.Message) (anthropicMessage, error) {
 			content = append(content, anthropicTextBlock{Type: "text", Text: b.Text})
 		case common.BlockThinking:
 			content = append(content, anthropicThinkingBlock{Type: "thinking", Thinking: b.Text, Signature: b.Signature})
+		case common.BlockRedactedThinking:
+			content = append(content, anthropicRedactedThinkingBlock{Type: "redacted_thinking", Data: b.Data})
 		case common.BlockToolUse:
 			// Invalid input (e.g. a truncated call saved by an older version)
 			// would fail to marshal and break every later request, so send {}.

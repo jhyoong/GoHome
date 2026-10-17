@@ -96,7 +96,6 @@ Auto-compaction automatically summarizes your conversation history when the cont
   "autoCompact": false,
   "autoCompactMode": "percentage",
   "autoCompactPct": 0.80,
-  "autoCompactTargetPct": 0.50,
   "autoCompactLeftover": 32000,
   "autoCompactPrompt": ""
 }
@@ -107,7 +106,6 @@ Auto-compaction automatically summarizes your conversation history when the cont
 | `autoCompact` | `bool` | `false` | Enable automatic compaction |
 | `autoCompactMode` | `string` | `"percentage"` | Trigger mode: `"percentage"` or `"leftover"` |
 | `autoCompactPct` | `float64` | `0.80` | For percentage mode: compaction triggers when used tokens ≥ `contextWindow × autoCompactPct` |
-| `autoCompactTargetPct` | `float64` | `0.50` | Target context usage ratio after compaction. The middle portion of the conversation is summarized while preserving the first 2 and last 4 messages for cache stability |
 | `autoCompactLeftover` | `int` | `32000` | For leftover mode: compaction triggers when remaining tokens < `autoCompactLeftover` |
 | `autoCompactPrompt` | `string` | (built-in) | Custom prompt for the summarization LLM call. Empty uses the default prompt. |
 
@@ -162,7 +160,6 @@ Auto-compaction automatically summarizes your conversation history when the cont
   "autoCompact": false,
   "autoCompactMode": "percentage",
   "autoCompactPct": 0.80,
-  "autoCompactTargetPct": 0.50,
   "autoCompactLeftover": 32000,
   "autoCompactPrompt": "",
   "cacheSudoPassword": false
@@ -182,8 +179,9 @@ Both `"anthropic"` and `"openai"` wires are supported. Set `apiKey` for a litera
 | `modelName` | — | Model name sent to the LLM provider |
 | `contextWindow` | — | Context window size in tokens (used for usage display) |
 | `maxTokens` | `16384` | Max output tokens per LLM turn |
-| `thinkingBudget` | `10240` | Extended thinking token budget (Anthropic wire only; ignored by OpenAI) |
-| `reasoningEffort` | — | Reasoning effort level sent as `reasoning_effort` on the OpenAI wire (e.g. `"low"`, `"medium"`, `"high"`). Ignored by Anthropic wire. Free-form string passed through to the API as-is |
+| `thinking` | — | Thinking mode (Anthropic wire only): `"off"` sends no thinking parameter, `"adaptive"` sends `{"type":"adaptive","display":"summarized"}`, `"budget"` sends `{"type":"enabled","budget_tokens":N}`. When unset: `"budget"` if `thinkingBudget > 0`, otherwise `"adaptive"` |
+| `thinkingBudget` | `10240` | Thinking token budget, used only in `"budget"` mode. Must be at least 1024 and below `maxTokens`; gohome refuses the config at startup or on `/model` otherwise |
+| `reasoningEffort` | — | Reasoning effort level, passed through as-is: `reasoning_effort` on the OpenAI wire, `output_config.effort` on the Anthropic wire (e.g. `"low"`, `"medium"`, `"high"`). Omitted when unset |
 | `headers` | — | Custom HTTP headers added to every request to this endpoint. Map of header name to value |
 
 **Top-level fields:**
@@ -197,7 +195,7 @@ Both `"anthropic"` and `"openai"` wires are supported. Set `apiKey` for a litera
 | `contextWarnPct` | `0.80` | Context window usage ratio at which a warning is shown (must be < `contextCritPct`) |
 | `contextCritPct` | `0.95` | Context window usage ratio at which a critical warning is shown (must be > `contextWarnPct` and <= 1.0) |
 | `renderThrottleMs` | `16` | Minimum interval in milliseconds between TUI redraws during token streaming. `0` uses the default (16 ms); a negative value redraws on every token. Higher values reduce CPU use and terminal flicker |
-| `retryBackoffMs` | `[250, 1000, 2000]` | Retry backoff schedule in milliseconds |
+| `retryBackoffMs` | `[250, 1000, 2000]` | Retry backoff schedule in milliseconds. The list length sets the number of retries (attempts = length + 1). A `Retry-After` header (capped at 60 s) replaces the listed delay |
 | `cacheSudoPassword` | `false` | Keep the sudo password in memory after the first entry and reuse it until `gohome` exits. See [Sudo commands](#sudo-commands) |
 
 ### 2. Run

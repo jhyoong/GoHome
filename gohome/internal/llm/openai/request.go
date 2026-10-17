@@ -148,7 +148,7 @@ func translateUserMessage(m common.Message) ([]any, error) {
 		}
 		parts = append(parts, b.Text)
 	}
-	return []any{openaiUserMessage{Role: "user", Content: strings.Join(parts, "")}}, nil
+	return []any{openaiUserMessage{Role: "user", Content: strings.Join(parts, "\n")}}, nil
 }
 
 func translateAssistantMessage(m common.Message) ([]any, error) {
@@ -159,7 +159,7 @@ func translateAssistantMessage(m common.Message) ([]any, error) {
 		switch b.Kind {
 		case common.BlockText:
 			textParts = append(textParts, b.Text)
-		case common.BlockThinking:
+		case common.BlockThinking, common.BlockRedactedThinking:
 			// OpenAI does not support thinking blocks; skip without emitting.
 			// The thinking content is preserved in session history but not sent to OpenAI.
 		case common.BlockToolUse:
@@ -187,6 +187,11 @@ func translateAssistantMessage(m common.Message) ([]any, error) {
 	if len(textParts) > 0 {
 		s := strings.Join(textParts, "")
 		msg.Content = &s
+	}
+	if msg.Content == nil && len(toolCalls) == 0 {
+		// Thinking-only turn: send "" rather than null.
+		empty := ""
+		msg.Content = &empty
 	}
 	// content is nil (null in JSON) when only tool_calls present
 	return []any{msg}, nil

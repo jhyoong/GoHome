@@ -84,7 +84,7 @@ func TestResumeSwap_UsesCurrentModel(t *testing.T) {
 func TestSpawn_ChildUsesActiveModelSettings(t *testing.T) {
 	client := &doneClient{}
 	a := buildSpawnParent(t, client, t.TempDir())
-	want := ModelSettings{Name: "switched", ConfigName: "cfg2", MaxTokens: 777, ThinkingBudget: 55, ReasoningEffort: "low"}
+	want := ModelSettings{Name: "switched", ConfigName: "cfg2", MaxTokens: 777, Thinking: common.ThinkingModeBudget, ThinkingBudget: 55, ReasoningEffort: "low"}
 	a.State.SetModelSettings(want)
 
 	if _, _, err := a.Spawn(context.Background(), "task", ""); err != nil {
@@ -92,7 +92,7 @@ func TestSpawn_ChildUsesActiveModelSettings(t *testing.T) {
 	}
 	req := client.last()
 	if req.Model != want.Name || req.MaxTokens != want.MaxTokens ||
-		req.ThinkingBudget != want.ThinkingBudget || req.ReasoningEffort != want.ReasoningEffort {
-		t.Errorf("child request = %q/%d/%d/%q, want %+v", req.Model, req.MaxTokens, req.ThinkingBudget, req.ReasoningEffort, want)
+		req.Thinking != want.Thinking || req.ThinkingBudget != want.ThinkingBudget || req.ReasoningEffort != want.ReasoningEffort {
+		t.Errorf("child request = %q/%d/%q/%d/%q, want %+v", req.Model, req.MaxTokens, req.Thinking, req.ThinkingBudget, req.ReasoningEffort, want)
 	}
 }

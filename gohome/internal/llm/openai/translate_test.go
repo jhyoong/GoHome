@@ -488,3 +488,47 @@ func TestTranslateEvents_EOFWithFinishReasonNoDone(t *testing.T) {
 		t.Errorf("StopReason: got %q, want stop", turnDone.StopReason)
 	}
 }
+
+func TestTranslateEvents_ErrorChunk(t *testing.T) {
+	frames := []sseFrame{
+		{data: `{"error":{"message":"rate limited upstream","type":"server_error","code":429}}`},
+		{done: true},
+	}
+	events := collectEvents(translateEvents(context.Background(), makeFrames(frames)))
+	if len(events) != 1 || events[0].Kind != common.EventError {
+		t.Fatalf("want single EventError, got %+v", events)
+	}
+	if events[0].Err == nil || events[0].Err.Error() != "openai: stream error (server_error/429): rate limited upstream" {
+		t.Fatalf("unexpected error: %v", events[0].Err)
+	}
+}
+
+func TestTranslateEvents_ErrorChunkNoTypeOrCode(t *testing.T) {
+	frames := []sseFrame{
+		{data: `{"error":{"message":"boom"}}`},
+		{done: true},
+	}
+	events := collectEvents(translateEvents(context.Background(), makeFrames(frames)))
+	if len(events) != 1 || events[0].Err == nil || events[0].Err.Error() != "openai: stream error: boom" {
+		t.Fatalf("unexpected events: %+v", events)
+	}
+}
+
+func TestTranslateEvents_DeltaReasoning(t *testing.T) {
+	frames := []sseFrame{
+		{data: `{"choices":[{"index":0,"delta":{"reasoning":"think"}}]}`},
+		{data: `{"choices":[{"index":0,"delta":{"reasoning":"A","reasoning_content":"A"}}]}`},
+		{data: `{"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`},
+		{done: true},
+	}
+	events := collectEvents(translateEvents(context.Background(), makeFrames(frames)))
+	var got string
+	for _, e := range events {
+		if e.Kind == common.EventThinkingDelta {
+			got += e.ThinkingDelta
+		}
+	}
+	if got != "thinkA" {
+		t.Fatalf("thinking = %q, want thinkA", got)
+	}
+}

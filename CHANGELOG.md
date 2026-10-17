@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`thinking` model setting** -- `off`, `adaptive` or `budget` for the Anthropic wire. When unset, gohome uses `budget` if `thinkingBudget > 0`, otherwise `adaptive`. Adaptive sends `{"type":"adaptive","display":"summarized"}`. The budget must be at least 1024 and below `maxTokens`, checked at startup and on `/model` (L1).
+- **`reasoningEffort` on the Anthropic wire** -- Now sent as `output_config.effort` (L1).
+- **Retry-After and jitter** -- Retries now cover 408, 409, 429, 5xx and connection errors, honor `Retry-After` (capped at 60 s) and add jitter (L4).
+- **HTTP timeouts** -- A 5-minute response-header timeout and a 5-minute idle-read watchdog. There is no total client timeout, so long streams still work (L4).
+
+### Changed
+
+- **Default thinking mode is now adaptive** -- A model config with no `thinkingBudget` used to send a 10240 budget. It now sends adaptive thinking. Older models or proxies without adaptive support need `"thinking": "budget"` or `"thinking": "off"` (L1).
+- **Invalid settings JSON is an error** -- gohome exits and prints the file path instead of treating the file as empty (L7).
+- **Error bodies are capped at 64 KiB** (L4).
+
+### Fixed
+
+- **Thinking blocks were merged** -- Thinking blocks now keep arrival order and their own signatures, and signature-only blocks are kept (L2).
+- **`redacted_thinking` blocks were dropped** -- They are now read, saved and sent back (L3).
+- **OpenAI error chunks ended the turn normally** -- `{"error":...}` chunks are now errors (L5).
+- **OpenAI wire details** -- `delta.reasoning` is read, a thinking-only assistant turn sends `content: ""`, and user text blocks are joined with a newline (L8).
+- **Config skeleton wrote placeholders** -- The skeleton no longer has an `example` model or `"string"` values (L6).
+- **Project files could not turn settings off** -- A project file can now set `autoCompact` and `cacheSudoPassword` to false (L7).
+- **`retryBackoffMs` had no effect** -- The clients now use it (L7).
+- **Compaction ignored cache tokens** -- Compaction now counts cache-read and cache-write tokens (L9).
+
+### Removed
+
+- **`autoCompactTargetPct`** -- It was never read (L7).
+
 ## v0.4.4-dev1
 
 ### Added

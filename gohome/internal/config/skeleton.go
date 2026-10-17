@@ -10,35 +10,19 @@ import (
 // SkeletonJSON returns a template settings.json with all fields shown.
 func SkeletonJSON() []byte {
 	return []byte(`{
-  "modelConfig": {
-    "example": {
-      "wire": "string",
-      "baseURL": "string",
-      "apiKey": "string",
-      "apiKeyEnv": "string",
-      "modelName": "string",
-      "contextWindow": 0,
-      "maxTokens": 0,
-      "thinkingBudget": 0,
-      "reasoningEffort": "string",
-      "headers": {}
-    }
-  },
-  "defaultModel": "string",
-  "systemPrompt": "string",
+  "modelConfig": {},
+  "defaultModel": "",
+  "systemPrompt": "",
   "shellTimeoutMs": 0,
   "maxShellTimeoutMs": 0,
   "contextWarnPct": 0.0,
   "contextCritPct": 0.0,
   "retryBackoffMs": [],
   "renderThrottleMs": 0,
-  "autoCompact": false,
-  "autoCompactMode": "percentage",
+  "autoCompactMode": "",
   "autoCompactPct": 0.0,
-  "autoCompactTargetPct": 0.0,
   "autoCompactLeftover": 0,
-  "autoCompactPrompt": "",
-  "cacheSudoPassword": false
+  "autoCompactPrompt": ""
 }
 `)
 }

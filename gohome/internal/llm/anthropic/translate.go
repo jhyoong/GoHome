@@ -43,6 +43,8 @@ type contentBlockStartData struct {
 		// for tool_use
 		ID   string `json:"id"`
 		Name string `json:"name"`
+		// for redacted_thinking
+		Data string `json:"data"`
 	} `json:"content_block"`
 }
 
@@ -74,7 +76,8 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 	go func() {
 		defer close(ch)
 
-		// blockTypes tracks whether index N is "text", "tool_use", or "thinking"
+		// blockTypes tracks the content block type at each index ("text",
+		// "tool_use", "thinking", "redacted_thinking")
 		blockTypes := map[int]string{}
 		// toolBlocks accumulates tool_use state per block index
 		toolBlocks := map[int]*toolBlock{}
@@ -133,10 +136,19 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 					return
 				}
 				blockTypes[d.Index] = d.ContentBlock.Type
-				if d.ContentBlock.Type == "tool_use" {
+				switch d.ContentBlock.Type {
+				case "tool_use":
 					toolBlocks[d.Index] = &toolBlock{
 						id:   d.ContentBlock.ID,
 						name: d.ContentBlock.Name,
+					}
+				case "redacted_thinking":
+					// The whole block arrives here; it has no deltas.
+					if !send(common.StreamEvent{
+						Kind: common.EventRedactedThinking,
+						Data: d.ContentBlock.Data,
+					}) {
+						return
 					}
 				}
 

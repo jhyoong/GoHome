@@ -15,7 +15,6 @@ type CompactConfig struct {
 	Enabled       bool
 	Mode          string  // "percentage" or "leftover"
 	TriggerPct    float64 // fraction (0..1) of context window that triggers compaction
-	TargetPct     float64 // unused for now; reserved for future partial compaction
 	Leftover      int     // minimum remaining tokens before triggering (leftover mode)
 	ContextWindow int     // total context window size in tokens
 }
@@ -26,7 +25,7 @@ func (cfg CompactConfig) shouldCompact(usage common.Usage) bool {
 	if !cfg.Enabled || cfg.ContextWindow <= 0 {
 		return false
 	}
-	used := usage.InputTokens + usage.OutputTokens
+	used := usage.InputTokens + usage.CacheReadTokens + usage.CacheWriteTokens + usage.OutputTokens
 	switch cfg.Mode {
 	case "percentage":
 		return float64(used)/float64(cfg.ContextWindow) >= cfg.TriggerPct

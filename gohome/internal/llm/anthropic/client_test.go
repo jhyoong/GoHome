@@ -36,7 +36,7 @@ func TestClientStream_TextFixture(t *testing.T) {
 		BaseURL:   srv.URL,
 		ModelName: "claude-3-5-haiku-20241022",
 	}
-	client := New(ep, "test-key")
+	client := New(ep, "test-key", nil)
 
 	req := common.Request{
 		System:    "You are helpful.",
@@ -101,7 +101,7 @@ func TestClientStream_HTTPError(t *testing.T) {
 		BaseURL:   srv.URL,
 		ModelName: "claude-3-5-haiku-20241022",
 	}
-	client := New(ep, "bad-key")
+	client := New(ep, "bad-key", nil)
 
 	req := common.Request{
 		Messages:  []common.Message{{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}}},

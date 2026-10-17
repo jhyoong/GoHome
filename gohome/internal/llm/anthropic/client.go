@@ -25,14 +25,14 @@ type Client struct {
 }
 
 // New creates a Client from a ModelConfig and resolved API key.
-func New(e config.ModelConfig, apiKey string) *Client {
+func New(e config.ModelConfig, apiKey string, backoff []time.Duration) *Client {
 	return &Client{
 		base:    e.BaseURL,
 		apiKey:  apiKey,
 		model:   e.ModelName,
 		headers: e.Headers,
-		hc:      &http.Client{},
-		backoff: common.DefaultBackoff,
+		hc:      common.NewHTTPClient(common.DefaultResponseHeaderTimeout),
+		backoff: backoff,
 	}
 }
 

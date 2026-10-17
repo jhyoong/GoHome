@@ -141,25 +141,6 @@ func TestLoad_MissingFilesNotError(t *testing.T) {
 	}
 }
 
-func TestLoad_MalformedJSONTreatedAsEmpty(t *testing.T) {
-	dir := t.TempDir()
-	bad := filepath.Join(dir, "bad.json")
-	if err := os.WriteFile(bad, []byte("{not json"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	global := Settings{DefaultModel: "g"}
-	gPath := writeJSON(t, dir, "global.json", global)
-
-	merged, err := Load(gPath, bad)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	// malformed project treated as empty; global default kept
-	if merged.DefaultModel != "g" {
-		t.Errorf("DefaultModel: got %q, want g", merged.DefaultModel)
-	}
-}
-
 // Task 2.3: API key resolution
 func TestResolveAPIKey_LiteralKey(t *testing.T) {
 	key, err := ResolveAPIKey(ModelConfig{APIKey: "literal-key"})
@@ -395,9 +376,8 @@ func TestLoad_AutoCompactZeroPreservesGlobal(t *testing.T) {
 	dir := t.TempDir()
 
 	global := Settings{
-		AutoCompactPct:       0.90,
-		AutoCompactTargetPct: 0.40,
-		AutoCompactLeftover:  16000,
+		AutoCompactPct:      0.90,
+		AutoCompactLeftover: 16000,
 	}
 	project := Settings{}
 
@@ -410,9 +390,6 @@ func TestLoad_AutoCompactZeroPreservesGlobal(t *testing.T) {
 	}
 	if merged.AutoCompactPct != 0.90 {
 		t.Errorf("AutoCompactPct: got %v, want 0.90", merged.AutoCompactPct)
-	}
-	if merged.AutoCompactTargetPct != 0.40 {
-		t.Errorf("AutoCompactTargetPct: got %v, want 0.40", merged.AutoCompactTargetPct)
 	}
 	if merged.AutoCompactLeftover != 16000 {
 		t.Errorf("AutoCompactLeftover: got %d, want 16000", merged.AutoCompactLeftover)
@@ -471,5 +448,70 @@ func TestLoad_CacheSudoPasswordMerge(t *testing.T) {
 				t.Errorf("got %v, want %v", merged.CacheSudoPassword, tc.want)
 			}
 		})
+	}
+}
+
+func TestLoad_InvalidJSONIsError(t *testing.T) {
+	dir := t.TempDir()
+	bad := filepath.Join(dir, "settings.json")
+	if err := os.WriteFile(bad, []byte(`{"defaultModel": `), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range [][2]string{{bad, filepath.Join(dir, "none.json")}, {filepath.Join(dir, "none.json"), bad}} {
+		_, err := Load(c[0], c[1])
+		if err == nil {
+			t.Fatal("expected error for invalid JSON")
+		}
+		if !strings.Contains(err.Error(), bad) {
+			t.Errorf("error %q should mention path %q", err, bad)
+		}
+	}
+	if _, err := LoadAnnotated(bad, ""); err == nil {
+		t.Error("LoadAnnotated: expected error")
+	}
+}
+
+func TestLoad_MissingFilesNoError(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := Load(filepath.Join(dir, "a.json"), filepath.Join(dir, "b.json")); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoad_ProjectFalseOverridesGlobalTrue(t *testing.T) {
+	dir := t.TempDir()
+	g := filepath.Join(dir, "g.json")
+	p := filepath.Join(dir, "p.json")
+	_ = os.WriteFile(g, []byte(`{"autoCompact":true,"cacheSudoPassword":true}`), 0o600)
+	_ = os.WriteFile(p, []byte(`{"autoCompact":false,"cacheSudoPassword":false}`), 0o600)
+	s, err := Load(g, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.AutoCompact || s.CacheSudoPassword {
+		t.Errorf("got autoCompact=%v cacheSudoPassword=%v, want false/false", s.AutoCompact, s.CacheSudoPassword)
+	}
+	a, err := LoadAnnotated(g, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Sources["autoCompact"] != SourceProject || a.Sources["cacheSudoPassword"] != SourceProject {
+		t.Errorf("sources: %v", a.Sources)
+	}
+	// Unset in project keeps global.
+	_ = os.WriteFile(p, []byte(`{}`), 0o600)
+	s, _ = Load(g, p)
+	if !s.AutoCompact || !s.CacheSudoPassword {
+		t.Error("global true should survive empty project")
+	}
+}
+
+func TestLoad_LegacyTargetPctKeyIgnored(t *testing.T) {
+	dir := t.TempDir()
+	g := filepath.Join(dir, "g.json")
+	_ = os.WriteFile(g, []byte(`{"defaultModel":"x","autoCompactTargetPct":0.5}`), 0o600)
+	s, err := Load(g, "")
+	if err != nil || s.DefaultModel != "x" {
+		t.Fatalf("got %v, %v", s, err)
 	}
 }

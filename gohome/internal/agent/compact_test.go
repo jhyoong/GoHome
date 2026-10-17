@@ -598,3 +598,11 @@ func assertNoOrphanToolResults(t *testing.T, history []common.Message) {
 		}
 	}
 }
+
+func TestShouldCompact_CountsCacheTokens(t *testing.T) {
+	cfg := CompactConfig{Enabled: true, Mode: "percentage", TriggerPct: 0.80, ContextWindow: 100000}
+	usage := common.Usage{InputTokens: 1000, OutputTokens: 1000, CacheReadTokens: 70000, CacheWriteTokens: 10000}
+	if !cfg.shouldCompact(usage) {
+		t.Error("shouldCompact ignored cache tokens")
+	}
+}

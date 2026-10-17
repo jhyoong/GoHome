@@ -16,6 +16,7 @@ type chunkDelta struct {
 	Role             string          `json:"role"`
 	Content          *string         `json:"content"`
 	ReasoningContent *string         `json:"reasoning_content"`
+	Reasoning        *string         `json:"reasoning"`
 	ToolCalls        []chunkToolCall `json:"tool_calls"`
 }
 
@@ -47,6 +48,14 @@ type usagePayload struct {
 type chunk struct {
 	Choices []chunkChoice `json:"choices"`
 	Usage   *usagePayload `json:"usage"`
+	Error   *chunkError   `json:"error"`
+}
+
+// chunkError is an in-stream error object sent by some servers.
+type chunkError struct {
+	Message string `json:"message"`
+	Type    string `json:"type"`
+	Code    any    `json:"code"`
 }
 
 // toolState accumulates state for an in-progress tool call keyed by index.
@@ -187,6 +196,28 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 				return
 			}
 
+			// In-stream error chunk: surface it and stop.
+			if c.Error != nil {
+				msg := c.Error.Message
+				if msg == "" {
+					msg = "unknown error"
+				}
+				var detail string
+				switch {
+				case c.Error.Type != "" && c.Error.Code != nil:
+					detail = fmt.Sprintf(" (%s/%v)", c.Error.Type, c.Error.Code)
+				case c.Error.Type != "":
+					detail = fmt.Sprintf(" (%s)", c.Error.Type)
+				case c.Error.Code != nil:
+					detail = fmt.Sprintf(" (%v)", c.Error.Code)
+				}
+				send(common.StreamEvent{
+					Kind: common.EventError,
+					Err:  fmt.Errorf("openai: stream error%s: %s", detail, msg),
+				})
+				return
+			}
+
 			// Capture usage from any chunk that includes it.
 			// Some servers send usage in a dedicated empty-choices chunk;
 			// others (e.g. LiteLLM) include it alongside a non-empty choices array.
@@ -207,11 +238,17 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 				delta := choice.Delta
 
 				// Reasoning content delta: emit thinking events.
-				if delta.ReasoningContent != nil && *delta.ReasoningContent != "" {
+				// Servers use either reasoning_content or reasoning; if both
+				// are present, reasoning_content wins so text is not duplicated.
+				reasoning := delta.ReasoningContent
+				if reasoning == nil || *reasoning == "" {
+					reasoning = delta.Reasoning
+				}
+				if reasoning != nil && *reasoning != "" {
 					inReasoning = true
 					if !send(common.StreamEvent{
 						Kind:          common.EventThinkingDelta,
-						ThinkingDelta: *delta.ReasoningContent,
+						ThinkingDelta: *reasoning,
 					}) {
 						return
 					}

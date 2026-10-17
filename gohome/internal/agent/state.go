@@ -121,7 +121,8 @@ type ModelSettings struct {
 	Name            string // model name sent to the LLM
 	ConfigName      string // key of the model config in settings
 	MaxTokens       int    // if > 0, overrides the default 4096 per-turn token limit
-	ThinkingBudget  int    // if > 0, enable extended thinking with this token budget
+	Thinking        common.ThinkingMode
+	ThinkingBudget  int // token budget, used only in budget mode
 	ReasoningEffort string
 }
 

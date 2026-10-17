@@ -20,12 +20,16 @@ const (
 	BlockToolUse    BlockKind = "tool_use"
 	BlockToolResult BlockKind = "tool_result"
 	BlockThinking   BlockKind = "thinking"
+	// BlockRedactedThinking holds encrypted thinking in Data. It is sent back
+	// to the Anthropic API unchanged and never shown or sent to OpenAI.
+	BlockRedactedThinking BlockKind = "redacted_thinking"
 )
 
 type Block struct {
 	Kind       BlockKind `json:"kind"`
 	Text       string    `json:"text,omitempty"`
 	Signature  string    `json:"signature,omitempty"`
+	Data       string    `json:"data,omitempty"` // redacted_thinking payload
 	ToolUseID  string    `json:"toolUseId,omitempty"`
 	ToolName   string    `json:"toolName,omitempty"`
 	InputJSON  string    `json:"inputJson,omitempty"`
@@ -51,6 +55,8 @@ const (
 	EventError           EventKind = "error"
 	EventThinkingDelta   EventKind = "thinking_delta"
 	EventThinkingDone    EventKind = "thinking_done"
+	// EventRedactedThinking carries one whole redacted_thinking block in Data.
+	EventRedactedThinking EventKind = "redacted_thinking"
 )
 
 type Usage struct {
@@ -65,6 +71,7 @@ type StreamEvent struct {
 	TextDelta     string
 	ThinkingDelta string
 	Signature     string
+	Data          string // redacted_thinking payload
 	ToolCallID    string
 	ToolName      string
 	InputJSON     string
@@ -79,13 +86,28 @@ type ToolDef struct {
 	InputSchema json.RawMessage `json:"inputSchema"`
 }
 
+// ThinkingMode selects how a request asks the model to think.
+type ThinkingMode string
+
+const (
+	// ThinkingModeOff sends no thinking parameter. The empty mode means off.
+	ThinkingModeOff ThinkingMode = "off"
+	// ThinkingModeAdaptive lets the model decide how much to think.
+	ThinkingModeAdaptive ThinkingMode = "adaptive"
+	// ThinkingModeBudget enables thinking with a fixed token budget.
+	ThinkingModeBudget ThinkingMode = "budget"
+)
+
 type Request struct {
-	Model           string
-	System          string
-	Messages        []Message
-	Tools           []ToolDef
-	MaxTokens       int
-	ThinkingBudget  int // if > 0, enable extended thinking with this token budget
+	Model          string
+	System         string
+	Messages       []Message
+	Tools          []ToolDef
+	MaxTokens      int
+	Thinking       ThinkingMode
+	ThinkingBudget int // token budget, used only in ThinkingModeBudget
+	// ReasoningEffort is passed through unchanged: reasoning_effort on the
+	// OpenAI wire, output_config.effort on the Anthropic wire.
 	ReasoningEffort string
 }
 

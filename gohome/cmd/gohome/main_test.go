@@ -598,14 +598,18 @@ func (c *reqClient) Stream(_ context.Context, req common.Request) (<-chan common
 }
 
 // TestApplyModelConfig_DefaultsAndCurrentModel applies a config with no
-// maxTokens or thinkingBudget to a resumed session saved with an old model.
-// The limits get the startup defaults and the turn sends the new model.
+// maxTokens, thinking or thinkingBudget to a resumed session saved with an
+// old model. maxTokens gets the startup default, thinking is adaptive, and the
+// turn sends the new model.
 func TestApplyModelConfig_DefaultsAndCurrentModel(t *testing.T) {
 	sess := session.NewSession("resumed", t.TempDir(), "old-model", "old-cfg")
 	state := agent.NewSessionState(sess, nil, nil)
 	client := &reqClient{}
 
-	ctxWin := applyModelConfig(state, "fast", config.ModelConfig{ModelName: "new-model"}, client)
+	ctxWin, err := applyModelConfig(state, "fast", config.ModelConfig{ModelName: "new-model"}, client)
+	if err != nil {
+		t.Fatalf("applyModelConfig: %v", err)
+	}
 
 	if ctxWin != config.DefaultContextWindow {
 		t.Errorf("context window = %d, want %d", ctxWin, config.DefaultContextWindow)
@@ -614,8 +618,8 @@ func TestApplyModelConfig_DefaultsAndCurrentModel(t *testing.T) {
 	if ms.MaxTokens != config.DefaultMaxTokens {
 		t.Errorf("MaxTokens = %d, want %d", ms.MaxTokens, config.DefaultMaxTokens)
 	}
-	if ms.ThinkingBudget != config.DefaultThinkingBudget {
-		t.Errorf("ThinkingBudget = %d, want %d (thinking must stay on)", ms.ThinkingBudget, config.DefaultThinkingBudget)
+	if ms.Thinking != common.ThinkingModeAdaptive || ms.ThinkingBudget != 0 {
+		t.Errorf("thinking = %q/%d, want adaptive/0", ms.Thinking, ms.ThinkingBudget)
 	}
 	if sess.Model != "new-model" || sess.ModelConfig != "fast" {
 		t.Errorf("session model = %q/%q, want new-model/fast", sess.Model, sess.ModelConfig)
@@ -628,8 +632,50 @@ func TestApplyModelConfig_DefaultsAndCurrentModel(t *testing.T) {
 	if client.req.Model != "new-model" {
 		t.Errorf("request model = %q, want new-model", client.req.Model)
 	}
-	if client.req.MaxTokens != config.DefaultMaxTokens || client.req.ThinkingBudget != config.DefaultThinkingBudget {
-		t.Errorf("request limits = %d/%d, want %d/%d", client.req.MaxTokens, client.req.ThinkingBudget,
-			config.DefaultMaxTokens, config.DefaultThinkingBudget)
+	if client.req.MaxTokens != config.DefaultMaxTokens || client.req.Thinking != common.ThinkingModeAdaptive {
+		t.Errorf("request limits = %d/%q, want %d/adaptive", client.req.MaxTokens, client.req.Thinking,
+			config.DefaultMaxTokens)
+	}
+}
+
+// TestApplyModelConfig_BudgetMode sends the configured budget and effort.
+func TestApplyModelConfig_BudgetMode(t *testing.T) {
+	sess := session.NewSession("s", t.TempDir(), "m", "c")
+	state := agent.NewSessionState(sess, nil, nil)
+	cfg := config.ModelConfig{ModelName: "m", MaxTokens: 8192, ThinkingBudget: 4096, ReasoningEffort: "high"}
+
+	if _, err := applyModelConfig(state, "c", cfg, &reqClient{}); err != nil {
+		t.Fatalf("applyModelConfig: %v", err)
+	}
+	ms := state.ModelSettings()
+	if ms.Thinking != common.ThinkingModeBudget || ms.ThinkingBudget != 4096 || ms.ReasoningEffort != "high" {
+		t.Errorf("settings = %q/%d/%q, want budget/4096/high", ms.Thinking, ms.ThinkingBudget, ms.ReasoningEffort)
+	}
+}
+
+// TestApplyModelConfig_InvalidBudgetKeepsCurrentModel rejects a budget that
+// does not fit below maxTokens and leaves the active model unchanged. This is
+// the path /model uses.
+func TestApplyModelConfig_InvalidBudgetKeepsCurrentModel(t *testing.T) {
+	sess := session.NewSession("s", t.TempDir(), "old-model", "old")
+	state := agent.NewSessionState(sess, nil, nil)
+	oldClient := &reqClient{}
+	if _, err := applyModelConfig(state, "old", config.ModelConfig{ModelName: "old-model"}, oldClient); err != nil {
+		t.Fatalf("applyModelConfig old: %v", err)
+	}
+
+	bad := config.ModelConfig{Wire: config.WireAnthropic, ModelName: "new-model", Thinking: "budget", ThinkingBudget: 8192, MaxTokens: 4096}
+	_, err := applyModelConfig(state, "bad", bad, &reqClient{})
+	if err == nil {
+		t.Fatal("expected error for budget >= maxTokens")
+	}
+	if !strings.Contains(err.Error(), `"bad"`) {
+		t.Errorf("error %q should name the model config", err)
+	}
+	if ms := state.ModelSettings(); ms.ConfigName != "old" || ms.Name != "old-model" {
+		t.Errorf("model settings changed to %q/%q, want old/old-model", ms.ConfigName, ms.Name)
+	}
+	if state.Client() != oldClient {
+		t.Error("client changed after a rejected config")
 	}
 }

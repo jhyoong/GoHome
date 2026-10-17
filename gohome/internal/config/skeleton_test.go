@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -28,43 +29,32 @@ func TestSkeletonJSON_ContainsAllTopLevelFields(t *testing.T) {
 		"shellTimeoutMs", "maxShellTimeoutMs",
 		"contextWarnPct", "contextCritPct",
 		"retryBackoffMs", "renderThrottleMs",
-		"autoCompact", "autoCompactMode",
-		"autoCompactPct", "autoCompactTargetPct",
+		"autoCompactMode",
+		"autoCompactPct",
 		"autoCompactLeftover", "autoCompactPrompt",
-		"cacheSudoPassword",
 	}
 	for _, key := range required {
 		if _, ok := raw[key]; !ok {
 			t.Errorf("missing top-level field %q", key)
 		}
 	}
+	// These bool keys are left out: an explicit false in a project file would
+	// override a global true.
+	for _, key := range []string{"autoCompact", "cacheSudoPassword"} {
+		if _, ok := raw[key]; ok {
+			t.Errorf("skeleton must not set %q", key)
+		}
+	}
 }
 
-func TestSkeletonJSON_ContainsModelConfigFields(t *testing.T) {
-	data := SkeletonJSON()
+func TestSkeletonJSON_ModelConfigEmpty(t *testing.T) {
 	var raw map[string]any
-	if err := json.Unmarshal(data, &raw); err != nil {
+	if err := json.Unmarshal(SkeletonJSON(), &raw); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-
 	mc, ok := raw["modelConfig"].(map[string]any)
-	if !ok {
-		t.Fatal("modelConfig is not an object")
-	}
-	example, ok := mc["example"].(map[string]any)
-	if !ok {
-		t.Fatal("modelConfig.example is not an object")
-	}
-
-	required := []string{
-		"wire", "baseURL", "apiKey", "apiKeyEnv",
-		"modelName", "contextWindow", "maxTokens",
-		"thinkingBudget", "reasoningEffort", "headers",
-	}
-	for _, key := range required {
-		if _, ok := example[key]; !ok {
-			t.Errorf("missing modelConfig.example field %q", key)
-		}
+	if !ok || len(mc) != 0 {
+		t.Errorf("modelConfig should be an empty object, got %v", raw["modelConfig"])
 	}
 }
 
@@ -167,5 +157,31 @@ func TestEnsureConfigFile_OwnerOnlyPerms(t *testing.T) {
 	}
 	if got := di.Mode().Perm(); got != 0o700 {
 		t.Errorf("dir mode = %o, want 700", got)
+	}
+}
+
+func TestSkeletonJSON_NoPlaceholders(t *testing.T) {
+	data := string(SkeletonJSON())
+	if strings.Contains(data, `"string"`) || strings.Contains(data, `"example"`) || strings.Contains(data, "autoCompactTargetPct") {
+		t.Errorf("skeleton contains placeholder content:\n%s", data)
+	}
+}
+
+func TestEnsureConfigFile_ProjectSkeletonKeepsGlobalBools(t *testing.T) {
+	dir := t.TempDir()
+	g := filepath.Join(dir, "g.json")
+	p := filepath.Join(dir, "proj", ".gohome", "settings.json")
+	if err := os.WriteFile(g, []byte(`{"autoCompact":true,"cacheSudoPassword":true}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureConfigFile(p); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Load(g, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !s.AutoCompact || !s.CacheSudoPassword {
+		t.Errorf("got autoCompact=%v cacheSudoPassword=%v, want true/true", s.AutoCompact, s.CacheSudoPassword)
 	}
 }
