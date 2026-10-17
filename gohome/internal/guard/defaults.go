@@ -11,7 +11,8 @@ var DefaultDenyPatterns = []string{
 	// rm with a recursive flag (-r, -R, -rf, -fr, --recursive, in any order)
 	// aimed at a standalone /, /*, ~, ~/, $HOME or ${HOME}, bare or quoted.
 	// Other arguments may sit between the parts; shell separators end the match.
-	`regex:(^|[\s;&|(/])rm( [^\s;&|]+)*? (-[A-Za-z]*[rR][A-Za-z]*|--recursive)( [^\s;&|]+)*? ["']?(/\*?|~/?|\$HOME/?|\$\{HOME\}/?)["']?([\s;&|)]|$)`,
+	// rm must be in command position (start, after a separator, sudo or a path).
+	`regex:(^|[;&|(\n] ?|sudo |/)rm( [^\s;&|]+)*? (-[A-Za-z]*[rR][A-Za-z]*|--recursive)( [^\s;&|]+)*? ["']?(/\*?|~/?|\$HOME/?|\$\{HOME\}/?)["']?([\s;&|)]|$)`,
 	// mkfs and mkfs.<type> only when run as a command.
 	`regex:(^|[;&|(\n] ?|sudo |/)mkfs(\.[A-Za-z0-9]+)?([\s;&|)]|$)`,
 	":(){ :|:& };:",

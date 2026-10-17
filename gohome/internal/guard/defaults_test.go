@@ -60,6 +60,11 @@ func TestDefaultDenyPatterns_DeniesBypassCases(t *testing.T) {
 		"sudo mkfs.ext4 /dev/sda1",
 		"ls; mkfs /dev/sda1",
 		"ls\nmkfs /dev/sda1",
+		"ls; rm -rf /",
+		"ls\nrm -rf /",
+		"(rm -rf /)",
+		"/bin/rm -rf /",
+		"sudo /bin/rm -rf /",
 		":(){ :|:& };:",
 		"echo x > /dev/sda",
 	}
@@ -82,6 +87,8 @@ func TestDefaultDenyPatterns_AllowsSafeCases(t *testing.T) {
 		"rm -r foo; ls /",
 		"rm -r foo && ls /",
 		"echo mkfs",
+		"echo rm -rf /",
+		"man rm -rf /",
 		"man mkfs",
 		"ls /",
 	}
