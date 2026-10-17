@@ -311,32 +311,38 @@ Section 8 records the status of their items.
   - Deprecated: Opus 4.6, Sonnet 4.6
   - Required: Haiku 4.5
 - **Related:** `agent/turn.go:129` drops thinking blocks with empty text, which also drops their signature. This is latent until adaptive or omitted-display thinking is used.
+- **Status:** Fixed on branch `fix/llm-wire-configs`. Per-model `thinking` mode (`off`, `adaptive`, `budget`). Unset means `budget` if `thinkingBudget > 0`, otherwise `adaptive`. `reasoningEffort` is sent as `output_config.effort`. The budget is checked at startup and on `/model`.
 
 ### L2. Medium - Multiple thinking blocks are merged under one signature
 - **Location:** `agent/turn.go:73,81,129`
 - **Problem:** thinking text is concatenated, only the last signature is kept, and thinking is moved to the front.
 - **Verifier correction:** most of this is unreachable today, because only `budget_tokens` mode is used. It becomes High with adaptive or interleaved thinking.
+- **Status:** Fixed on branch `fix/llm-wire-configs`. Content blocks keep arrival order, and each thinking block keeps its own signature. Signature-only blocks are kept.
 
 ### L3. Medium - `redacted_thinking` blocks are dropped
 - **Location:** `anthropic/translate.go:128-134,174-196`
 - **Problem:** there is no case at `content_block_stop` and no `data` field.
 - **Status:** Prior L9, still open.
+- **Status:** Fixed on branch `fix/llm-wire-configs`. `redacted_thinking` blocks are read, saved and sent back.
 
 ### L4. Medium - Retry and timeouts
 - **No 4xx retries:** `common/retry.go:55-58` never retries 4xx, so 429, 408 and 409 are not retried. `Retry-After` is ignored and there is no jitter. (Prior M14.)
 - **Unbounded reads:** error bodies are read with no size limit (`retry.go:62`, `stream.go:35`).
 - **Mid-stream errors:** a mid-stream Anthropic `overloaded_error` is not retried.
 - **No timeouts:** `anthropic/client.go:34` and `openai/client.go:32` use `&http.Client{}`, with no response-header timeout or idle-read watchdog. (Prior M12.) A plain `Client.Timeout` would be the wrong fix, because it would cut off long streams.
+- **Status:** Partly fixed on branch `fix/llm-wire-configs`. 408, 409, 429, 5xx and connection errors are retried with `Retry-After` (capped at 60 s) and jitter. Error bodies are capped at 64 KiB. There is a 5-minute response-header timeout and a 5-minute idle-read watchdog, with no total client timeout. The mid-stream `overloaded_error` retry is in FOLLOWUP_TASKS.
 
 ### L5. Medium - OpenAI in-stream error chunks are ignored
 - **Location:** `openai/translate.go:171-189`
 - **Problem:** `data: {"error":{...}}` has no matching field, so the turn ends normally.
 - **Evidence:** `text_delta "Hel"`, then `turn_done err=<nil>`.
+- **Status:** Fixed on branch `fix/llm-wire-configs`. In-stream error chunks become errors.
 
 ### L6. High - The config skeleton writes placeholder values into real settings
 - **Location:** `config/skeleton.go:12-43,63-72`, reached from `tui/config_editor.go:20`
 - **Problem:** the file is written before the editor opens, with `"defaultModel": "string"`, `"systemPrompt": "string"` and a model `example` with `wire: "string"`.
 - **Effect:** on the next launch, `main.go:252-261` cannot find model `string` and exits.
+- **Status:** Fixed on branch `fix/llm-wire-configs`. The skeleton has no `example` model and no `"string"` values.
 
 ### L7. Medium - Config loading and merging
 - **Invalid JSON hidden:** invalid JSON is logged and treated as empty, so `Load` never returns an error (`config.go:63-76`). With 0 model configs the wizard runs and overwrites global `settings.json` (`config_wizard.go:208-222`, prior M10). One trailing comma can lose every model config.
@@ -344,6 +350,7 @@ Section 8 records the status of their items.
 - **Dead settings:**
   - `retryBackoffMs` is loaded and shown, but the clients hardcode `common.DefaultBackoff`. `config.DefaultRetryBackoff` is unused.
   - `autoCompactTargetPct` is never read.
+- **Status:** Fixed on branch `fix/llm-wire-configs`. Invalid JSON is a load error and gohome exits with the file path. A project file can set `autoCompact` and `cacheSudoPassword` to false. `retryBackoffMs` is wired into the clients. `autoCompactTargetPct` is removed.
 
 ### L8. Low - OpenAI wire details
 - `max_tokens` is always sent (`openai/request.go:74`). OpenAI reasoning models expect `max_completion_tokens`. This is from training knowledge, not checked against live docs.
@@ -351,11 +358,13 @@ Section 8 records the status of their items.
 - A new tool-call id at an index already in use concatenates arguments (`translate.go:228-242`). Seen only from servers that do not follow the spec.
 - A thinking-only assistant turn is sent as `content: null` with no tool_calls (`request.go:183-192`).
 - Multiple user text blocks are joined with no separator (`request.go:151`).
+- **Status:** Partly fixed on branch `fix/llm-wire-configs`. `delta.reasoning` is read, a thinking-only assistant turn sends `content: ""`, and user text blocks are joined with a newline. `max_completion_tokens` and tool-call id reuse are in FOLLOWUP_TASKS.
 
 ### L9. Low - Smaller issues
 - Compaction ignores cache read/creation tokens (`agent/compact.go:28`). This has no effect until caching is added. (Prior M11.)
 - No `cache_control` exists anywhere, and the system prompt is a plain string (`anthropic/request.go:61`).
 - SSE parsing: bare-CR line endings and multi-line OpenAI `data:` payloads are not handled. Both are rare.
+- **Status:** Partly fixed on branch `fix/llm-wire-configs`. Compaction counts cache-read and cache-write tokens. Prompt caching (`cache_control`) and bare-CR and multi-line SSE parsing are in FOLLOWUP_TASKS.
 
 ---
 
@@ -477,7 +486,7 @@ All in `gohome/internal/tui/`.
 - Says `/new` and `/resume` are "not configured until wired". They are wired (`main.go:625-694`).
 - `/config`: the "press `e`" instruction is wrong. It is a select list (`config_overlay.go:26-30`).
 - Says the compaction prefix is `COMPACT:`. It is `[Auto-compact summary]` (`session/events.go:68`).
-- `retryBackoffMs` is documented but has no effect (L7).
+- `retryBackoffMs` is documented but has no effect (L7). Fixed on branch `fix/llm-wire-configs`.
 - The `contextWindow` default is shown as "—" and "display only". It is 128000 and drives compaction.
 - Says deny "returns an error to the agent". A plain deny ends the run. The model sees the denial only on the next user message (`run.go:179,236`).
 - The denylist, its file locations, and the fact that it applies in yolo mode are not documented. The whitelist file format is not documented either, although CLAUDE.md points to it.
@@ -539,11 +548,11 @@ Sources:
 | M7 `/model` race and defaults | Open | A5 |
 | M8 resume keeps old model | Open | A6 |
 | M9 wizard cancel, nil client | Open | H5 |
-| M10 wizard overwrites settings | Open | L7 |
-| M11 cache tokens in compaction | Open | L9 |
-| M12 no HTTP timeouts | Open | L4 |
+| M10 wizard overwrites settings | Fixed | L7 |
+| M11 cache tokens in compaction | Fixed | L9 |
+| M12 no HTTP timeouts | Fixed | L4 |
 | M13 headless Ctrl+C on stdin | Open | A10 |
-| M14 429/408 not retried | Open | L4 |
+| M14 429/408 not retried | Fixed | L4 |
 | M15 Emit after Close | Fixed | D9 |
 | L1 tool arg keys | Open | R15 |
 | L2 render throttle default | Fixed | |
@@ -553,7 +562,7 @@ Sources:
 | L6 stale approval after cancel | Open, worse | A2 |
 | L7 byte-wise backspace | Open | R16 |
 | L8 Ctrl+E shadowed | Open | R18 |
-| L9 redacted_thinking | Open | L3 |
+| L9 redacted_thinking | Fixed | L3 |
 | L10 resume by StartedAt, full scan | Open | D1, D2 |
 | L11 headless final text | Open, worse | A10 |
 | L12 doc mismatches | Partly fixed | Section 9 |

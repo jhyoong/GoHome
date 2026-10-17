@@ -4,13 +4,13 @@
 
 Plan: `docs/reviews/2026-10-17-llm-wire-plan.md`. Audit: section 5 of `docs/reviews/2026-10-17-codebase-audit.md`. Branch: `fix/llm-wire-configs`.
 
-- [ ] L1: Add a `thinking` mode per model config (`off`, `adaptive`, `budget`). Unset means `budget` if `thinkingBudget > 0`, otherwise `adaptive`. Send `reasoningEffort` as `output_config.effort` on the Anthropic wire. In budget mode, check that the budget is at least 1024 and below `maxTokens`. Also closes FOLLOWUP #43.
-- [ ] L2: `Turn` builds content blocks in arrival order, and each thinking block keeps its own signature. Keep thinking blocks that have a signature but no text.
-- [ ] L3: Read, save and send back `redacted_thinking` blocks. The TUI and the OpenAI wire skip them.
-- [ ] L4: Retry 408, 409, 429 and 5xx. Use `Retry-After` (capped at 60 s) and add jitter. Cap error-body reads at 64 KiB. Add a response-header timeout and an idle-read watchdog, with no total `Client.Timeout`.
-- [ ] L5: Treat OpenAI `{"error":...}` chunks as errors.
-- [ ] L6: The skeleton has no `example` model and no `"string"` placeholders.
-- [ ] L7: Invalid JSON is a load error. A project file can set `autoCompact` and `cacheSudoPassword` to false. Wire `retryBackoffMs` into the clients. Remove `autoCompactTargetPct`.
-- [ ] L8: Read `delta.reasoning`. Send `content: ""` for a thinking-only assistant turn. Join user text blocks with `\n`.
-- [ ] L9: Compaction counts cache-read and cache-write tokens.
-- [ ] Docs: update the README config table and the CHANGELOG, mark L1-L9 in the audit, and update FOLLOWUP_TASKS (remove #43; add prompt caching, mid-stream overloaded retry, `max_completion_tokens`, tool-call id reuse, bare-CR SSE parsing).
+- [x] L1: Add a `thinking` mode per model config (`off`, `adaptive`, `budget`). Unset means `budget` if `thinkingBudget > 0`, otherwise `adaptive`. Send `reasoningEffort` as `output_config.effort` on the Anthropic wire. In budget mode, check that the budget is at least 1024 and below `maxTokens`. Also closes FOLLOWUP #43.
+- [x] L2: `Turn` builds content blocks in arrival order, and each thinking block keeps its own signature. Keep thinking blocks that have a signature but no text.
+- [x] L3: Read, save and send back `redacted_thinking` blocks. The TUI and the OpenAI wire skip them.
+- [x] L4: Retry 408, 409, 429 and 5xx. Use `Retry-After` (capped at 60 s) and add jitter. Cap error-body reads at 64 KiB. Add a response-header timeout and an idle-read watchdog, with no total `Client.Timeout`.
+- [x] L5: Treat OpenAI `{"error":...}` chunks as errors.
+- [x] L6: The skeleton has no `example` model and no `"string"` placeholders.
+- [x] L7: Invalid JSON is a load error. A project file can set `autoCompact` and `cacheSudoPassword` to false. Wire `retryBackoffMs` into the clients. Remove `autoCompactTargetPct`.
+- [x] L8: Read `delta.reasoning`. Send `content: ""` for a thinking-only assistant turn. Join user text blocks with `\n`.
+- [x] L9: Compaction counts cache-read and cache-write tokens.
+- [x] Docs: update the README config table and the CHANGELOG, mark L1-L9 in the audit, and update FOLLOWUP_TASKS (remove #43; add prompt caching, mid-stream overloaded retry, `max_completion_tokens`, tool-call id reuse, bare-CR SSE parsing).
