@@ -752,14 +752,16 @@ func extractToolArg(toolName, inputJSON string) string {
 			if raw, ok := m[key]; ok {
 				var val string
 				if err2 := json.Unmarshal(raw, &val); err2 == nil {
-					return val
+					// JSON escapes such as \u001b decode to real control
+					// characters, so the decoded value is sanitized.
+					return sanitizeText(val)
 				}
 			}
 		}
 	}
 
 	// Fallback for unknown tools or parse failures.
-	return shortSummary(inputJSON)
+	return sanitizeText(shortSummary(inputJSON))
 }
 
 // renderToolSummary builds the collapsed single-line representation of a tool entry

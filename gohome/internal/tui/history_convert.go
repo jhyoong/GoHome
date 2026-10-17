@@ -6,6 +6,8 @@ import (
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 )
 
+// historyToTimeline rebuilds timeline entries from saved session history.
+// Saved text is untrusted like live agent output, so it is sanitized.
 func historyToTimeline(msgs []common.Message) []TimelineEntry {
 	var entries []TimelineEntry
 	for _, msg := range msgs {
@@ -14,7 +16,7 @@ func historyToTimeline(msgs []common.Message) []TimelineEntry {
 			var parts []string
 			for _, b := range msg.Content {
 				if b.Kind == common.BlockText && b.Text != "" {
-					parts = append(parts, b.Text)
+					parts = append(parts, sanitizeText(b.Text))
 				}
 			}
 			if len(parts) > 0 {
@@ -30,20 +32,20 @@ func historyToTimeline(msgs []common.Message) []TimelineEntry {
 				case common.BlockThinking:
 					entries = append(entries, TimelineEntry{
 						Kind:     KindThinking,
-						Text:     b.Text,
+						Text:     sanitizeText(b.Text),
 						Expanded: false,
 					})
 				case common.BlockText:
 					entries = append(entries, TimelineEntry{
 						Kind: KindAssistant,
-						Text: b.Text,
+						Text: sanitizeText(b.Text),
 					})
 				case common.BlockToolUse:
 					entries = append(entries, TimelineEntry{
 						Kind:      KindTool,
 						ToolName:  b.ToolName,
 						ToolUseID: b.ToolUseID,
-						Text:      b.InputJSON,
+						Text:      sanitizeText(b.InputJSON),
 						Status:    "success",
 					})
 				}
@@ -67,7 +69,7 @@ func historyToTimeline(msgs []common.Message) []TimelineEntry {
 					if b.ToolUseID != "" && e.ToolUseID != "" && e.ToolUseID != b.ToolUseID {
 						continue
 					}
-					e.ToolResult = b.ResultText
+					e.ToolResult = sanitizeText(b.ResultText)
 					e.Status = status
 					merged = true
 					break
@@ -76,7 +78,7 @@ func historyToTimeline(msgs []common.Message) []TimelineEntry {
 					entries = append(entries, TimelineEntry{
 						Kind:       KindTool,
 						ToolUseID:  b.ToolUseID,
-						ToolResult: b.ResultText,
+						ToolResult: sanitizeText(b.ResultText),
 						Status:     status,
 					})
 				}

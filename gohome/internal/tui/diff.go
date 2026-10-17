@@ -17,6 +17,8 @@ type editDiffInput struct {
 
 // buildDiffPreview parses edit tool InputJSON, reads the target file, and
 // returns a pre-formatted unified diff string. Returns "" on any failure.
+// The diff shows file contents and model-supplied strings, so it is
+// sanitized before display.
 func buildDiffPreview(inputJSON string) string {
 	var inp editDiffInput
 	if err := json.Unmarshal([]byte(inputJSON), &inp); err != nil {
@@ -27,9 +29,9 @@ func buildDiffPreview(inputJSON string) string {
 	}
 	data, err := os.ReadFile(inp.Path)
 	if err != nil {
-		return generateEditDiff(inp.OldString, inp.OldString, inp.NewString)
+		return sanitizeText(generateEditDiff(inp.OldString, inp.OldString, inp.NewString))
 	}
-	return generateEditDiff(string(data), inp.OldString, inp.NewString)
+	return sanitizeText(generateEditDiff(string(data), inp.OldString, inp.NewString))
 }
 
 // generateEditDiff builds a unified diff with line numbers showing old_string

@@ -54,9 +54,13 @@ type approvalPrompt struct {
 
 // newApprovalPrompt builds an approvalPrompt from a request.
 func newApprovalPrompt(req guard.ApprovalRequest, reply chan guard.ApprovalDecision) *approvalPrompt {
+	// The suggested pattern comes from the command text, so control
+	// characters are removed before it is shown or edited.
+	pattern := sanitizeText(req.SuggestedPattern)
+
 	pi := textinput.New()
 	pi.Placeholder = "pattern"
-	pi.SetValue(req.SuggestedPattern)
+	pi.SetValue(pattern)
 
 	si := textinput.New()
 	si.Placeholder = "steer message"
@@ -68,7 +72,7 @@ func newApprovalPrompt(req guard.ApprovalRequest, reply chan guard.ApprovalDecis
 	ap := &approvalPrompt{
 		req:           req,
 		reply:         reply,
-		pattern:       req.SuggestedPattern,
+		pattern:       pattern,
 		patternInput:  pi,
 		steerInput:    si,
 		needsSudo:     req.NeedsSudoPassword,

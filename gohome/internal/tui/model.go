@@ -49,6 +49,10 @@ type TimelineEntry struct {
 	Shadow         bool   // true for shadow copies of child tool calls
 	ChildSessionID string // links subagent tool entry to child session
 
+	// streamTail holds an incomplete escape sequence or UTF-8 character from
+	// the end of the last streamed delta, until the next delta completes it.
+	streamTail string
+
 	cachedLines      []string
 	cachedWidth      int
 	cachedExpanded   bool

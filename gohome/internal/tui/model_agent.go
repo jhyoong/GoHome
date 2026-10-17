@@ -21,13 +21,11 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 		sv.InFlight = true
 		n := len(sv.Timeline)
 		if n > 0 && sv.Timeline[n-1].Kind == KindThinking {
-			sv.Timeline[n-1].Text += ev.ThinkingDelta
+			appendStreamText(&sv.Timeline[n-1], ev.ThinkingDelta)
 		} else {
-			sv.Timeline = append(sv.Timeline, TimelineEntry{
-				Kind:     KindThinking,
-				Text:     ev.ThinkingDelta,
-				Expanded: true,
-			})
+			entry := TimelineEntry{Kind: KindThinking, Expanded: true}
+			appendStreamText(&entry, ev.ThinkingDelta)
+			sv.Timeline = append(sv.Timeline, entry)
 		}
 
 	case agent.EventThinkingDone:
@@ -38,20 +36,20 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 		sv.InFlight = true
 		n := len(sv.Timeline)
 		if n > 0 && sv.Timeline[n-1].Kind == KindAssistant {
-			sv.Timeline[n-1].Text += ev.TextDelta
+			appendStreamText(&sv.Timeline[n-1], ev.TextDelta)
 		} else {
-			sv.Timeline = append(sv.Timeline, TimelineEntry{
-				Kind: KindAssistant,
-				Text: ev.TextDelta,
-			})
+			entry := TimelineEntry{Kind: KindAssistant}
+			appendStreamText(&entry, ev.TextDelta)
+			sv.Timeline = append(sv.Timeline, entry)
 		}
 
 	case agent.EventToolCallDone:
+		inputText := sanitizeText(ev.InputJSON)
 		entry := TimelineEntry{
 			Kind:      KindTool,
 			ToolName:  ev.ToolName,
 			ToolUseID: ev.ToolCallID,
-			Text:      ev.InputJSON,
+			Text:      inputText,
 			Status:    "pending",
 		}
 		if ev.ToolName == "edit" {
@@ -63,7 +61,7 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 				Kind:        KindTool,
 				ToolName:    ev.ToolName,
 				ToolUseID:   ev.ToolCallID,
-				Text:        ev.InputJSON,
+				Text:        inputText,
 				Status:      "pending",
 				DiffPreview: entry.DiffPreview,
 			}
@@ -75,7 +73,7 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 		isErr := false
 		toolUseID := ""
 		if ev.Result != nil {
-			content = ev.Result.Content
+			content = sanitizeText(ev.Result.Content)
 			isErr = ev.Result.IsError
 			toolUseID = ev.Result.ToolUseID
 		}
@@ -224,7 +222,7 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 	case agent.EventError:
 		errText := ""
 		if ev.Err != nil {
-			errText = ev.Err.Error()
+			errText = sanitizeText(ev.Err.Error())
 		}
 		sv.Timeline = append(sv.Timeline, TimelineEntry{
 			Kind: KindNotice,
@@ -296,6 +294,16 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 	}
 
 	return tea.Batch(dequeuedCmd, spinnerCmd)
+}
+
+// appendStreamText sanitizes a streamed delta and appends it to e.Text. An
+// incomplete sequence at the end of the delta is kept in e.streamTail and
+// joined with the next delta, so a sequence split across deltas is removed
+// as a whole. A tail left when the stream ends is never shown.
+func appendStreamText(e *TimelineEntry, delta string) {
+	clean, rest := sanitizeStream(e.streamTail + delta)
+	e.Text += clean
+	e.streamTail = rest
 }
 
 // insertShadowEntry inserts a shadow tool entry into the parent session's
