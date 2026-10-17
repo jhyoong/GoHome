@@ -31,7 +31,7 @@ func New(e config.ModelConfig, apiKey string) *Client {
 		apiKey:  apiKey,
 		model:   e.ModelName,
 		headers: e.Headers,
-		hc:      &http.Client{},
+		hc:      common.NewHTTPClient(common.DefaultResponseHeaderTimeout),
 		backoff: common.DefaultBackoff,
 	}
 }
