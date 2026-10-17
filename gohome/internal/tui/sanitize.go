@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"unicode/utf8"
 )
@@ -32,6 +33,33 @@ import (
 func sanitizeText(s string) string {
 	clean, _ := sanitize(s, true)
 	return clean
+}
+
+// showControls returns s with every control character written as visible
+// text instead of removed: C0 controls, DEL, C1 controls and invalid UTF-8
+// bytes become "\xNN" (ESC is "\x1b"). '\n' and '\t' are kept. found
+// reports whether anything was rewritten. The approval prompt uses it so
+// that nothing the shell will run is hidden from the user.
+func showControls(s string) (out string, found bool) {
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); {
+		r, size := utf8.DecodeRuneInString(s[i:])
+		switch {
+		case r == utf8.RuneError && size <= 1:
+			fmt.Fprintf(&b, "\\x%02x", s[i])
+			found = true
+		case r == '\n' || r == '\t':
+			b.WriteRune(r)
+		case r < 0x20 || (r >= 0x7f && r <= 0x9f):
+			fmt.Fprintf(&b, "\\x%02x", r)
+			found = true
+		default:
+			b.WriteString(s[i : i+size])
+		}
+		i += size
+	}
+	return b.String(), found
 }
 
 // sanitizeStream sanitizes one chunk of streamed text. An incomplete

@@ -165,8 +165,17 @@ func (m *Model) scrollApprovalPage(msg tea.KeyMsg) bool {
 
 // allowApproval resolves an Allow decision. Sudo commands first open the
 // password stage; the decision is sent when the password is submitted.
+// Allow always on a shell call with an invalid or empty pattern shows the
+// error and keeps the prompt open.
 func (m *Model) allowApproval(outcome guard.ApprovalOutcome) tea.Cmd {
 	ap := m.activeApproval
+	if outcome == guard.AllowAlways && ap.req.Tool == "shell" {
+		if _, err := guard.NormalizePattern(ap.pattern); err != nil {
+			ap.patternErr = err.Error()
+			return nil
+		}
+	}
+	ap.patternErr = ""
 	if !ap.needsSudo {
 		return m.resolveApproval(m.buildApprovalDecision(outcome))
 	}
