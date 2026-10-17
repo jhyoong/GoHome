@@ -28,6 +28,10 @@ All work goes in one PR, with one commit per phase. Each fix starts with a faili
 5. **Sudo in yolo mode** asks for the password only.
 6. **One PR** covers all items.
 
+## Changes during implementation
+
+- **Prompt history uses Ctrl+P / Ctrl+N instead of Up.** Up on an empty editor is already timeline navigation, so it cannot also recall history.
+
 ## Phase 1: Cancel stops work (A2, FOLLOWUP #36)
 
 ### 1. Check ctx between tool calls

@@ -4,12 +4,12 @@
 
 Plan: `docs/reviews/2026-10-17-agent-loop-plan.md`. Audit: section 4 of `docs/reviews/2026-10-17-codebase-audit.md`. A1 and A3 are already fixed.
 
-- [ ] A2: Check ctx between tool calls and after compaction. No approval prompt after cancel. Deny and clear active and queued approvals on cancel.
-- [ ] A4: Children get no steer channel and their views are read-only. Cancel targets the main run. Only the main session's `RunDone` stops the spinner and drains the queue. Count active runs so a late `RunDone` is ignored. Refuse `/new` and `/resume` during a run.
-- [ ] A5: Model settings move into `SessionState` behind the lock. One helper applies a model config with defaults.
-- [ ] A6: Resumed sessions use the current model config.
-- [ ] A7: Esc closes the file popup first. Cancelling a run needs a double Esc. Only known commands are slash commands. Arrow Down resumes auto-scroll. Wire prompt history. `/cancel` when idle shows "Nothing to cancel".
-- [ ] A8: Height cap and PgUp/PgDn scroll for the expanded approval prompt.
-- [ ] A9: Locale-independent wrong-password check, no sudo dialog on Windows, sudo in yolo asks for the password, more sudo forms, trailing `\` fix.
-- [ ] A10: Headless prints only the final main-session reply, Ctrl+C works while reading stdin, long stdin lines work.
-- [ ] Docs: mark A1-A10 in the audit and update FOLLOWUP_TASKS.
+- [x] A2: Check ctx between tool calls and after compaction. No approval prompt after cancel. Deny and clear active and queued approvals on cancel.
+- [x] A4: Children get no steer channel and their views are read-only. Cancel targets the main run. Only the main session's `RunDone` stops the spinner and drains the queue. Count active runs so a late `RunDone` is ignored. Refuse `/new` and `/resume` during a run.
+- [x] A5: Model settings move into `SessionState` behind the lock. One helper applies a model config with defaults.
+- [x] A6: Resumed sessions use the current model config.
+- [x] A7: Esc closes the file popup first. Cancelling a run needs a double Esc. Only known commands are slash commands. Arrow Down resumes auto-scroll. Wire prompt history. `/cancel` when idle shows "Nothing to cancel".
+- [x] A8: Height cap and PgUp/PgDn scroll for the expanded approval prompt.
+- [x] A9: Locale-independent wrong-password check, no sudo dialog on Windows, sudo in yolo asks for the password, more sudo forms, trailing `\` fix.
+- [x] A10: Headless prints only the final main-session reply, Ctrl+C works while reading stdin, long stdin lines work.
+- [x] Docs: mark A1-A10 in the audit and update FOLLOWUP_TASKS.
