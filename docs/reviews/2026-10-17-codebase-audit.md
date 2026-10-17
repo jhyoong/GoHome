@@ -237,13 +237,14 @@ Section 8 records the status of their items.
 - **Evidence:**
   - `Run err=context canceled; write_like executed after cancel: true`
   - Answering a stale prompt gives `spinner=true inFlight=false`.
-- **Status:** Prior L6, worse than first reported.
-- **Status:** Fixed on branch `fix/agent-loop-a2-a10`. `Run` checks the context between tool calls and after compaction, no approval prompt is sent after cancel, and cancel denies and clears active and queued approvals.
+- **Status:** Prior L6, worse than first reported. Fixed on branch `fix/agent-loop-a2-a10`. `Run` checks the context between tool calls and after compaction, no approval prompt is sent after cancel, and cancel denies and clears active and queued approvals.
+
 ### A3. Low - A cancelled turn is sometimes treated as success
 - **Location:** `agent/turn.go:51-60`
 - **Problem:** the stream channel closes on cancel without an error. If `Turn` is busy when the cancel lands, the close wins. Partial text is then persisted and `Run` returns nil.
 - **Verifier correction:** this happened 0/40 times with a fast `Emit` and 7/20 with a 300 ms `Emit`. It is not about 50%.
 - **Status:** Fixed by D5. `Turn` returns `ctx.Err()` when the stream closes after a cancel.
+
 ### A4. Medium - Steering, queue and session-swap routing
 - **Steer taken by the subagent:** the child shares the parent's `SteerCh` (`agent/spawn.go:83`). A steer typed in the parent view goes into the child's history, while the TUI shows it in the parent.
 - **Queue drained into a child:** `tui/model_agent.go:175-187` drains the global queue on the focused child's `EventRunDone`. The message is shown in the child timeline but runs as the next main turn.
@@ -257,17 +258,18 @@ Section 8 records the status of their items.
 - **Spinner stopped early:** a child's `RunDone` stops the global spinner while the parent is still running (`model_agent.go:259-262`).
 - **Late `RunDone`:** a `RunDone` from a cancelled run clears `InFlight` for the next run. Events carry no run ID.
 - **Status:** Fixed on branch `fix/agent-loop-a2-a10`. Children get no steer channel. Cancel targets the main run. Only the main session's `RunDone` stops the spinner and drains the queue. Active runs are counted, so a late `RunDone` is ignored. `/new` and `/resume` are refused during a run.
+
 ### A5. Medium - Data races on `/model`
 - **Location:** `agent/turn.go:27` reads `sess.Model` while `SessionState.SetModel` (`state.go:118`) writes it. Confirmed with `-race`.
 - **Also:** `main.go:711-713,776-778` write `a.MaxTokens`, `ThinkingBudget` and `ReasoningEffort` with no lock.
 - **Missing defaults:** these writes skip the startup defaults. After a switch, a config without `maxTokens` gets 4096 (`turn.go:22`) instead of 16384, and thinking turns off.
-- **Status:** Prior M7, still open.
-- **Status:** Fixed on branch `fix/agent-loop-a2-a10`. Model settings live in `SessionState` behind the lock, and one helper applies a model config with defaults.
+- **Status:** Prior M7. Fixed on branch `fix/agent-loop-a2-a10`. Model settings live in `SessionState` behind the lock, and one helper applies a model config with defaults.
+
 ### A6. Medium - Resume keeps the old model name
 - `--resume` and `/resume` keep `sess.Model` from the JSONL while using the current client.
 - `turn.go:27` sends the old name to the new endpoint.
-- **Status:** Prior M8, still open.
-- **Status:** Fixed on branch `fix/agent-loop-a2-a10`. A resumed session uses the current model config. The JSONL `SessionStart` record keeps the old name (FOLLOWUP_TASKS).
+- **Status:** Prior M8. Fixed on branch `fix/agent-loop-a2-a10`. A resumed session uses the current model config. The JSONL `SessionStart` record keeps the old name (FOLLOWUP_TASKS).
+
 ### A7. Medium - Input handling
 - **Esc in the file popup cancels the run:** Esc in the `@` file-search popup cancels the whole run while the spinner is active (`model_keys.go:63-66` runs before `:196-199`).
 - **Text starting with `/` is lost:** any input starting with `/` is treated as a slash command (`model_keys.go:122-124`). `/usr/bin/python3 crashes, why?` becomes "unknown command" and the editor is cleared.
@@ -277,18 +279,21 @@ Section 8 records the status of their items.
   - Up on the first row of a draft jumps the cursor to the end (`editor.go:456-463`).
 - **`/cancel` when idle:** it still adds "Cancelled." (`model_slash.go:69-70`).
 - **Status:** Fixed on branch `fix/agent-loop-a2-a10`. Esc closes the file popup first, and cancelling a run needs a double Esc. Only known commands are slash commands. Arrow Down resumes auto-scroll. Prompt history is wired to Ctrl+P / Ctrl+N. `/cancel` when idle shows "Nothing to cancel".
+
 ### A8. Medium - The long approval prompt is still not fully viewable
 - **Location:** `approval.go:138-139`
 - **Problem:** after `v` expands the prompt, every line is drawn with no height cap or scroll offset. Bubble Tea keeps only the last `height` lines of the frame.
 - **Evidence:** a 42-line command at 80x20 gave `LINE_00 visible=false`. PgUp only moves the chat area.
 - **Status:** Fixed on branch `fix/agent-loop-a2-a10`. The expanded prompt has a height cap and PgUp/PgDn scroll.
+
 ### A9. Low - Sudo password handling edge cases
 - **Locale:** a wrong cached password is only detected by English sudo messages (`model_approval.go:189-192`). `tools.SudoPreauthFailedMarker` (`tools/shell.go:64`) is not used.
 - **Windows:** the sudo dialog appears, but the password is ignored (`guard/check.go:57` vs `tools/shell.go:125`).
 - **Yolo mode:** returns Allow before any sudo handling (`check.go:52-54`), so sudo fails with no tty.
 - **Missed forms:** sudo detection misses `FOO=1 sudo`, `command sudo`, `exec sudo`, `nice sudo`, `/usr/bin/sudo` and `\sudo`. It wrongly matches `echo 'a; sudo b'` (`guard/sudo.go:9-12`). This is a usability issue, not a guard bypass.
 - **Line continuation:** a command ending in `\` swallows the wrapper's `exit $?` line (`tools/shell.go:75-76`).
-- **Status:** Fixed on branch `fix/agent-loop-a2-a10`. The wrong-password check uses the marker instead of English text. No sudo dialog on Windows. Sudo in yolo asks for the password. More sudo forms are detected, and a trailing `\` no longer swallows `exit $?`. Left open: the quoted-string false positive, and no height cap on the password dialog's expanded view (FOLLOWUP_TASKS).
+- **Status:** Fixed on branch `fix/agent-loop-a2-a10`. The wrong-password check looks for both the marker and sudo's English text. No sudo dialog on Windows. Sudo in yolo asks for the password. More sudo forms are detected, and a trailing `\` no longer swallows `exit $?`. Left open: the quoted-string false positive, and no height cap on the password dialog's expanded view (FOLLOWUP_TASKS).
+
 ### A10. Medium - Headless mode
 - **Subagent text in stdout:** `headless/frontend.go:67,80-82` ignores the session ID, so subagent text and all intermediate turns end up in stdout. (Prior L11, now worse.)
 - **Ctrl+C ignored:** `--prompt -` ignores Ctrl+C while reading stdin (`frontend.go:85-86`). (Prior M13.)

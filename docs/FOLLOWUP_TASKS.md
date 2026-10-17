@@ -81,7 +81,7 @@ Minor items found while reviewing the D1-D9 fixes (plan: `docs/reviews/2026-10-1
 
 ### Agent loop and TUI (found while fixing A1-A10)
 40. **A failed run leaves the user message unanswered.** The message stays in history with no reply (A1 leftover). Decide whether to drop it or mark it.
-41. **Sudo detection matches inside quoted strings.** `echo 'a; sudo b'` is treated as sudo. Fixing this needs a shell parser (`guard/sudo.go`).
+41. **Sudo detection matches inside quoted strings.** `echo 'a; sudo b'` is treated as sudo. `VAR=/path/sudo cmd` (for example `SUDO=/usr/bin/sudo make install`) is also detected as sudo. The worst case is an extra password prompt. Fixing this needs a shell parser (`guard/sudo.go`).
 42. **The sudo password dialog's expanded command (Tab) has no height cap or scroll.** The approval menu has both (A8).
 43. **A config cannot turn thinking off.** An unset or `<= 0` thinking budget falls back to the default.
 44. **A resumed session's JSONL keeps the old model name.** The `SessionStart` record is not updated, although requests use the current model.
