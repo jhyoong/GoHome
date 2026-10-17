@@ -66,8 +66,8 @@ func EnsureConfigFile(path string) error {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(path, SkeletonJSON(), 0o644)
+	return os.WriteFile(path, SkeletonJSON(), 0o600)
 }

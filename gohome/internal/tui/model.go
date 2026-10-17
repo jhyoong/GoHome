@@ -49,6 +49,10 @@ type TimelineEntry struct {
 	Shadow         bool   // true for shadow copies of child tool calls
 	ChildSessionID string // links subagent tool entry to child session
 
+	// streamTail holds an incomplete escape sequence or UTF-8 character from
+	// the end of the last streamed delta, until the next delta completes it.
+	streamTail string
+
 	cachedLines      []string
 	cachedWidth      int
 	cachedExpanded   bool
@@ -289,7 +293,8 @@ func (m *Model) ShowStartupWizard(onSave func(path string)) {
 	m.activeModal = NewConfigWizard(
 		func() { m.activeModal = nil },
 		func(path string) {
-			m.activeModal = nil
+			// Keep the modal open: the wizard shows the denylist offer next
+			// and closes itself through onCancel.
 			if onSave != nil {
 				onSave(path)
 			}
@@ -495,7 +500,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.activeModal = NewConfigWizard(
 					func() { m.activeModal = nil },
 					func(path string) {
-						m.activeModal = nil
+						// Modal stays open for the denylist offer.
 						m.statusMsg = "Config saved. Restart gohome to apply changes."
 					},
 				)

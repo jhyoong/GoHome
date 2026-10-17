@@ -3,11 +3,15 @@ package tui
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
+	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/jhyoong/GoHome/gohome/internal/config"
+	"github.com/jhyoong/GoHome/gohome/internal/guard"
 )
 
 func TestConfigWizard_InitialStep(t *testing.T) {
@@ -232,5 +236,180 @@ func TestConfigWizard_CancelOnConfirmStep(t *testing.T) {
 	w.HandleInput(tea.KeyMsg{Type: tea.KeyEnter})
 	if !cancelled {
 		t.Fatal("expected Cancel on confirm step to cancel wizard")
+	}
+}
+
+func wizardAtConfirm(outPath string) *ConfigWizard {
+	w := NewConfigWizard(func() {}, func(string) {})
+	w.outputPath = outPath
+	w.wire, w.baseURL, w.keySource, w.keyValue = "anthropic", "http://x", "literal", "secret"
+	w.modelName, w.configName = "m", "c"
+	w.step = wizardStepConfirm
+	w.buildStep()
+	return w
+}
+
+func TestConfigWizard_SaveWritesOwnerOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix permissions")
+	}
+	outPath := filepath.Join(t.TempDir(), "newdir", "settings.json")
+	w := wizardAtConfirm(outPath)
+	w.HandleInput(tea.KeyMsg{Type: tea.KeyEnter}) // Save
+	if w.step != wizardStepDenylistOffer {
+		t.Fatalf("step = %d, want %d", w.step, wizardStepDenylistOffer)
+	}
+	w.HandleInput(tea.KeyMsg{Type: tea.KeyEnter}) // denylist yes
+
+	for path, want := range map[string]os.FileMode{
+		outPath: 0o600,
+		filepath.Join(filepath.Dir(outPath), "denylist.json"): 0o600,
+		filepath.Dir(outPath): 0o700,
+	} {
+		fi, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("stat %s: %v", path, err)
+		}
+		if got := fi.Mode().Perm(); got != want {
+			t.Errorf("%s mode = %o, want %o", path, got, want)
+		}
+	}
+}
+
+func TestConfigWizard_SaveKeepsExistingFileMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix permissions")
+	}
+	outPath := filepath.Join(t.TempDir(), "settings.json")
+	if err := os.WriteFile(outPath, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	w := wizardAtConfirm(outPath)
+	w.HandleInput(tea.KeyMsg{Type: tea.KeyEnter})
+	fi, err := os.Stat(outPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fi.Mode().Perm(); got != 0o644 {
+		t.Errorf("mode = %o, want 644 (unchanged)", got)
+	}
+}
+
+func TestConfigWizard_SaveFailureStaysAndShowsError(t *testing.T) {
+	dir := t.TempDir()
+	blocker := filepath.Join(dir, "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	saved := false
+	w := NewConfigWizard(func() {}, func(string) { saved = true })
+	w.outputPath = filepath.Join(blocker, "settings.json") // parent is a file
+	w.wire, w.baseURL, w.keySource, w.keyValue = "anthropic", "http://x", "env", "K"
+	w.modelName, w.configName = "m", "c"
+	w.step = wizardStepConfirm
+	w.buildStep()
+
+	w.HandleInput(tea.KeyMsg{Type: tea.KeyEnter}) // Save
+	if w.step != wizardStepConfirm {
+		t.Fatalf("step = %d, want to stay on %d", w.step, wizardStepConfirm)
+	}
+	if saved {
+		t.Error("onSave called despite failed save")
+	}
+	joined := StripAnsi(strings.Join(w.Render(80), "\n"))
+	if !strings.Contains(joined, "Save failed") {
+		t.Errorf("render missing error:\n%s", joined)
+	}
+}
+
+func TestConfigWizard_DenylistFailureStaysAndShowsError(t *testing.T) {
+	dir := t.TempDir()
+	blocker := filepath.Join(dir, "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	w := NewConfigWizard(func() {}, func(string) {})
+	w.outputPath = filepath.Join(blocker, "settings.json")
+	w.step = wizardStepDenylistOffer
+	w.buildStep()
+
+	w.HandleInput(tea.KeyMsg{Type: tea.KeyEnter}) // yes
+	if w.step != wizardStepDenylistOffer {
+		t.Fatalf("step = %d, want to stay on %d", w.step, wizardStepDenylistOffer)
+	}
+	joined := StripAnsi(strings.Join(w.Render(80), "\n"))
+	if !strings.Contains(joined, "Denylist setup failed") {
+		t.Errorf("render missing error:\n%s", joined)
+	}
+}
+
+func TestConfigWizard_DenylistUsesBuiltInPatterns(t *testing.T) {
+	outPath := filepath.Join(t.TempDir(), "settings.json")
+	w := wizardAtConfirm(outPath)
+	w.HandleInput(tea.KeyMsg{Type: tea.KeyEnter}) // Save
+	w.HandleInput(tea.KeyMsg{Type: tea.KeyEnter}) // denylist yes
+
+	data, err := os.ReadFile(filepath.Join(filepath.Dir(outPath), "denylist.json"))
+	if err != nil {
+		t.Fatalf("read denylist: %v", err)
+	}
+	var df guard.DenylistFile
+	if err := json.Unmarshal(data, &df); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if !reflect.DeepEqual(df.Shell, guard.DefaultDenyPatterns) {
+		t.Errorf("wizard denylist = %v, want built-in %v", df.Shell, guard.DefaultDenyPatterns)
+	}
+}
+
+func TestStartupWizard_ShowsDenylistOfferAfterSave(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix permissions")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	m := New(NewFrontend(), "sess")
+	var savedPath string
+	m.ShowStartupWizard(func(p string) { savedPath = p })
+	w, ok := m.activeModal.(*ConfigWizard)
+	if !ok {
+		t.Fatalf("activeModal = %T, want *ConfigWizard", m.activeModal)
+	}
+	w.wire, w.baseURL, w.keySource, w.keyValue = "anthropic", "http://x", "literal", "secret"
+	w.modelName, w.configName = "m", "c"
+	w.step = wizardStepConfirm
+	w.buildStep()
+
+	enter := tea.KeyMsg{Type: tea.KeyEnter}
+	m.Update(enter) // Save
+	if savedPath == "" {
+		t.Fatal("onSave was not called")
+	}
+	if m.activeModal != w {
+		t.Fatal("modal closed after save; denylist offer never shown")
+	}
+	if w.step != wizardStepDenylistOffer {
+		t.Fatalf("step = %d, want denylist offer", w.step)
+	}
+	if !strings.Contains(strings.Join(w.Render(80), "\n"), "denylist") {
+		t.Error("render does not show the denylist offer")
+	}
+
+	m.Update(enter) // Yes
+	data, err := os.ReadFile(filepath.Join(home, ".gohome", "denylist.json"))
+	if err != nil {
+		t.Fatalf("denylist.json not written: %v", err)
+	}
+	if len(data) == 0 {
+		t.Error("denylist.json is empty")
+	}
+	fi, _ := os.Stat(filepath.Join(home, ".gohome", "denylist.json"))
+	if got := fi.Mode().Perm(); got != 0o600 {
+		t.Errorf("denylist.json mode = %o, want 600", got)
+	}
+	if m.activeModal != nil {
+		t.Error("modal should close after the denylist step")
 	}
 }

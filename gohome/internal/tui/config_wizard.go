@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,6 +10,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/jhyoong/GoHome/gohome/internal/config"
+	"github.com/jhyoong/GoHome/gohome/internal/guard"
 )
 
 type wizardStep int
@@ -44,6 +46,7 @@ type ConfigWizard struct {
 	selectList *SelectListComponent
 	textBuf    string
 	prompt     string
+	errMsg     string // shown under the prompt when a write fails
 }
 
 // NewConfigWizard creates a wizard starting at the wire-format selection step.
@@ -63,6 +66,7 @@ func NewConfigWizard(onCancel func(), onSave func(path string)) *ConfigWizard {
 func (w *ConfigWizard) buildStep() {
 	w.selectList = nil
 	w.textBuf = ""
+	w.errMsg = ""
 
 	switch w.step {
 	case wizardStepWire:
@@ -137,7 +141,10 @@ func (w *ConfigWizard) buildStep() {
 		}
 		w.selectList = NewSelectList(items, func(item SelectItem) {
 			if item.Value == "yes" {
-				w.scaffoldDenylist()
+				if err := w.scaffoldDenylist(); err != nil {
+					w.errMsg = "Denylist setup failed: " + err.Error()
+					return
+				}
 			}
 			w.step = wizardStepDenylistDone
 			w.buildStep()
@@ -160,7 +167,10 @@ func (w *ConfigWizard) rebuildConfirmStep() {
 	}
 	w.selectList = NewSelectList(items, func(item SelectItem) {
 		if item.Value == "save" {
-			w.save()
+			if err := w.save(); err != nil {
+				w.errMsg = "Save failed: " + err.Error()
+				return
+			}
 			w.step = wizardStepDenylistOffer
 			w.buildStep()
 		} else {
@@ -193,7 +203,7 @@ func (w *ConfigWizard) summaryText() string {
 	return sb.String()
 }
 
-func (w *ConfigWizard) save() {
+func (w *ConfigWizard) save() error {
 	mc := config.ModelConfig{
 		Wire:      config.Wire(w.wire),
 		BaseURL:   w.baseURL,
@@ -213,34 +223,39 @@ func (w *ConfigWizard) save() {
 
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
-		return
+		return err
 	}
 
-	if err := os.MkdirAll(filepath.Dir(w.outputPath), 0o755); err != nil {
-		return
+	// Owner-only: the file may hold a literal API key. Perms apply only to
+	// newly created files and folders; existing ones keep their mode.
+	if err := os.MkdirAll(filepath.Dir(w.outputPath), 0o700); err != nil {
+		return err
 	}
-	if err := os.WriteFile(w.outputPath, data, 0o644); err != nil {
-		return
+	if err := os.WriteFile(w.outputPath, data, 0o600); err != nil {
+		return err
 	}
 
 	if w.onSave != nil {
 		w.onSave(w.outputPath)
 	}
+	return nil
 }
 
-func (w *ConfigWizard) scaffoldDenylist() {
+func (w *ConfigWizard) scaffoldDenylist() error {
 	path := filepath.Join(filepath.Dir(w.outputPath), "denylist.json")
-	content := []byte(`{
-  "shell": [
-    "rm -rf /",
-    "mkfs",
-    ":(){ :|:& };:",
-    "regex:>\\s*/dev/sd[a-z]"
-  ]
-}
-`)
-	_ = os.MkdirAll(filepath.Dir(path), 0o755)
-	_ = os.WriteFile(path, content, 0o644)
+	// Encode without HTML escaping so "&" stays readable in the file.
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(guard.DenylistFile{Shell: guard.DefaultDenyPatterns}); err != nil {
+		return err
+	}
+	content := buf.Bytes()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(path, content, 0o600)
 }
 
 // Render returns the wizard UI as lines of text.
@@ -250,6 +265,9 @@ func (w *ConfigWizard) Render(width int) []string {
 	lines = append(lines, fmt.Sprintf("Setup Wizard (step %d/10)", stepNum))
 	lines = append(lines, "")
 	lines = append(lines, w.prompt)
+	if w.errMsg != "" {
+		lines = append(lines, w.errMsg)
+	}
 
 	if w.selectList != nil {
 		lines = append(lines, w.selectList.Render(width)...)

@@ -506,3 +506,25 @@ func TestCheck_WhitelistedSudo_NoSuggestedPattern(t *testing.T) {
 		t.Errorf("SuggestedPattern: got %q, want empty", fe.lastReq.SuggestedPattern)
 	}
 }
+
+// A whitelisted prefix chained to sudo must get the full approval prompt, not
+// the password-only one.
+func TestCheck_ChainedSudoAfterWhitelisted_FullPrompt(t *testing.T) {
+	fe := &fakeFrontend{response: ApprovalDecision{Outcome: Deny}}
+	g := newTestGuard(whitelistWith(t, nil, []string{"^git status"}), fe)
+
+	dec, err := g.Check(context.Background(), "sess1", "shell",
+		bashCmd("git status; sudo chown nobody /etc/passwd"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !fe.called {
+		t.Fatal("chained command must reach the approval prompt")
+	}
+	if fe.lastReq.PasswordOnly {
+		t.Error("chained command must not get the password-only prompt")
+	}
+	if dec.Allow {
+		t.Errorf("decision: got %+v, want deny", dec)
+	}
+}

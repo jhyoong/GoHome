@@ -796,3 +796,22 @@ func TestSudoPasswordOnly_QueuedUsesCacheFilledWhileWaiting(t *testing.T) {
 		t.Errorf("notice: got %q", got)
 	}
 }
+
+func TestSudoPasswordOnly_TabExpandsFullCommand(t *testing.T) {
+	m := newSudoTestModel()
+	cmd := "git status;\nsudo chown nobody /etc/passwd\necho one\necho two\necho three"
+	sendPasswordOnlyReq(m, "main", cmd)
+
+	collapsed := renderSudoDialog(m.activeApproval, 80, "main")
+	if strings.Contains(collapsed, "echo three") {
+		t.Fatal("collapsed dialog should cap the command")
+	}
+	pressKey(m, tea.KeyTab)
+	expanded := renderSudoDialog(m.activeApproval, 80, "main")
+	if !strings.Contains(expanded, "echo three") {
+		t.Errorf("expanded dialog should show every line:\n%s", expanded)
+	}
+	if m.activeApproval.passwordInput.Value() != "" {
+		t.Error("expand key must not type into the password field")
+	}
+}

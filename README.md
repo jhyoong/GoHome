@@ -286,6 +286,10 @@ Before every tool call, `gohome` checks the whitelist. If no rule covers the cal
 
 `/yolo` skips all prompts without writing whitelist entries.
 
+### Denylist
+
+The shell denylist blocks dangerous commands (for example `rm -rf /` and `mkfs`) even in yolo mode. It is a safety net, not a sandbox: it catches common mistakes, not every way to write a harmful command. It only checks the shell tool. Runs of spaces and tabs are squeezed to one space before matching. Entries are plain substrings, or regexes with a `regex:` prefix. Existing `denylist.json` files keep working as written; only new setups get the current built-in patterns.
+
 ### Sudo commands
 
 When a shell command uses `sudo`, the approval menu works as normal. After you choose **Allow once** or **Allow always**, a password dialog opens. Every key goes to the password field. Enter runs the command, Esc goes back to the menu, and Ctrl+C denies. While an approval is open, the mouse wheel scrolls the chat; hold Shift to select text.

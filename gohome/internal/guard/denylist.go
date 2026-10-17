@@ -15,10 +15,25 @@ type DenylistFile struct {
 
 // Denylist is the compiled, ready-to-match representation of denied patterns.
 type Denylist struct {
-	substring []string
+	substring []substringEntry
 	regex     []*regexp.Regexp
 	// sources maps each compiled pattern back to its original string for error messages.
 	sources map[int]string
+}
+
+// substringEntry is a plain denylist entry. squeezed is the form used for
+// matching; original is reported back to the user.
+type substringEntry struct {
+	original string
+	squeezed string
+}
+
+// spaceRun matches runs of spaces and tabs.
+var spaceRun = regexp.MustCompile(`[ \t]+`)
+
+// squeeze collapses runs of spaces and tabs into a single space.
+func squeeze(s string) string {
+	return spaceRun.ReplaceAllString(s, " ")
 }
 
 // CompileDenylist builds a Denylist from a DenylistFile. Invalid regex patterns
@@ -42,7 +57,7 @@ func CompileDenylist(file DenylistFile) (*Denylist, error) {
 		} else {
 			idx := len(dl.substring) + len(dl.regex)
 			dl.sources[idx] = entry
-			dl.substring = append(dl.substring, entry)
+			dl.substring = append(dl.substring, substringEntry{original: entry, squeezed: squeeze(entry)})
 		}
 	}
 
@@ -64,14 +79,17 @@ func (d *Denylist) Denies(tool string, inputJSON []byte) (bool, string) {
 		return false, ""
 	}
 
+	// Squeeze spaces and tabs so "rm  -rf /" matches like "rm -rf /".
+	cmd := squeeze(args.Command)
+
 	for _, sub := range d.substring {
-		if strings.Contains(args.Command, sub) {
-			return true, sub
+		if strings.Contains(cmd, sub.squeezed) {
+			return true, sub.original
 		}
 	}
 
 	for _, re := range d.regex {
-		if re.MatchString(args.Command) {
+		if re.MatchString(cmd) {
 			return true, fmt.Sprintf("regex:%s", re.String())
 		}
 	}

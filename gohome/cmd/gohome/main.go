@@ -57,14 +57,14 @@ func gitBranch(dir string) string {
 // caller can close it on shutdown. If GOHOME_DEBUG=1 the level is Debug.
 func setupLogging(home string) (*os.File, error) {
 	logDir := filepath.Join(home, "logs")
-	if err := os.MkdirAll(logDir, 0o755); err != nil {
+	if err := os.MkdirAll(logDir, 0o700); err != nil {
 		return nil, fmt.Errorf("setupLogging: mkdir %s: %w", logDir, err)
 	}
 
 	today := time.Now().UTC().Format("2006-01-02")
 	logPath := filepath.Join(logDir, today+".log")
 
-	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("setupLogging: open %s: %w", logPath, err)
 	}

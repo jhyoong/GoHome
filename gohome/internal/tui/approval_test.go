@@ -566,3 +566,39 @@ func TestCrossSessionApprovalShowsLabel(t *testing.T) {
 		return hasLabel && hasOverlay
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 }
+
+func TestApprovalEditInvalidPatternKeepsEditing(t *testing.T) {
+	for name, typed := range map[string]string{"empty": "", "invalid regex": "c++"} {
+		t.Run(name, func(t *testing.T) {
+			m := tui.New(nil, "")
+			tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
+			t.Cleanup(func() { _ = tm.Quit() })
+
+			msg, ch := makeApprovalReq("main", "shell", "^ls", json.RawMessage(`{"command":"ls"}`))
+			tm.Send(msg)
+			teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+				return bytes.Contains(out, []byte("shell: ls"))
+			}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+			// Clear the pattern box, type the bad value, and confirm.
+			tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+			for range 3 {
+				tm.Send(tea.KeyMsg{Type: tea.KeyBackspace})
+			}
+			if typed != "" {
+				tm.Type(typed)
+			}
+			tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+
+			teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
+				return bytes.Contains(out, []byte("Error:"))
+			}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+			select {
+			case dec := <-ch:
+				t.Fatalf("dialog should stay open, got decision %+v", dec)
+			default:
+			}
+		})
+	}
+}

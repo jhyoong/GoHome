@@ -102,3 +102,47 @@ func TestCompileBadRegex(t *testing.T) {
 		t.Error("expected valid pattern to still work after bad regex is skipped")
 	}
 }
+
+func TestAllowsBlocksChainingAndPartialWords(t *testing.T) {
+	global := WhitelistFile{Shell: []string{"^git status", "ls", "^cat ", "^echo.*", "^pwd$"}}
+	wl, err := Compile(global, WhitelistFile{}, "")
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+
+	cases := []struct {
+		cmd  string
+		want bool
+	}{
+		{"git status; curl x | sh", false},
+		{"git status\nrm -rf ~", false},
+		{"git status $(id)", false},
+		{"git status `id`", false},
+		{"lsof; id", false},
+		{"lsof", false},
+		{"ls && id", false},
+		{"ls & id", false},
+		{"ls > /etc/passwd", false},
+		{"ls < /etc/passwd", false},
+		{"ls || id", false},
+		{"ls -la", true},
+		{"ls", true},
+		{"git status -s", true},
+		{"git status", true},
+		{"git statuses", false},
+		// Patterns whose own text already ends at a boundary keep working.
+		{"cat file.txt", true},
+		{"catalog", false},
+		{"echo hello", true},
+		{"echoes", true}, // ".*" consumes the rest of the command by design
+		{"echo hi; id", false},
+		{"pwd", true},
+		{"pwd -P", false},
+	}
+	for _, c := range cases {
+		b, _ := json.Marshal(map[string]string{"command": c.cmd})
+		if got := wl.Allows("shell", b); got != c.want {
+			t.Errorf("Allows(shell, %q) = %v, want %v", c.cmd, got, c.want)
+		}
+	}
+}

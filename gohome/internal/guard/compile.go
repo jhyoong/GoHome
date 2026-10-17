@@ -41,11 +41,7 @@ func Compile(global, project WhitelistFile, projectPath string) (*Whitelist, err
 	allPatterns = append(allPatterns, project.Shell...)
 
 	for _, pat := range allPatterns {
-		anchored := pat
-		if !strings.HasPrefix(anchored, "^") {
-			anchored = "^" + anchored
-		}
-		re, err := regexp.Compile(anchored)
+		re, err := compileShellPattern(pat)
 		if err != nil {
 			slog.Warn("guard: skipping invalid shell pattern", "pattern", pat, "error", err)
 			continue
@@ -71,8 +67,11 @@ func (w *Whitelist) Allows(tool string, inputJSON []byte) bool {
 		w.mu.Lock()
 		patterns := w.shell
 		w.mu.Unlock()
+		if hasShellOperator(args.Command) {
+			return false
+		}
 		for _, re := range patterns {
-			if re.MatchString(args.Command) {
+			if matchesWholeWord(re, args.Command) {
 				return true
 			}
 		}
@@ -83,4 +82,22 @@ func (w *Whitelist) Allows(tool string, inputJSON []byte) bool {
 	_, ok := w.tools[tool]
 	w.mu.Unlock()
 	return ok
+}
+
+// hasShellOperator reports whether cmd contains a character sequence that can
+// chain, substitute, or redirect commands. Such commands are never auto-approved.
+func hasShellOperator(cmd string) bool {
+	return strings.ContainsAny(cmd, ";&|\n`<>") || strings.Contains(cmd, "$(")
+}
+
+// matchesWholeWord reports whether re matches a prefix of cmd that ends at a
+// word boundary: the end of the command, a following space, or a match that
+// itself ends in a space (e.g. the pattern "^git ").
+func matchesWholeWord(re *regexp.Regexp, cmd string) bool {
+	loc := re.FindStringIndex(cmd)
+	if loc == nil {
+		return false
+	}
+	end := loc[1]
+	return end == len(cmd) || cmd[end] == ' ' || (end > 0 && cmd[end-1] == ' ')
 }

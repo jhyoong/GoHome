@@ -68,16 +68,25 @@ func (m *Model) handleApprovalKey(msg tea.KeyMsg) tea.Cmd {
 	if ap.editing {
 		switch msg.Type {
 		case tea.KeyEnter:
-			// Confirm the edited pattern.
+			// Confirm the edited pattern; keep editing if it is invalid.
+			if ap.req.Tool == "shell" {
+				if _, err := guard.NormalizePattern(ap.patternInput.Value()); err != nil {
+					ap.patternErr = err.Error()
+					return nil
+				}
+			}
+			ap.patternErr = ""
 			ap.pattern = ap.patternInput.Value()
 			ap.editing = false
 			ap.patternInput.Blur()
 		case tea.KeyEsc:
 			// Revert: restore original pattern, exit edit mode.
 			ap.patternInput.SetValue(ap.pattern)
+			ap.patternErr = ""
 			ap.editing = false
 			ap.patternInput.Blur()
 		default:
+			ap.patternErr = ""
 			var tiCmd tea.Cmd
 			ap.patternInput, tiCmd = ap.patternInput.Update(msg)
 			cmds = append(cmds, tiCmd)
@@ -156,8 +165,17 @@ func (m *Model) scrollApprovalPage(msg tea.KeyMsg) bool {
 
 // allowApproval resolves an Allow decision. Sudo commands first open the
 // password stage; the decision is sent when the password is submitted.
+// Allow always on a shell call with an invalid or empty pattern shows the
+// error and keeps the prompt open.
 func (m *Model) allowApproval(outcome guard.ApprovalOutcome) tea.Cmd {
 	ap := m.activeApproval
+	if outcome == guard.AllowAlways && ap.req.Tool == "shell" {
+		if _, err := guard.NormalizePattern(ap.pattern); err != nil {
+			ap.patternErr = err.Error()
+			return nil
+		}
+	}
+	ap.patternErr = ""
 	if !ap.needsSudo {
 		return m.resolveApproval(m.buildApprovalDecision(outcome))
 	}
@@ -192,13 +210,17 @@ func sudoRejected(output string) bool {
 }
 
 // handleSudoPasswordKey routes keys while the password stage is open. Every
-// key except Enter, Esc and PgUp/PgDown goes to the password field.
+// key except Enter, Esc, Tab and PgUp/PgDown goes to the password field. Tab
+// toggles the full command, since 'v' would be typed into the password.
 func (m *Model) handleSudoPasswordKey(msg tea.KeyMsg) tea.Cmd {
 	ap := m.activeApproval
 	if m.scrollApprovalPage(msg) {
 		return nil
 	}
 	switch msg.Type {
+	case tea.KeyTab:
+		ap.expandedSummary = !ap.expandedSummary
+		return nil
 	case tea.KeyEnter:
 		if ap.passwordInput.Value() == "" {
 			ap.sudoErr = "Password required"

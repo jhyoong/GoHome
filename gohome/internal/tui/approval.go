@@ -26,6 +26,16 @@ type approvalPrompt struct {
 	reply   chan guard.ApprovalDecision
 	pattern string // current (possibly edited) pattern
 
+	// toolLabel is req.Tool with control characters shown as text, for
+	// display. req.Tool keeps the raw value for comparisons.
+	toolLabel string
+
+	// arg is the tool argument (e.g. the shell command) with control
+	// characters shown as text. hasControls is true when the tool name or
+	// argument held any; the prompt then shows controlCharWarning.
+	arg         string
+	hasControls bool
+
 	// selected is the currently highlighted menu item (0=Allow once, 1=Allow always,
 	// 2=Deny, 3=Deny+steer). Zero-init gives us "Allow once" as the default.
 	selected int
@@ -33,8 +43,10 @@ type approvalPrompt struct {
 	// edit sub-mode: user pressed 'e' to edit the pattern
 	editing      bool
 	patternInput textinput.Model
+	patternErr   string // validation error shown while editing
 
-	// expandedSummary: user pressed 'v' to see full summary
+	// expandedSummary: user pressed 'v' (menu) or Tab (password dialog) to
+	// see the full summary
 	expandedSummary bool
 
 	// steer sub-mode: user pressed '4' to deny + steer
@@ -53,9 +65,19 @@ type approvalPrompt struct {
 
 // newApprovalPrompt builds an approvalPrompt from a request.
 func newApprovalPrompt(req guard.ApprovalRequest, reply chan guard.ApprovalDecision) *approvalPrompt {
+	// The suggested pattern comes from the command text. A pattern with
+	// control characters is not offered: removing them could also remove
+	// escaping backslashes and widen the rule.
+	pattern := req.SuggestedPattern
+	if sanitizeText(pattern) != pattern {
+		pattern = ""
+	}
+	toolLabel, toolCtl := showControls(req.Tool)
+	arg, argCtl := showControls(rawToolArg(req.Tool, string(req.Input)))
+
 	pi := textinput.New()
 	pi.Placeholder = "pattern"
-	pi.SetValue(req.SuggestedPattern)
+	pi.SetValue(pattern)
 
 	si := textinput.New()
 	si.Placeholder = "steer message"
@@ -67,7 +89,10 @@ func newApprovalPrompt(req guard.ApprovalRequest, reply chan guard.ApprovalDecis
 	ap := &approvalPrompt{
 		req:           req,
 		reply:         reply,
-		pattern:       req.SuggestedPattern,
+		pattern:       pattern,
+		toolLabel:     toolLabel,
+		arg:           arg,
+		hasControls:   toolCtl || argCtl,
 		patternInput:  pi,
 		steerInput:    si,
 		needsSudo:     req.NeedsSudoPassword,
@@ -85,12 +110,11 @@ func newApprovalPrompt(req guard.ApprovalRequest, reply chan guard.ApprovalDecis
 // approvalSummaryLine builds a single contextual line describing the tool call
 // (e.g. "shell: git status", "read: path/to/file").
 func approvalSummaryLine(ap *approvalPrompt, focusedSessionID string) string {
-	arg := extractToolArg(ap.req.Tool, string(ap.req.Input))
 	prefix := sessionPrefix(ap, focusedSessionID)
-	if arg != "" {
-		return fmt.Sprintf("%s%s: %s", prefix, ap.req.Tool, arg)
+	if ap.arg != "" {
+		return fmt.Sprintf("%s%s: %s", prefix, ap.toolLabel, ap.arg)
 	}
-	return prefix + ap.req.Tool
+	return prefix + ap.toolLabel
 }
 
 // sessionPrefix returns "[sid] " when the request comes from a session other
@@ -146,6 +170,9 @@ func renderApprovalOverlay(ap *approvalPrompt, width int, focusedSessionID strin
 		}
 	}
 	sb.WriteString("\n")
+	if ap.hasControls {
+		sb.WriteString(sudoHeaderStyle.Render(controlCharWarning) + "\n")
+	}
 
 	if ap.steering {
 		sb.WriteString("\nSteer message (Enter to send, Esc to cancel):\n")
@@ -155,6 +182,9 @@ func renderApprovalOverlay(ap *approvalPrompt, width int, focusedSessionID strin
 		fmt.Fprintf(&sb, "  [2] Allow always  %s\n", ap.patternInput.View())
 		sb.WriteString("  [3] Deny\n")
 		sb.WriteString("  [4] Deny + steer\n")
+		if ap.patternErr != "" {
+			fmt.Fprintf(&sb, "Error: %s\n", ap.patternErr)
+		}
 		sb.WriteString("(Enter to confirm, Esc to cancel)")
 	} else {
 		marker := func(i int) string {
@@ -171,6 +201,9 @@ func renderApprovalOverlay(ap *approvalPrompt, width int, focusedSessionID strin
 		}
 		fmt.Fprintf(&sb, "%s[3] Deny\n", marker(2))
 		fmt.Fprintf(&sb, "%s[4] Deny + steer\n", marker(3))
+		if ap.patternErr != "" {
+			fmt.Fprintf(&sb, "Error: %s\n", ap.patternErr)
+		}
 		sb.WriteString("Esc: deny | arrows to navigate")
 	}
 
@@ -199,8 +232,11 @@ func renderSudoDialog(ap *approvalPrompt, width int, focusedSessionID string) st
 	header := sessionPrefix(ap, focusedSessionID) + "SUDO PASSWORD REQUIRED"
 
 	const maxCmdLines = 3
-	cmdLines := WrapText(extractToolArg(ap.req.Tool, string(ap.req.Input)), contentW)
-	cmdLines, _ = capLines(cmdLines, maxCmdLines, contentW)
+	cmdLines := WrapText(ap.arg, contentW)
+	truncated := false
+	if !ap.expandedSummary {
+		cmdLines, truncated = capLines(cmdLines, maxCmdLines, contentW)
+	}
 
 	const pwLabel = "Password: "
 	// Keep the field on one line so long passwords scroll instead of wrapping.
@@ -210,7 +246,11 @@ func renderSudoDialog(ap *approvalPrompt, width int, focusedSessionID string) st
 	sb.WriteString(sudoHeaderStyle.Render(header))
 	sb.WriteString("\n")
 	sb.WriteString(strings.Join(cmdLines, "\n"))
-	sb.WriteString("\n\n")
+	sb.WriteString("\n")
+	if ap.hasControls {
+		sb.WriteString(sudoHeaderStyle.Render(controlCharWarning) + "\n")
+	}
+	sb.WriteString("\n")
 	sb.WriteString(pwLabel)
 	sb.WriteString(ap.passwordInput.View())
 	sb.WriteString("\n")
@@ -223,6 +263,13 @@ func renderSudoDialog(ap *approvalPrompt, width int, focusedSessionID string) st
 	} else {
 		sb.WriteString("Enter: run | Esc: back | Ctrl+C: deny")
 	}
+	if truncated {
+		sb.WriteString(" | Tab: full command")
+	}
 
 	return sudoBoxStyle.Width(boxW).Render(sb.String())
 }
+
+// controlCharWarning is shown in the approval prompt and sudo dialog when the
+// tool call holds control characters.
+const controlCharWarning = "Warning: command contains control characters"

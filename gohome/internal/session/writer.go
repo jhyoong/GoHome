@@ -18,10 +18,10 @@ type Writer struct {
 // OpenWriter opens (or creates) the JSONL file at path, creating parent directories
 // as needed, and starts the background write goroutine.
 func OpenWriter(path string) (*Writer, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return nil, err
 	}

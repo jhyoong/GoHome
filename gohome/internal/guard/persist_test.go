@@ -194,3 +194,89 @@ func TestAddProject_NoPath_InMemoryOnly(t *testing.T) {
 		t.Error("expected 'echo hello' to be allowed in-memory when no projectPath set")
 	}
 }
+
+func TestAddProject_RejectsEmptyAndInvalid(t *testing.T) {
+	for _, pat := range []string{"", "   ", "^", "^ ", "^c++"} {
+		projPath := t.TempDir() + "/whitelist.json"
+		wl, err := Compile(WhitelistFile{}, WhitelistFile{}, projPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := wl.AddProject("shell", pat); err == nil {
+			t.Errorf("AddProject(%q): expected error", pat)
+		}
+		if _, err := os.Stat(projPath); err == nil {
+			t.Errorf("AddProject(%q): file was written", pat)
+		}
+		if wl.Allows("shell", []byte(`{"command":"rm -rf /"}`)) {
+			t.Errorf("AddProject(%q): whitelisted everything", pat)
+		}
+	}
+}
+
+func TestAddProject_NoDuplicateForms(t *testing.T) {
+	projPath := t.TempDir() + "/whitelist.json"
+	wl, err := Compile(WhitelistFile{}, WhitelistFile{}, projPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pat := range []string{"ls", "^ls", "ls"} {
+		if err := wl.AddProject("shell", pat); err != nil {
+			t.Fatal(err)
+		}
+	}
+	data, _ := os.ReadFile(projPath)
+	var wf WhitelistFile
+	if err := json.Unmarshal(data, &wf); err != nil {
+		t.Fatal(err)
+	}
+	if len(wf.Shell) != 1 || wf.Shell[0] != "^ls" {
+		t.Errorf("shell = %v, want [^ls]", wf.Shell)
+	}
+	if len(wl.shell) != 1 {
+		t.Errorf("in-memory patterns = %d, want 1", len(wl.shell))
+	}
+}
+
+func TestAddProject_DedupAgainstLegacyUnanchoredEntry(t *testing.T) {
+	projPath := t.TempDir() + "/whitelist.json"
+	if err := os.WriteFile(projPath, []byte(`{"shell":["ls"]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wl, err := Compile(WhitelistFile{}, WhitelistFile{Shell: []string{"ls"}}, projPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wl.AddProject("shell", "^ls"); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(projPath)
+	var wf WhitelistFile
+	_ = json.Unmarshal(data, &wf)
+	if len(wf.Shell) != 1 {
+		t.Errorf("shell = %v, want one entry", wf.Shell)
+	}
+	if len(wl.shell) != 1 {
+		t.Errorf("in-memory patterns = %d, want 1", len(wl.shell))
+	}
+}
+
+func TestAlternationStaysAnchored(t *testing.T) {
+	wl, err := Compile(WhitelistFile{}, WhitelistFile{Shell: []string{"ls|rm"}}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wl.AddProject("shell", "^git status|git diff"); err != nil {
+		t.Fatal(err)
+	}
+	for _, cmd := range []string{"cat x --norm", "chmod 777 /etc/passwd --norm", "echo git diff", "ls-evil"} {
+		if wl.Allows("shell", bashInput(cmd)) {
+			t.Errorf("%q should not be allowed", cmd)
+		}
+	}
+	for _, cmd := range []string{"ls -la", "rm -rf x", "git diff", "git status"} {
+		if !wl.Allows("shell", bashInput(cmd)) {
+			t.Errorf("%q should be allowed", cmd)
+		}
+	}
+}

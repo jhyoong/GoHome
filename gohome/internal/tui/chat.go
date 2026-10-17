@@ -723,10 +723,18 @@ func formatTurnStats(s *TurnStatsData) string {
 }
 
 // extractToolArg parses the JSON input for a tool call and returns the most
-// relevant argument for display. Known fields: "command" (shell), "file_path"
-// (read/write/edit), "prompt" (subagent). Falls back to shortSummary on parse
-// failure or unknown tools.
+// relevant argument for display, with control characters removed. Known
+// fields: "command" (shell), "file_path" (read/write/edit), "prompt"
+// (subagent). Falls back to shortSummary on parse failure or unknown tools.
 func extractToolArg(toolName, inputJSON string) string {
+	// JSON escapes such as \u001b decode to real control characters, so the
+	// decoded value is sanitized.
+	return sanitizeText(rawToolArg(toolName, inputJSON))
+}
+
+// rawToolArg is extractToolArg without sanitizing. Callers must make the
+// result safe before display.
+func rawToolArg(toolName, inputJSON string) string {
 	inputJSON = strings.TrimSpace(inputJSON)
 	if inputJSON == "" {
 		return ""

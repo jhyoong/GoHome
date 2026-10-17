@@ -103,3 +103,12 @@ func TestCompileDenylist_InvalidJSON_NoDeny(t *testing.T) {
 		t.Error("expected invalid JSON input to not match denylist")
 	}
 }
+
+func TestCompileDenylist_SqueezesWhitespaceInCommandAndEntries(t *testing.T) {
+	dl, _ := CompileDenylist(DenylistFile{Shell: []string{"danger  now"}})
+	for _, c := range []string{"danger now", "danger   now", "danger\t now"} {
+		if ok, p := dl.Denies("shell", shellInput(c)); !ok || p != "danger  now" {
+			t.Errorf("%q: matched=%v pattern=%q", c, ok, p)
+		}
+	}
+}
