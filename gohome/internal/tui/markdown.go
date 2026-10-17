@@ -123,7 +123,7 @@ func renderNode(node ast.Node, src []byte, width, listDepth int, bold, italic bo
 		renderChildren(n, src, width, listDepth, bold, italic, out)
 
 	case *ast.ThematicBreak:
-		*out = append(*out, ansiDim+strings.Repeat("─", width)+ansiReset)
+		*out = append(*out, ansiDim+strings.Repeat("─", max(width, 1))+ansiReset)
 		*out = append(*out, "")
 
 	default:
