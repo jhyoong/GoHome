@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -293,5 +296,55 @@ func TestConcurrentSwapAndRun(t *testing.T) {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("runLoop did not exit after process context cancel")
+	}
+}
+
+func TestSetupLogging_OwnerOnlyPerms(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission bits not meaningful on Windows")
+	}
+	home := filepath.Join(t.TempDir(), ".gohome")
+	f, err := setupLogging(home)
+	if err != nil {
+		t.Fatalf("setupLogging: %v", err)
+	}
+	defer f.Close()
+	for _, d := range []string{home, filepath.Join(home, "logs")} {
+		st, err := os.Stat(d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := st.Mode().Perm(); got != 0o700 {
+			t.Errorf("%s mode = %o, want 700", d, got)
+		}
+	}
+	st, err := os.Stat(f.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := st.Mode().Perm(); got != 0o600 {
+		t.Errorf("log file mode = %o, want 600", got)
+	}
+}
+
+func TestSetupLogging_KeepsExistingDirPerms(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission bits not meaningful on Windows")
+	}
+	home := filepath.Join(t.TempDir(), ".gohome")
+	if err := os.Mkdir(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f, err := setupLogging(home)
+	if err != nil {
+		t.Fatalf("setupLogging: %v", err)
+	}
+	defer f.Close()
+	st, _ := os.Stat(home)
+	if got := st.Mode().Perm(); got != 0o755 {
+		t.Errorf("existing dir mode changed to %o", got)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
@@ -100,5 +101,32 @@ func TestWriterMkdirAll(t *testing.T) {
 	}
 	if _, err := os.Stat(path); err != nil {
 		t.Errorf("file not created: %v", err)
+	}
+}
+
+func TestOpenWriter_OwnerOnlyPerms(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission bits not meaningful on Windows")
+	}
+	dir := filepath.Join(t.TempDir(), "sessions", "proj")
+	path := filepath.Join(dir, "s.jsonl")
+	w, err := OpenWriter(path)
+	if err != nil {
+		t.Fatalf("OpenWriter: %v", err)
+	}
+	defer w.Close()
+	st, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := st.Mode().Perm(); got != 0o700 {
+		t.Errorf("dir mode = %o, want 700", got)
+	}
+	st, err = os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := st.Mode().Perm(); got != 0o600 {
+		t.Errorf("file mode = %o, want 600", got)
 	}
 }
