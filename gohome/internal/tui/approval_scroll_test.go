@@ -68,3 +68,33 @@ func TestApprovalExpandedLongCommandIsCappedAndScrolls(t *testing.T) {
 		t.Fatal("expected LINE_00 after PgUp to the top")
 	}
 }
+
+func TestApprovalPagesDoNotSkipLines(t *testing.T) {
+	m := newLongCommandModel(t)
+	seen := map[int]bool{}
+	mark := func() {
+		for i := 0; i < 42; i++ {
+			if strings.Contains(StripAnsi(m.View()), fmt.Sprintf("LINE_%02d", i)) {
+				seen[i] = true
+			}
+		}
+	}
+	mark()
+	for i := 0; i < 30; i++ {
+		m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+		mark()
+	}
+	for i := 0; i < 42; i++ {
+		if !seen[i] {
+			t.Errorf("LINE_%02d was never visible while paging down", i)
+		}
+	}
+}
+
+func TestApprovalTinyTerminalStillCapsHeight(t *testing.T) {
+	m := newLongCommandModel(t)
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 6})
+	if got := m.approvalMaxHeight(); got < 1 {
+		t.Fatalf("approvalMaxHeight = %d, want >= 1", got)
+	}
+}

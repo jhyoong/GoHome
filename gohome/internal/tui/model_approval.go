@@ -151,7 +151,7 @@ func (m *Model) scrollApprovalSummary(msg tea.KeyMsg) bool {
 	if !ap.expandedSummary || ap.scrollMax == 0 {
 		return false
 	}
-	step := max(m.winH/2, 1)
+	step := max(ap.scrollWin-1, 1)
 	switch msg.Type {
 	case tea.KeyPgUp:
 		ap.scroll = max(ap.scroll-step, 0)

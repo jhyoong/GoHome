@@ -731,11 +731,20 @@ func (m *Model) render() string {
 	return strings.Join(sections, "\n")
 }
 
+// approvalMaxHeight is the line budget for the approval box. It is 0 (no
+// limit) only while the terminal height is unknown.
+func (m *Model) approvalMaxHeight() int {
+	if m.winH <= 0 {
+		return 0
+	}
+	return max(m.winH-stripHeight-statusHeight-2, 1)
+}
+
 // renderInputRegion renders the swappable input slot: approval prompt,
 // modal, completed label, or the editor.
 func (m *Model) renderInputRegion() string {
 	if m.activeApproval != nil {
-		return renderApprovalOverlay(m.activeApproval, m.winW, m.winH-stripHeight-statusHeight-2, m.focused)
+		return renderApprovalOverlay(m.activeApproval, m.winW, m.approvalMaxHeight(), m.focused)
 	}
 	if m.activeModal != nil {
 		return strings.Join(m.activeModal.Render(m.winW), "\n")

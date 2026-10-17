@@ -53,6 +53,7 @@ type approvalPrompt struct {
 	// the largest valid scroll, set at render time; 0 means everything fits.
 	scroll    int
 	scrollMax int
+	scrollWin int // visible summary lines when scrollable
 
 	// steer sub-mode: user pressed '4' to deny + steer
 	steering   bool
@@ -217,6 +218,7 @@ func renderApprovalOverlay(ap *approvalPrompt, width, maxHeight int, focusedSess
 			// Keep one line for the position hint.
 			win := max(avail-1, 1)
 			ap.scrollMax = len(wrapped) - win
+			ap.scrollWin = win
 			ap.scroll = min(max(ap.scroll, 0), ap.scrollMax)
 			sb.WriteString(strings.Join(wrapped[ap.scroll:ap.scroll+win], "\n"))
 			fmt.Fprintf(&sb, "\n(lines %d-%d of %d, PgUp/PgDn to scroll)", ap.scroll+1, ap.scroll+win, len(wrapped))
