@@ -223,6 +223,7 @@ If `contextWarnPct` >= `contextCritPct`, or either value is outside the (0, 1] r
 | `Ctrl+C` (once) | Cancel current LLM turn or close approval prompt |
 | `Ctrl+C` (twice) | Quit |
 | `Ctrl+E` | Open current input in external editor (`$VISUAL` / `$EDITOR` / `vi`) |
+| `Ctrl+P` / `Ctrl+N` | Previous / next submitted prompt (saves and restores the draft) |
 | `Ctrl+H` | Open help overlay |
 | `Ctrl+Right` | Focus next session |
 | `Ctrl+Left` | Focus previous session |

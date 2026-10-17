@@ -4,6 +4,7 @@ var helpLines = []string{
 	"Keyboard shortcuts",
 	"  Ctrl+C        Cancel turn / double-tap to quit",
 	"  Ctrl+E        Open external editor",
+	"  Ctrl+P / N    Previous / next prompt from history",
 	"  Ctrl+H        Show this help",
 	"  Ctrl+Right    Focus next session",
 	"  Ctrl+Left     Focus prev session",

@@ -205,6 +205,12 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyCtrlE:
 		return m, m.openExternalEditor()
+	case tea.KeyCtrlP:
+		m.editor.HistoryPrev()
+		return m, nil
+	case tea.KeyCtrlN:
+		m.editor.HistoryNext()
+		return m, nil
 	default:
 		// File search navigation intercepts arrow keys.
 		if m.fileSearching && m.fileSearch.visible {

@@ -600,3 +600,20 @@ func (e *EditorComponent) AddHistory(text string) {
 	e.history.Add(text)
 	e.browsing = false
 }
+
+// HistoryPrev recalls the previous submitted text. The first call saves the
+// current draft so HistoryNext can restore it.
+func (e *EditorComponent) HistoryPrev() {
+	if !e.browsing {
+		e.history.StartBrowsing(e.Value())
+		e.browsing = true
+	}
+	e.SetValue(e.history.Prev())
+}
+
+// HistoryNext moves towards newer entries; past the newest it restores the draft.
+func (e *EditorComponent) HistoryNext() {
+	if e.browsing {
+		e.SetValue(e.history.Next())
+	}
+}

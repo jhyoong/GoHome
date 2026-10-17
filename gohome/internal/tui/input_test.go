@@ -172,3 +172,31 @@ func TestCancelWhenIdle(t *testing.T) {
 		t.Errorf("timeline grew from %d to %d", before, n)
 	}
 }
+
+func TestCtrlPCtrlNPromptHistory(t *testing.T) {
+	m := New(nil, "main")
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	for _, s := range []string{"first", "second"} {
+		typeRunes(m, s)
+		pressKey(m, tea.KeyEnter)
+		m.mainSession().InFlight = false
+		m.mainRuns = 0
+	}
+	typeRunes(m, "draft")
+
+	want := []string{"second", "first"}
+	for i, w := range want {
+		pressKey(m, tea.KeyCtrlP)
+		if got := m.editor.Value(); got != w {
+			t.Errorf("Ctrl+P #%d = %q, want %q", i+1, got, w)
+		}
+	}
+	pressKey(m, tea.KeyCtrlN)
+	if got := m.editor.Value(); got != "second" {
+		t.Errorf("Ctrl+N = %q, want second", got)
+	}
+	pressKey(m, tea.KeyCtrlN)
+	if got := m.editor.Value(); got != "draft" {
+		t.Errorf("Ctrl+N past newest = %q, want draft", got)
+	}
+}
