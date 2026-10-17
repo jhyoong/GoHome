@@ -79,13 +79,28 @@ type ToolDef struct {
 	InputSchema json.RawMessage `json:"inputSchema"`
 }
 
+// ThinkingMode selects how a request asks the model to think.
+type ThinkingMode string
+
+const (
+	// ThinkingModeOff sends no thinking parameter. The empty mode means off.
+	ThinkingModeOff ThinkingMode = "off"
+	// ThinkingModeAdaptive lets the model decide how much to think.
+	ThinkingModeAdaptive ThinkingMode = "adaptive"
+	// ThinkingModeBudget enables thinking with a fixed token budget.
+	ThinkingModeBudget ThinkingMode = "budget"
+)
+
 type Request struct {
-	Model           string
-	System          string
-	Messages        []Message
-	Tools           []ToolDef
-	MaxTokens       int
-	ThinkingBudget  int // if > 0, enable extended thinking with this token budget
+	Model          string
+	System         string
+	Messages       []Message
+	Tools          []ToolDef
+	MaxTokens      int
+	Thinking       ThinkingMode
+	ThinkingBudget int // token budget, used only in ThinkingModeBudget
+	// ReasoningEffort is passed through unchanged: reasoning_effort on the
+	// OpenAI wire, output_config.effort on the Anthropic wire.
 	ReasoningEffort string
 }
 

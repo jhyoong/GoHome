@@ -41,6 +41,7 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, *commo
 		Messages:        sess.History,
 		Tools:           a.Tools.Schemas(),
 		MaxTokens:       maxTokens,
+		Thinking:        ms.Thinking,
 		ThinkingBudget:  ms.ThinkingBudget,
 		ReasoningEffort: ms.ReasoningEffort,
 	}

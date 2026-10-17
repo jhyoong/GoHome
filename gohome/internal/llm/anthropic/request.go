@@ -43,9 +43,16 @@ type anthropicMessage struct {
 }
 
 // anthropicThinking is the Anthropic wire shape for the thinking parameter.
+// Budget mode sets BudgetTokens; adaptive mode sets Display.
 type anthropicThinking struct {
 	Type         string `json:"type"`
-	BudgetTokens int    `json:"budget_tokens"`
+	BudgetTokens int    `json:"budget_tokens,omitempty"`
+	Display      string `json:"display,omitempty"`
+}
+
+// anthropicOutputConfig is the Anthropic wire shape for output_config.
+type anthropicOutputConfig struct {
+	Effort string `json:"effort"`
 }
 
 // anthropicThinkingBlock is the Anthropic wire shape for a thinking content block.
@@ -64,6 +71,8 @@ type anthropicBody struct {
 	MaxTokens int                `json:"max_tokens"`
 	Stream    bool               `json:"stream"`
 	Thinking  *anthropicThinking `json:"thinking,omitempty"`
+
+	OutputConfig *anthropicOutputConfig `json:"output_config,omitempty"`
 }
 
 // buildAnthropicBody translates a common.Request to Anthropic wire-format JSON.
@@ -96,11 +105,17 @@ func buildAnthropicBody(req common.Request) ([]byte, error) {
 	if len(tools) > 0 {
 		body.Tools = tools
 	}
-	if req.ThinkingBudget > 0 {
+	switch req.Thinking {
+	case common.ThinkingModeAdaptive:
+		body.Thinking = &anthropicThinking{Type: "adaptive", Display: "summarized"}
+	case common.ThinkingModeBudget:
 		body.Thinking = &anthropicThinking{
 			Type:         "enabled",
 			BudgetTokens: req.ThinkingBudget,
 		}
+	}
+	if req.ReasoningEffort != "" {
+		body.OutputConfig = &anthropicOutputConfig{Effort: req.ReasoningEffort}
 	}
 
 	return json.Marshal(body)

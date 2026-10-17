@@ -182,8 +182,9 @@ Both `"anthropic"` and `"openai"` wires are supported. Set `apiKey` for a litera
 | `modelName` | — | Model name sent to the LLM provider |
 | `contextWindow` | — | Context window size in tokens (used for usage display) |
 | `maxTokens` | `16384` | Max output tokens per LLM turn |
-| `thinkingBudget` | `10240` | Extended thinking token budget (Anthropic wire only; ignored by OpenAI) |
-| `reasoningEffort` | — | Reasoning effort level sent as `reasoning_effort` on the OpenAI wire (e.g. `"low"`, `"medium"`, `"high"`). Ignored by Anthropic wire. Free-form string passed through to the API as-is |
+| `thinking` | — | Thinking mode (Anthropic wire only): `"off"` sends no thinking parameter, `"adaptive"` sends `{"type":"adaptive","display":"summarized"}`, `"budget"` sends `{"type":"enabled","budget_tokens":N}`. When unset: `"budget"` if `thinkingBudget > 0`, otherwise `"adaptive"` |
+| `thinkingBudget` | `10240` | Thinking token budget, used only in `"budget"` mode. Must be at least 1024 and below `maxTokens`; gohome refuses the config at startup or on `/model` otherwise |
+| `reasoningEffort` | — | Reasoning effort level, passed through as-is: `reasoning_effort` on the OpenAI wire, `output_config.effort` on the Anthropic wire (e.g. `"low"`, `"medium"`, `"high"`). Omitted when unset |
 | `headers` | — | Custom HTTP headers added to every request to this endpoint. Map of header name to value |
 
 **Top-level fields:**

@@ -6,6 +6,7 @@ const (
 	DefaultContextWindow     = 128_000
 	DefaultMaxTokens         = 16_384
 	DefaultThinkingBudget    = 10_240
+	MinThinkingBudget        = 1_024
 	DefaultShellTimeoutMs    = 120_000
 	DefaultMaxShellTimeoutMs = 600_000
 	DefaultContextWarnPct    = 0.80

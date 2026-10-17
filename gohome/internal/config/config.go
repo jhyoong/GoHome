@@ -28,6 +28,7 @@ type ModelConfig struct {
 	ModelName       string            `json:"modelName"`
 	ContextWindow   int               `json:"contextWindow,omitempty"`
 	MaxTokens       int               `json:"maxTokens,omitempty"`
+	Thinking        string            `json:"thinking,omitempty"`
 	ThinkingBudget  int               `json:"thinkingBudget,omitempty"`
 	ReasoningEffort string            `json:"reasoningEffort,omitempty"`
 	Headers         map[string]string `json:"headers,omitempty"`

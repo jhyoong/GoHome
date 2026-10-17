@@ -207,22 +207,25 @@ func drainPendingSwap(a *agent.Agent, fe agent.Frontend) {
 }
 
 // applyModelConfig makes cfg (named name) the active model: it sets the
-// client and the model settings on state. Unset maxTokens and thinkingBudget
-// get the startup defaults. It returns the context window to show.
-func applyModelConfig(state *agent.SessionState, name string, cfg config.ModelConfig, client common.Client) int {
+// client and the model settings on state. Unset maxTokens gets the startup
+// default; thinking is resolved and checked by config.ResolveThinking. On an
+// invalid config it returns an error and leaves state unchanged. It returns
+// the context window to show.
+func applyModelConfig(state *agent.SessionState, name string, cfg config.ModelConfig, client common.Client) (int, error) {
+	thinking, thinkingBudget, err := config.ResolveThinking(name, cfg)
+	if err != nil {
+		return 0, err
+	}
 	maxTokens := cfg.MaxTokens
 	if maxTokens <= 0 {
 		maxTokens = config.DefaultMaxTokens
-	}
-	thinkingBudget := cfg.ThinkingBudget
-	if thinkingBudget <= 0 {
-		thinkingBudget = config.DefaultThinkingBudget
 	}
 	state.SetClient(client)
 	state.SetModelSettings(agent.ModelSettings{
 		Name:            cfg.ModelName,
 		ConfigName:      name,
 		MaxTokens:       maxTokens,
+		Thinking:        thinking,
 		ThinkingBudget:  thinkingBudget,
 		ReasoningEffort: cfg.ReasoningEffort,
 	})
@@ -230,7 +233,7 @@ func applyModelConfig(state *agent.SessionState, name string, cfg config.ModelCo
 	if ctxWin <= 0 {
 		ctxWin = config.DefaultContextWindow
 	}
-	return ctxWin
+	return ctxWin, nil
 }
 
 func main() {
@@ -327,6 +330,10 @@ func main() {
 	}
 
 	if !needsWizard {
+		if _, _, err := config.ResolveThinking(cfgName, mc); err != nil {
+			fmt.Fprintf(os.Stderr, "gohome: %v\n", err)
+			os.Exit(1)
+		}
 		apiKey, err := config.ResolveAPIKey(mc)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "gohome: no API key for model config %q.\n", cfgName)
@@ -442,7 +449,11 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		}
 
 		state := agent.NewSessionState(sess, writer, nil)
-		contextWindow := applyModelConfig(state, cfgName, mc, client)
+		contextWindow, err := applyModelConfig(state, cfgName, mc, client)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "gohome: %v\n", err)
+			os.Exit(1)
+		}
 		compactCfg := agent.CompactConfig{
 			Enabled:       settings.AutoCompact,
 			Mode:          settings.AutoCompactMode,
@@ -581,7 +592,11 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 	m.SetModelName(mc.ModelName)
 	// A resumed session also takes the current model config.
 	state := agent.NewSessionState(sess, writer, nil)
-	contextWindow := applyModelConfig(state, cfgName, mc, client)
+	contextWindow, err := applyModelConfig(state, cfgName, mc, client)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gohome: %v\n", err)
+		os.Exit(1)
+	}
 	m.SetContextWindow(contextWindow)
 	m.SetYolo(*yolo)
 
@@ -742,7 +757,10 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 			if err != nil {
 				return "", 0, fmt.Errorf("create client for %q: %w", name, err)
 			}
-			ctxWin := applyModelConfig(state, name, cfg, newClient)
+			ctxWin, err := applyModelConfig(state, name, cfg, newClient)
+			if err != nil {
+				return "", 0, err
+			}
 			return cfg.ModelName, ctxWin, nil
 		},
 		OpenConfig: func() (config.AnnotatedSettings, error) {
@@ -809,7 +827,11 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 				fail("Could not create model client", err)
 				return
 			}
-			ctxWin := applyModelConfig(state, name, cfg, newClient)
+			ctxWin, err := applyModelConfig(state, name, cfg, newClient)
+			if err != nil {
+				fail("Saved config is unusable", err)
+				return
+			}
 			m.SetModelName(cfg.ModelName)
 			m.SetConfigName(name)
 			m.SetContextWindow(ctxWin)
