@@ -99,7 +99,7 @@ func TestSuggest_GoTest(t *testing.T) {
 
 func TestSuggest_SudoIsFullCommand(t *testing.T) {
 	got := Suggest("shell", bashInput("sudo apt install x"))
-	want := "^sudo apt install x"
+	want := "^sudo apt install x$"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -140,5 +140,30 @@ func TestSuggest_AllowsOriginalCommand(t *testing.T) {
 	_ = wl.AddProject("shell", Suggest("shell", bashInput("./build.sh")))
 	if wl.Allows("shell", bashInput("./build.shred")) || wl.Allows("shell", bashInput("./buildXsh")) {
 		t.Error("escaped suggestion matched a different command")
+	}
+}
+
+func TestSuggest_SudoDoesNotCoverExtraArgs(t *testing.T) {
+	wl, _ := Compile(WhitelistFile{}, WhitelistFile{}, t.TempDir()+"/w.json")
+	if err := wl.AddProject("shell", Suggest("shell", bashInput("sudo chmod 644 f"))); err != nil {
+		t.Fatalf("AddProject: %v", err)
+	}
+	if !wl.Allows("shell", bashInput("sudo chmod 644 f")) {
+		t.Error("same sudo command not allowed")
+	}
+	if wl.Allows("shell", bashInput("sudo chmod 644 f /etc/shadow")) {
+		t.Error("sudo suggestion allowed an extra argument")
+	}
+}
+
+func TestSuggest_ControlCharsGiveNoSuggestion(t *testing.T) {
+	for _, cmd := range []string{"\x1b.\x1b* foo", "ls\rfoo", "ls \x7f", "sudo ls\x07", "ls \u009b"} {
+		if got := Suggest("shell", bashInput(cmd)); got != "" {
+			t.Errorf("%q: got %q, want no suggestion", cmd, got)
+		}
+	}
+	// Tab is not a control character for this rule.
+	if got := Suggest("shell", bashInput("ls\t-la")); got != "^ls" {
+		t.Errorf("tab command: got %q, want %q", got, "^ls")
 	}
 }

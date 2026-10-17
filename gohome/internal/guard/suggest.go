@@ -23,7 +23,11 @@ import (
 //     take first 2 tokens.
 //  6. Otherwise: take first 1 token only.
 //
-// Sudo commands (any position) suggest the full command instead.
+// Sudo commands (any position) suggest the full command instead, ending
+// with "$" so extra arguments are not covered.
+//
+// Commands with control characters other than tab get no suggestion: the
+// TUI cannot show such a pattern faithfully.
 //
 // The result is regex-escaped and always prefixed with "^".
 func Suggest(tool string, inputJSON []byte) string {
@@ -39,18 +43,29 @@ func Suggest(tool string, inputJSON []byte) string {
 	}
 
 	tokens := strings.Fields(args.Command)
-	if len(tokens) == 0 {
+	if len(tokens) == 0 || hasControlChar(args.Command) {
 		return ""
 	}
 
 	// A sudo suggestion is the full command: a "^sudo" prefix would pre-approve
 	// every sudo command.
 	if IsSudoCommand(args.Command) {
-		return "^" + regexp.QuoteMeta(strings.TrimSpace(args.Command))
+		return "^" + regexp.QuoteMeta(strings.TrimSpace(args.Command)) + "$"
 	}
 
 	prefix := buildPrefix(tokens)
 	return "^" + regexp.QuoteMeta(prefix)
+}
+
+// hasControlChar reports whether s contains a C0 control other than tab,
+// DEL, or a C1 control.
+func hasControlChar(s string) bool {
+	for _, r := range s {
+		if (r < 0x20 && r != '\t') || (r >= 0x7f && r <= 0x9f) {
+			return true
+		}
+	}
+	return false
 }
 
 // buildPrefix selects the appropriate token prefix for a shell command.
