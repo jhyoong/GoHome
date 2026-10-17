@@ -406,3 +406,23 @@ func TestLoad_RepairsMissingToolResults(t *testing.T) {
 		t.Errorf("trailing tool_use not repaired: %+v", last)
 	}
 }
+
+// TestLoad_ContinuesSubagentNumbering checks that a resumed parent does not
+// reuse child IDs already recorded by subagent_spawn markers.
+func TestLoad_ContinuesSubagentNumbering(t *testing.T) {
+	path := writeEvents(t,
+		SessionStart{ID: "p1", CWD: "/tmp", Model: "m", ModelConfig: "e"},
+		UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}},
+		SubagentSpawn{ChildID: "p1-sub-1", Task: "a"},
+		SubagentDone{ChildID: "p1-sub-1"},
+		SubagentSpawn{ChildID: "p1-sub-2", Task: "b"},
+		SubagentDone{ChildID: "p1-sub-2"},
+	)
+	sess, _, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got := sess.NextSubagentID(); got != "p1-sub-3" {
+		t.Errorf("NextSubagentID = %q, want %q", got, "p1-sub-3")
+	}
+}

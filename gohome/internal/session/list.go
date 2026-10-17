@@ -18,12 +18,70 @@ type Listing struct {
 	LastActive time.Time `json:"lastActive"`
 	Title      string    `json:"title"`
 	Depth      int       `json:"depth"`
+	ParentID   string    `json:"parentId"`
 }
 
-// List returns all persisted sessions, including subagent sessions, stored under home for the given cwd.
+// List returns the top-level persisted sessions stored under home for the
+// given cwd. Subagent sessions (Depth > 0) are skipped; see ListChildren.
 // Sessions are sorted by StartedAt descending (most recent first).
 // If the sessions directory does not exist, an empty slice is returned with no error.
 func List(home, cwd string) ([]Listing, error) {
+	all, err := listAll(home, cwd)
+	if err != nil {
+		return nil, err
+	}
+	var listings []Listing
+	for _, l := range all {
+		if l.Depth == 0 {
+			listings = append(listings, l)
+		}
+	}
+	sort.Slice(listings, func(i, j int) bool {
+		return listings[i].StartedAt.After(listings[j].StartedAt)
+	})
+	return listings, nil
+}
+
+// ListChildren returns the subagent sessions whose ParentID is parentID,
+// sorted by StartedAt ascending (the order they were spawned).
+func ListChildren(home, cwd, parentID string) ([]Listing, error) {
+	all, err := listAll(home, cwd)
+	if err != nil {
+		return nil, err
+	}
+	var children []Listing
+	for _, l := range all {
+		if l.Depth > 0 && l.ParentID == parentID {
+			children = append(children, l)
+		}
+	}
+	sort.SliceStable(children, func(i, j int) bool {
+		return children[i].StartedAt.Before(children[j].StartedAt)
+	})
+	return children, nil
+}
+
+// LoadChildren loads every subagent session of parentID, in spawn order.
+// Files that fail to load are skipped with a warning.
+func LoadChildren(home, cwd, parentID string) ([]*Session, error) {
+	listings, err := ListChildren(home, cwd, parentID)
+	if err != nil {
+		return nil, err
+	}
+	var children []*Session
+	for _, l := range listings {
+		child, _, err := Load(l.Path)
+		if err != nil {
+			slog.Warn("session: skipping unloadable subagent session", "path", l.Path, "err", err)
+			continue
+		}
+		children = append(children, child)
+	}
+	return children, nil
+}
+
+// listAll parses every session file under home for cwd, unsorted.
+func listAll(home, cwd string) ([]Listing, error) {
 	dir := filepath.Join(home, "sessions", ProjectSlug(cwd))
 	entries, err := os.ReadDir(dir)
 	if os.IsNotExist(err) {
@@ -50,10 +108,6 @@ func List(home, cwd string) ([]Listing, error) {
 		}
 		listings = append(listings, listing)
 	}
-
-	sort.Slice(listings, func(i, j int) bool {
-		return listings[i].StartedAt.After(listings[j].StartedAt)
-	})
 	return listings, nil
 }
 
@@ -99,6 +153,7 @@ func parseListing(path string) (Listing, error) {
 			if err := json.Unmarshal([]byte(line), &ev); err == nil {
 				listing.ID = ev.ID
 				listing.Depth = ev.Depth
+				listing.ParentID = ev.ParentID
 				if !ev.StartedAt.IsZero() {
 					listing.StartedAt = ev.StartedAt
 				} else if t, err := time.Parse(time.RFC3339, ev.TS); err == nil {

@@ -3,6 +3,7 @@ package session
 import (
 	"crypto/rand"
 	"encoding/base32"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -33,6 +34,10 @@ type Session struct {
 	cwd       string
 	mu        sync.RWMutex
 	readFiles map[string]struct{}
+
+	// subagents counts subagents spawned by this session, including those
+	// recorded in its file before a resume, so child IDs never repeat.
+	subagents int
 }
 
 // NewSession creates a new Session with the given parameters.
@@ -63,6 +68,15 @@ func (s *Session) HasRead(path string) bool {
 	defer s.mu.RUnlock()
 	_, ok := s.readFiles[path]
 	return ok
+}
+
+// NextSubagentID returns a new child session ID of the form
+// "<ID>-sub-N". Safe for concurrent use.
+func (s *Session) NextSubagentID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.subagents++
+	return fmt.Sprintf("%s-sub-%d", s.ID, s.subagents)
 }
 
 // CWD returns the working directory for this session.

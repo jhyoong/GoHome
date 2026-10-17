@@ -747,10 +747,10 @@ func TestE2ESubagentSpawn(t *testing.T) {
 	fe.mu.Lock()
 	var sawChildStart, sawChildEnd bool
 	for _, ev := range fe.events {
-		if ev.Kind == agent.EventSessionStarted && strings.HasPrefix(ev.SessionID, "sub-") {
+		if ev.Kind == agent.EventSessionStarted && strings.Contains(ev.SessionID, "-sub-") {
 			sawChildStart = true
 		}
-		if ev.Kind == agent.EventSessionEnded && strings.HasPrefix(ev.SessionID, "sub-") {
+		if ev.Kind == agent.EventSessionEnded && strings.Contains(ev.SessionID, "-sub-") {
 			sawChildEnd = true
 		}
 	}

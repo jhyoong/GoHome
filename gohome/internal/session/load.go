@@ -26,7 +26,8 @@ import (
 //   - compaction     -> replaces the history so far
 //
 // Events approval, subagent_spawn, subagent_done, session_end are ignored for
-// history reconstruction. After replay, any tool_use without a recorded
+// history reconstruction. subagent_spawn events are counted so new child IDs
+// continue the numbering. After replay, any tool_use without a recorded
 // result gets a synthetic error result so the history is valid to resend.
 func Load(path string) (*Session, []common.Message, error) {
 	f, err := os.Open(path)
@@ -37,6 +38,7 @@ func Load(path string) (*Session, []common.Message, error) {
 
 	var sess *Session
 	var history []common.Message
+	spawned := 0
 
 	err = forEachLine(f, func(raw []byte) {
 		line := string(raw)
@@ -124,6 +126,9 @@ func Load(path string) (*Session, []common.Message, error) {
 				})
 			}
 
+		case "subagent_spawn":
+			spawned++
+
 		case "compaction":
 			var ev struct {
 				Summary string           `json:"summary"`
@@ -157,6 +162,7 @@ func Load(path string) (*Session, []common.Message, error) {
 
 	history = repairToolResults(slog.Default(), sess.ID, history)
 	sess.History = history
+	sess.subagents = spawned
 	validateHistory(slog.Default(), sess.ID, history)
 	return sess, history, nil
 }
