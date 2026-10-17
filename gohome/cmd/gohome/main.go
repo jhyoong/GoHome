@@ -765,7 +765,7 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 			name := reloaded.DefaultModel
 			cfg, ok := reloaded.ModelConfig[name]
 			if !ok {
-				fail("Saved config is unusable", fmt.Errorf("model %q not found; run /config", name))
+				fail("Saved config is unusable", fmt.Errorf("model %q not found; run /config, then restart gohome", name))
 				return
 			}
 			key, err := config.ResolveAPIKey(cfg)
