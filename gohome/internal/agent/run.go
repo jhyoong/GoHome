@@ -107,6 +107,13 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 				continue
 			}
 
+			// Invalid input JSON: do not send it through the guard or the tool.
+			if block.InvalidInput {
+				resultBlocks = append(resultBlocks,
+					a.recordToolResult(sess, block.ToolUseID, invalidToolInputMsg, true, 0))
+				continue
+			}
+
 			content, isError, elapsed, denied := a.dispatchTool(ctx, tctx, sess, block)
 
 			if denied {
@@ -152,6 +159,9 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 		}
 	}
 }
+
+// invalidToolInputMsg is the tool result for a call whose input was not valid JSON.
+const invalidToolInputMsg = "arguments were truncated or invalid JSON, retry"
 
 // drainSteer does a non-blocking read of the steer channel. If a message is
 // available it returns the text. Returns "" when nothing was available.

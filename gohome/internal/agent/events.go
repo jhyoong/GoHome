@@ -26,6 +26,7 @@ const (
 	EventToolDenied     EventKind = "tool_denied"
 	EventRunDone        EventKind = "run_done"
 	EventCompacted      EventKind = "compacted"
+	EventNotice         EventKind = "notice"
 )
 
 type ToolResult struct {
@@ -60,6 +61,7 @@ type Event struct {
 	TurnStats     *TurnStats    `json:"turnStats,omitempty"`
 	CompactBefore int           `json:"compactBefore,omitempty"`
 	CompactAfter  int           `json:"compactAfter,omitempty"`
+	Notice        string        `json:"notice,omitempty"`
 }
 
 type Frontend interface {

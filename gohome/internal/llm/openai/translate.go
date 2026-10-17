@@ -3,6 +3,7 @@ package openai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
@@ -137,7 +138,13 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 				return
 			}
 			if !ok {
-				// frames channel closed without [DONE]; treat as end of stream.
+				// frames channel closed without [DONE]. It counts as complete
+				// only if a finish_reason was received; otherwise the stream
+				// was cut off and any tool call arguments may be truncated.
+				if stopReason == "" {
+					send(common.StreamEvent{Kind: common.EventError, Err: errors.New("stream ended early")})
+					return
+				}
 				if !emitToolCalls() {
 					return
 				}

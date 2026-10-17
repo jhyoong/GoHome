@@ -136,13 +136,24 @@ func (a *Agent) compact(ctx context.Context, sess *session.Session) error {
 	}
 
 	var sb strings.Builder
+	turnDone := false
 	for ev := range events {
 		switch ev.Kind {
 		case common.EventTextDelta:
 			sb.WriteString(ev.TextDelta)
+		case common.EventTurnDone:
+			turnDone = true
 		case common.EventError:
 			return ev.Err
 		}
+	}
+	// Apply the summary only if the stream completed and was not cancelled;
+	// otherwise it may be cut off. Keep the full history.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if !turnDone {
+		return ErrStreamEndedEarly
 	}
 	summary := sb.String()
 

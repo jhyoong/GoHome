@@ -258,3 +258,31 @@ func TestTranslateEvents_MessageStopWithoutMessageDelta(t *testing.T) {
 		t.Fatal("Usage must be non-nil even without a preceding message_delta")
 	}
 }
+
+// TestTranslateEvents_EOFWithoutMessageStop verifies that a stream that ends
+// before message_stop emits an EventError instead of ending silently.
+func TestTranslateEvents_EOFWithoutMessageStop(t *testing.T) {
+	frames := []sseFrame{
+		{event: "message_start", data: `{"type":"message_start","message":{"usage":{"input_tokens":10}}}`},
+		{event: "content_block_start", data: `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`},
+		{event: "content_block_delta", data: `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"partial"}}`},
+	}
+
+	events := collectEvents(translateEvents(context.Background(), makeFrames(frames)))
+
+	if len(events) == 0 {
+		t.Fatal("expected events, got none")
+	}
+	last := events[len(events)-1]
+	if last.Kind != common.EventError {
+		t.Fatalf("last event kind: got %q, want EventError", last.Kind)
+	}
+	if last.Err == nil || last.Err.Error() != "stream ended early" {
+		t.Errorf("error: got %v, want %q", last.Err, "stream ended early")
+	}
+	for _, e := range events {
+		if e.Kind == common.EventTurnDone {
+			t.Error("unexpected EventTurnDone for a stream with no message_stop")
+		}
+	}
+}
