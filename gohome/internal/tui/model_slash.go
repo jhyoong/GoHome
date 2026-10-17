@@ -68,6 +68,10 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 			m.statusMsg = ""
 		}
 	case "/cancel":
+		if !m.runActive() {
+			m.statusMsg = "Nothing to cancel"
+			break
+		}
 		m.cancelRun()
 	case "/new":
 		// A swap during a run would move the run's output to the new view.
@@ -345,4 +349,19 @@ func subagentTask(inputJSON string) string {
 		return ""
 	}
 	return in.Task
+}
+
+// isSlashCommand reports whether text starts with a known slash command.
+// Anything else, such as a pasted path, is sent as a normal message.
+func isSlashCommand(text string) bool {
+	fields := strings.Fields(text)
+	if len(fields) == 0 {
+		return false
+	}
+	for _, cmd := range slashCommands {
+		if fields[0] == cmd {
+			return true
+		}
+	}
+	return false
 }

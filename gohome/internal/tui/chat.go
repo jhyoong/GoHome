@@ -91,8 +91,8 @@ func (c *ChatComponent) ScrollUp(n int) {
 	c.autoScroll = false
 }
 
-// ScrollDown scrolls down by n lines. If the viewport reaches the bottom,
-// auto-scroll is re-enabled so new content is tracked automatically.
+// ScrollDown scrolls down by n lines and disables auto-scroll.
+// Call ReEnableAutoScrollIfAtBottom afterwards to resume following new content.
 func (c *ChatComponent) ScrollDown(n int) {
 	c.scrollTop += n
 	c.autoScroll = false

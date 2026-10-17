@@ -100,7 +100,7 @@ func TestSpinnerRenderShowsCancelHint(t *testing.T) {
 		t.Fatalf("expected 1 line, got %d", len(lines))
 	}
 	plain := StripAnsi(lines[0])
-	if !strings.Contains(plain, "Esc to cancel") {
+	if !strings.Contains(plain, "(Esc Esc to cancel)") {
 		t.Errorf("expected cancel hint in %q", plain)
 	}
 }
@@ -110,7 +110,7 @@ func TestSpinnerRenderNoCancelHintWithoutCallback(t *testing.T) {
 	s.Start("Working...")
 	lines := s.Render(80)
 	plain := StripAnsi(lines[0])
-	if strings.Contains(plain, "Esc to cancel") {
+	if strings.Contains(plain, "(Esc Esc to cancel)") {
 		t.Errorf("should not show cancel hint when onCancel is nil: %q", plain)
 	}
 }

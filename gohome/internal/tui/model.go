@@ -172,6 +172,10 @@ type Model struct {
 	// A second press within 500ms quits; a single press cancels the current turn.
 	lastCtrlC time.Time
 
+	// lastEsc records the time of the most recent Esc press during a run.
+	// A second press within 500ms cancels the run.
+	lastEsc time.Time
+
 	sudoPasswordCache string
 
 	mouseEnabled   bool

@@ -454,12 +454,15 @@ func (e *EditorComponent) HandleInput(msg tea.KeyMsg) tea.Cmd {
 		rows := e.buildVisualLayout(e.width)
 		vrIdx := findVisualRow(rows, e.cursorLine, e.cursorCol)
 		if vrIdx == 0 {
-			if !e.browsing {
-				e.history.StartBrowsing(e.Value())
-				e.browsing = true
+			// History opens only from an empty editor or while browsing, so a
+			// draft keeps its cursor.
+			if e.browsing || e.Value() == "" {
+				if !e.browsing {
+					e.history.StartBrowsing(e.Value())
+					e.browsing = true
+				}
+				e.SetValue(e.history.Prev())
 			}
-			prev := e.history.Prev()
-			e.SetValue(prev)
 			e.desiredCol = -1
 		} else {
 			if e.desiredCol < 0 {
@@ -590,4 +593,10 @@ func (e *EditorComponent) HandleInput(msg tea.KeyMsg) tea.Cmd {
 	}
 
 	return nil
+}
+
+// AddHistory records submitted text for Up recall and ends any browsing.
+func (e *EditorComponent) AddHistory(text string) {
+	e.history.Add(text)
+	e.browsing = false
 }

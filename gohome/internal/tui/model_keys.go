@@ -60,8 +60,22 @@ func (m *Model) handleCtrlC() (tea.Model, tea.Cmd) {
 // enter/submit, external editor, file search navigation, timeline cursor,
 // clipboard copy, and editor text input with @-query file search.
 func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Esc closes the file popup before it can count towards cancelling a run.
+	if msg.Type == tea.KeyEsc && m.fileSearching && m.fileSearch.visible {
+		m.fileSearching = false
+		m.fileSearch.Hide()
+		return m, nil
+	}
 	if msg.Type == tea.KeyEsc && m.spinner.Active() {
-		m.spinner.HandleInput(msg)
+		// Cancelling needs two presses within 500ms to avoid accidents.
+		now := time.Now()
+		if now.Sub(m.lastEsc) < 500*time.Millisecond {
+			m.lastEsc = time.Time{}
+			m.spinner.HandleInput(msg)
+		} else {
+			m.lastEsc = now
+			m.statusMsg = "Press Esc again to cancel"
+		}
 		return m, nil
 	}
 
@@ -119,7 +133,7 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 						m.rebuildViewport()
 					}
 				}
-			} else if strings.HasPrefix(text, "/") {
+			} else if isSlashCommand(text) {
 				cmd := m.handleSlashCommand(text)
 				m.editor.SetValue("")
 				m.chat.ScrollToBottom()
@@ -177,6 +191,10 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					cmds = append(cmds, m.sendInputCmd(text))
 				}
 			}
+			// The editor is cleared only when the text was taken.
+			if text != "" && m.editor.Value() == "" {
+				m.editor.AddHistory(text)
+			}
 		}
 		return m, tea.Batch(cmds...)
 	case tea.KeyCtrlD:
@@ -188,7 +206,7 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyCtrlE:
 		return m, m.openExternalEditor()
 	default:
-		// File search navigation intercepts arrow keys and Esc.
+		// File search navigation intercepts arrow keys.
 		if m.fileSearching && m.fileSearch.visible {
 			if msg.Type == tea.KeyUp {
 				m.fileSearch.MoveUp()
@@ -196,11 +214,6 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			if msg.Type == tea.KeyDown {
 				m.fileSearch.MoveDown()
-				return m, nil
-			}
-			if msg.Type == tea.KeyEsc {
-				m.fileSearching = false
-				m.fileSearch.Hide()
 				return m, nil
 			}
 		}
@@ -239,6 +252,9 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.rebuildViewport()
 					m.syncChatHeight()
 					m.chat.EnsureCursorVisible(m.winW)
+					if m.cursor == len(sv.Timeline)-1 {
+						m.chat.ReEnableAutoScrollIfAtBottom(m.winW)
+					}
 				} else if ok && m.cursor >= 0 && m.cursor < len(sv.Timeline) {
 					if m.chat.entryLineCount(&sv.Timeline[m.cursor], m.winW) > m.chat.maxHeight {
 						m.chat.DisableAutoScroll(m.winW)

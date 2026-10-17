@@ -66,7 +66,7 @@ func (s *SpinnerComponent) Render(width int) []string {
 	frame := spinnerFrames[s.frame%len(spinnerFrames)]
 	line := spinnerStyle.Render(frame) + " " + s.message
 	if s.onCancel != nil {
-		line += "  " + lipgloss.NewStyle().Faint(true).Render("(Esc to cancel)")
+		line += "  " + lipgloss.NewStyle().Faint(true).Render("(Esc Esc to cancel)")
 	}
 	return []string{line}
 }
