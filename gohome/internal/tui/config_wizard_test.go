@@ -4,12 +4,14 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/jhyoong/GoHome/gohome/internal/config"
+	"github.com/jhyoong/GoHome/gohome/internal/guard"
 )
 
 func TestConfigWizard_InitialStep(t *testing.T) {
@@ -338,5 +340,24 @@ func TestConfigWizard_DenylistFailureStaysAndShowsError(t *testing.T) {
 	joined := StripAnsi(strings.Join(w.Render(80), "\n"))
 	if !strings.Contains(joined, "Denylist setup failed") {
 		t.Errorf("render missing error:\n%s", joined)
+	}
+}
+
+func TestConfigWizard_DenylistUsesBuiltInPatterns(t *testing.T) {
+	outPath := filepath.Join(t.TempDir(), "settings.json")
+	w := wizardAtConfirm(outPath)
+	w.HandleInput(tea.KeyMsg{Type: tea.KeyEnter}) // Save
+	w.HandleInput(tea.KeyMsg{Type: tea.KeyEnter}) // denylist yes
+
+	data, err := os.ReadFile(filepath.Join(filepath.Dir(outPath), "denylist.json"))
+	if err != nil {
+		t.Fatalf("read denylist: %v", err)
+	}
+	var df guard.DenylistFile
+	if err := json.Unmarshal(data, &df); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if !reflect.DeepEqual(df.Shell, guard.DefaultDenyPatterns) {
+		t.Errorf("wizard denylist = %v, want built-in %v", df.Shell, guard.DefaultDenyPatterns)
 	}
 }

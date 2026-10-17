@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,6 +10,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/jhyoong/GoHome/gohome/internal/config"
+	"github.com/jhyoong/GoHome/gohome/internal/guard"
 )
 
 type wizardStep int
@@ -241,15 +243,15 @@ func (w *ConfigWizard) save() error {
 
 func (w *ConfigWizard) scaffoldDenylist() error {
 	path := filepath.Join(filepath.Dir(w.outputPath), "denylist.json")
-	content := []byte(`{
-  "shell": [
-    "rm -rf /",
-    "mkfs",
-    ":(){ :|:& };:",
-    "regex:>\\s*/dev/sd[a-z]"
-  ]
-}
-`)
+	// Encode without HTML escaping so "&" stays readable in the file.
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(guard.DenylistFile{Shell: guard.DefaultDenyPatterns}); err != nil {
+		return err
+	}
+	content := buf.Bytes()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}

@@ -25,3 +25,68 @@ func TestDefaultDenyPatterns_ContainsSubstringAndRegex(t *testing.T) {
 		t.Error("expected at least one regex pattern in defaults")
 	}
 }
+
+func defaultDenylist(t *testing.T) *Denylist {
+	t.Helper()
+	dl, err := CompileDenylist(DenylistFile{Shell: DefaultDenyPatterns})
+	if err != nil {
+		t.Fatalf("CompileDenylist: %v", err)
+	}
+	return dl
+}
+
+func TestDefaultDenyPatterns_DeniesBypassCases(t *testing.T) {
+	dl := defaultDenylist(t)
+	cmds := []string{
+		"rm -rf /",
+		"rm -fr /",
+		"rm -r -f /",
+		"rm  -rf /",
+		"rm\t-rf\t/",
+		`rm -rf "/"`,
+		"rm -rf '/'",
+		"rm -rf ~",
+		"rm -rf ~/",
+		"rm -rf /*",
+		"rm -rf $HOME",
+		"rm --recursive --force /",
+		"rm -rf --no-preserve-root /",
+		"sudo rm -rf /",
+		"cd x; rm -rf /",
+		"true && rm -rf / && true",
+		"rm -rf / --no-preserve-root",
+		"mkfs.ext4 /dev/sda1",
+		"mkfs /dev/sda1",
+		"sudo mkfs.ext4 /dev/sda1",
+		"ls; mkfs /dev/sda1",
+		":(){ :|:& };:",
+		"echo x > /dev/sda",
+	}
+	for _, c := range cmds {
+		if ok, _ := dl.Denies("shell", shellInput(c)); !ok {
+			t.Errorf("expected %q to be denied", c)
+		}
+	}
+}
+
+func TestDefaultDenyPatterns_AllowsSafeCases(t *testing.T) {
+	dl := defaultDenylist(t)
+	cmds := []string{
+		"rm -rf /tmp/build",
+		"rm -rf ./build",
+		"rm -rf ~/build",
+		"rm -rf $HOME/build",
+		"rm -f /tmp/x",
+		"rm /",
+		"rm -r foo; ls /",
+		"rm -r foo && ls /",
+		"echo mkfs",
+		"man mkfs",
+		"ls /",
+	}
+	for _, c := range cmds {
+		if ok, p := dl.Denies("shell", shellInput(c)); ok {
+			t.Errorf("expected %q to be allowed, matched %q", c, p)
+		}
+	}
+}
