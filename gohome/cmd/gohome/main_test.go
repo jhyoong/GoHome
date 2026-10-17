@@ -308,7 +308,7 @@ func TestSetupLogging_OwnerOnlyPerms(t *testing.T) {
 	if err != nil {
 		t.Fatalf("setupLogging: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	for _, d := range []string{home, filepath.Join(home, "logs")} {
 		st, err := os.Stat(d)
 		if err != nil {
@@ -342,7 +342,7 @@ func TestSetupLogging_KeepsExistingDirPerms(t *testing.T) {
 	if err != nil {
 		t.Fatalf("setupLogging: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	st, _ := os.Stat(home)
 	if got := st.Mode().Perm(); got != 0o755 {
 		t.Errorf("existing dir mode changed to %o", got)

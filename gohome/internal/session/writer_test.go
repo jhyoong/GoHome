@@ -114,7 +114,7 @@ func TestOpenWriter_OwnerOnlyPerms(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWriter: %v", err)
 	}
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 	st, err := os.Stat(dir)
 	if err != nil {
 		t.Fatal(err)
