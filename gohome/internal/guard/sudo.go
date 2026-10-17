@@ -30,8 +30,11 @@ func isSudoCommandOn(goos, command string) bool {
 	return goos != "windows" && IsSudoCommand(command)
 }
 
+// hostGOOS is the OS the guard decides for; tests override it.
+var hostGOOS = runtime.GOOS
+
 // needsSudoPassword reports whether command needs the sudo password prompt
 // on the current OS.
 func needsSudoPassword(command string) bool {
-	return isSudoCommandOn(runtime.GOOS, command)
+	return isSudoCommandOn(hostGOOS, command)
 }
