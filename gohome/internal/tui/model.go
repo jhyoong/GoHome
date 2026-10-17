@@ -293,7 +293,8 @@ func (m *Model) ShowStartupWizard(onSave func(path string)) {
 	m.activeModal = NewConfigWizard(
 		func() { m.activeModal = nil },
 		func(path string) {
-			m.activeModal = nil
+			// Keep the modal open: the wizard shows the denylist offer next
+			// and closes itself through onCancel.
 			if onSave != nil {
 				onSave(path)
 			}
@@ -499,7 +500,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.activeModal = NewConfigWizard(
 					func() { m.activeModal = nil },
 					func(path string) {
-						m.activeModal = nil
+						// Modal stays open for the denylist offer.
 						m.statusMsg = "Config saved. Restart gohome to apply changes."
 					},
 				)

@@ -361,3 +361,55 @@ func TestConfigWizard_DenylistUsesBuiltInPatterns(t *testing.T) {
 		t.Errorf("wizard denylist = %v, want built-in %v", df.Shell, guard.DefaultDenyPatterns)
 	}
 }
+
+func TestStartupWizard_ShowsDenylistOfferAfterSave(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix permissions")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	m := New(NewFrontend(), "sess")
+	var savedPath string
+	m.ShowStartupWizard(func(p string) { savedPath = p })
+	w, ok := m.activeModal.(*ConfigWizard)
+	if !ok {
+		t.Fatalf("activeModal = %T, want *ConfigWizard", m.activeModal)
+	}
+	w.wire, w.baseURL, w.keySource, w.keyValue = "anthropic", "http://x", "literal", "secret"
+	w.modelName, w.configName = "m", "c"
+	w.step = wizardStepConfirm
+	w.buildStep()
+
+	enter := tea.KeyMsg{Type: tea.KeyEnter}
+	m.Update(enter) // Save
+	if savedPath == "" {
+		t.Fatal("onSave was not called")
+	}
+	if m.activeModal != w {
+		t.Fatal("modal closed after save; denylist offer never shown")
+	}
+	if w.step != wizardStepDenylistOffer {
+		t.Fatalf("step = %d, want denylist offer", w.step)
+	}
+	if !strings.Contains(strings.Join(w.Render(80), "\n"), "denylist") {
+		t.Error("render does not show the denylist offer")
+	}
+
+	m.Update(enter) // Yes
+	data, err := os.ReadFile(filepath.Join(home, ".gohome", "denylist.json"))
+	if err != nil {
+		t.Fatalf("denylist.json not written: %v", err)
+	}
+	if len(data) == 0 {
+		t.Error("denylist.json is empty")
+	}
+	fi, _ := os.Stat(filepath.Join(home, ".gohome", "denylist.json"))
+	if got := fi.Mode().Perm(); got != 0o600 {
+		t.Errorf("denylist.json mode = %o, want 600", got)
+	}
+	if m.activeModal != nil {
+		t.Error("modal should close after the denylist step")
+	}
+}
