@@ -43,7 +43,7 @@ func historyToTimeline(msgs []common.Message) []TimelineEntry {
 				case common.BlockToolUse:
 					entries = append(entries, TimelineEntry{
 						Kind:      KindTool,
-						ToolName:  b.ToolName,
+						ToolName:  sanitizeText(b.ToolName),
 						ToolUseID: b.ToolUseID,
 						Text:      sanitizeText(b.InputJSON),
 						Status:    "success",

@@ -26,6 +26,10 @@ type approvalPrompt struct {
 	reply   chan guard.ApprovalDecision
 	pattern string // current (possibly edited) pattern
 
+	// toolLabel is req.Tool with control characters removed, for display.
+	// req.Tool keeps the raw value for comparisons.
+	toolLabel string
+
 	// selected is the currently highlighted menu item (0=Allow once, 1=Allow always,
 	// 2=Deny, 3=Deny+steer). Zero-init gives us "Allow once" as the default.
 	selected int
@@ -73,6 +77,7 @@ func newApprovalPrompt(req guard.ApprovalRequest, reply chan guard.ApprovalDecis
 		req:           req,
 		reply:         reply,
 		pattern:       pattern,
+		toolLabel:     sanitizeText(req.Tool),
 		patternInput:  pi,
 		steerInput:    si,
 		needsSudo:     req.NeedsSudoPassword,
@@ -93,9 +98,9 @@ func approvalSummaryLine(ap *approvalPrompt, focusedSessionID string) string {
 	arg := extractToolArg(ap.req.Tool, string(ap.req.Input))
 	prefix := sessionPrefix(ap, focusedSessionID)
 	if arg != "" {
-		return fmt.Sprintf("%s%s: %s", prefix, ap.req.Tool, arg)
+		return fmt.Sprintf("%s%s: %s", prefix, ap.toolLabel, arg)
 	}
-	return prefix + ap.req.Tool
+	return prefix + ap.toolLabel
 }
 
 // sessionPrefix returns "[sid] " when the request comes from a session other

@@ -129,6 +129,11 @@ func TestView_SanitizesAgentEvents(t *testing.T) {
 		InputJSON: "{\"command\":\"echo \x1b]0;t\x07 \x1b[2J\"}",
 	}})
 	m.handleAgentEvent(AgentEventMsg{SessionID: "s1", Ev: agent.Event{
+		// The model can request an unknown tool with any name.
+		Kind: agent.EventToolCallDone, ToolCallID: "t3", ToolName: hostileTool,
+		InputJSON: `{"a":"b"}`,
+	}})
+	m.handleAgentEvent(AgentEventMsg{SessionID: "s1", Ev: agent.Event{
 		Kind:   agent.EventToolResult,
 		Result: &agent.ToolResult{ToolUseID: "t1", Content: payload},
 	}})
@@ -136,7 +141,11 @@ func TestView_SanitizesAgentEvents(t *testing.T) {
 		Kind: agent.EventError, Err: errString(payload),
 	}})
 
-	assertNoHostile(t, m.View())
+	collapsed := m.View()
+	assertNoHostile(t, collapsed)
+	if !strings.Contains(collapsed, "xevil") {
+		t.Errorf("collapsed view lost tool name text: %q", collapsed)
+	}
 	sv := m.sessions["s1"]
 	for i := range sv.Timeline {
 		sv.Timeline[i].Expanded = true
@@ -148,7 +157,7 @@ func TestView_SanitizesAgentEvents(t *testing.T) {
 		t.Errorf("view lost surrounding text: %q", view)
 	}
 	for _, e := range sv.Timeline {
-		for _, s := range []string{e.Text, e.ToolResult} {
+		for _, s := range []string{e.Text, e.ToolResult, e.ToolName} {
 			if strings.ContainsAny(s, "\x1b\x07") {
 				t.Errorf("timeline entry %s keeps control chars: %q", e.Kind, s)
 			}
@@ -213,31 +222,79 @@ func TestView_SanitizesDiffPreview(t *testing.T) {
 }
 
 func TestView_SanitizesApprovalPrompt(t *testing.T) {
-	input := json.RawMessage(`{"command":"echo \u001b]52;c;aGk=\u0007 \u001b[2J hi"}`)
-	for _, sudo := range []bool{false, true} {
-		m := newSanitizeModel()
-		m.Update(ApprovalReqMsg{
-			Req: guard.ApprovalRequest{
-				SessionID:        "s1",
-				Tool:             "shell",
-				Input:            input,
-				SuggestedPattern: "echo \x1b[2J",
-				PasswordOnly:     sudo,
-			},
-			Reply: make(chan guard.ApprovalDecision, 1),
+	shellInput := json.RawMessage(`{"command":"echo \u001b]52;c;aGk=\u0007 \u001b[2J hi"}`)
+	tests := []struct {
+		name  string
+		tool  string
+		input json.RawMessage
+		sudo  bool
+		want  string
+	}{
+		{"menu", "shell", shellInput, false, "shell: echo   hi"},
+		{"sudo dialog", "shell", shellInput, true, "echo   hi"},
+		{"hostile tool name", hostileTool, json.RawMessage(`{"a":"b"}`), false, "xevil: "},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			m := newSanitizeModel()
+			m.Update(ApprovalReqMsg{
+				Req: guard.ApprovalRequest{
+					SessionID:        "s1",
+					Tool:             tc.tool,
+					Input:            tc.input,
+					SuggestedPattern: "echo \x1b[2J",
+					PasswordOnly:     tc.sudo,
+				},
+				Reply: make(chan guard.ApprovalDecision, 1),
+			})
+			view := m.View()
+			assertNoHostile(t, view)
+			if !strings.Contains(view, tc.want) {
+				t.Errorf("approval view missing %q: %q", tc.want, view)
+			}
 		})
-		view := m.View()
-		assertNoHostile(t, view)
-		if !strings.Contains(view, "hi") {
-			t.Errorf("sudo=%v: approval lost command text: %q", sudo, view)
-		}
+	}
+}
+
+// hostileTool is a model-supplied tool name carrying an OSC 52 sequence.
+const hostileTool = "x\x1b]52;c;aGk=\x07evil"
+
+func TestAppendStreamText_CapsHeldTail(t *testing.T) {
+	var e TimelineEntry
+	appendStreamText(&e, "a\x1b]52;c;")
+	if e.streamTail != "\x1b]52;c;" {
+		t.Fatalf("short tail not held: %q", e.streamTail)
+	}
+	appendStreamText(&e, strings.Repeat("A", maxStreamTail))
+	if e.streamTail != "" {
+		t.Errorf("tail over cap still held: %d bytes", len(e.streamTail))
+	}
+	if e.Text != "a" {
+		t.Errorf("text = %q, want %q", e.Text, "a")
+	}
+	// After the drop, later text is sanitized on its own.
+	appendStreamText(&e, "B\x07c")
+	if e.Text != "aBc" {
+		t.Errorf("text = %q, want %q", e.Text, "aBc")
 	}
 }
 
 func TestHistoryToTimeline_Sanitizes(t *testing.T) {
 	entries := historyToTimeline(sanitizeHistoryFixture())
+	if len(entries) != 4 {
+		t.Fatalf("len = %d, want 4", len(entries))
+	}
+	for i := 0; i < 3; i++ {
+		if entries[i].Text != "xy" {
+			t.Errorf("entry %d (%s) text = %q, want %q", i, entries[i].Kind, entries[i].Text, "xy")
+		}
+	}
+	if entries[3].ToolName != "xevil" || entries[3].ToolResult != "xy" {
+		t.Errorf("tool entry name = %q, result = %q, want %q, %q",
+			entries[3].ToolName, entries[3].ToolResult, "xevil", "xy")
+	}
 	for _, e := range entries {
-		for _, s := range []string{e.Text, e.ToolResult} {
+		for _, s := range []string{e.Text, e.ToolResult, e.ToolName} {
 			if strings.ContainsAny(s, "\x1b\x07") {
 				t.Errorf("entry %s keeps control chars: %q", e.Kind, s)
 			}
@@ -252,7 +309,7 @@ func sanitizeHistoryFixture() []common.Message {
 		{Role: common.RoleAssistant, Content: []common.Block{
 			{Kind: common.BlockThinking, Text: bad},
 			{Kind: common.BlockText, Text: bad},
-			{Kind: common.BlockToolUse, ToolName: "shell", ToolUseID: "t1", InputJSON: `{"command":"` + bad + `"}`},
+			{Kind: common.BlockToolUse, ToolName: hostileTool, ToolUseID: "t1", InputJSON: `{"command":"` + bad + `"}`},
 		}},
 		{Role: common.RoleTool, Content: []common.Block{
 			{Kind: common.BlockToolResult, ToolUseID: "t1", ResultText: bad},

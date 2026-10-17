@@ -44,22 +44,24 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 		}
 
 	case agent.EventToolCallDone:
+		// The tool name comes from the model and may be any string.
+		toolName := sanitizeText(ev.ToolName)
 		inputText := sanitizeText(ev.InputJSON)
 		entry := TimelineEntry{
 			Kind:      KindTool,
-			ToolName:  ev.ToolName,
+			ToolName:  toolName,
 			ToolUseID: ev.ToolCallID,
 			Text:      inputText,
 			Status:    "pending",
 		}
-		if ev.ToolName == "edit" {
+		if toolName == "edit" {
 			entry.DiffPreview = buildDiffPreview(ev.InputJSON)
 		}
 		sv.Timeline = append(sv.Timeline, entry)
 		if sv.Depth > 0 {
 			shadow := TimelineEntry{
 				Kind:        KindTool,
-				ToolName:    ev.ToolName,
+				ToolName:    toolName,
 				ToolUseID:   ev.ToolCallID,
 				Text:        inputText,
 				Status:      "pending",
@@ -299,12 +301,20 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 // appendStreamText sanitizes a streamed delta and appends it to e.Text. An
 // incomplete sequence at the end of the delta is kept in e.streamTail and
 // joined with the next delta, so a sequence split across deltas is removed
-// as a whole. A tail left when the stream ends is never shown.
+// as a whole. A tail left when the stream ends is never shown. A tail longer
+// than maxStreamTail (an OSC or DCS string that is never terminated) is
+// dropped instead of held, so it cannot grow and be rescanned without bound.
 func appendStreamText(e *TimelineEntry, delta string) {
 	clean, rest := sanitizeStream(e.streamTail + delta)
 	e.Text += clean
+	if len(rest) > maxStreamTail {
+		rest = ""
+	}
 	e.streamTail = rest
 }
+
+// maxStreamTail is the largest incomplete sequence held between deltas.
+const maxStreamTail = 4096
 
 // insertShadowEntry inserts a shadow tool entry into the parent session's
 // timeline after the subagent tool entry linked to childID. Maintains a
