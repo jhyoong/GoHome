@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -213,7 +214,15 @@ func (s ShellTool) Execute(ctx context.Context, in json.RawMessage, sink Progres
 
 	// Determine exit code.
 	exitCode := 0
-	if waitErr != nil {
+	bgNote := false
+	if errors.Is(waitErr, exec.ErrWaitDelay) {
+		// The shell finished but a background process still holds the
+		// output pipe. Keep the output and the shell's own exit code.
+		bgNote = true
+		if cmd.ProcessState != nil {
+			exitCode = cmd.ProcessState.ExitCode()
+		}
+	} else if waitErr != nil {
 		if exitErr, ok := waitErr.(*exec.ExitError); ok {
 			exitCode = exitErr.ExitCode()
 		} else {
@@ -226,6 +235,9 @@ func (s ShellTool) Execute(ctx context.Context, in json.RawMessage, sink Progres
 	content := fmt.Sprintf("exit %d\n%s", exitCode, captured)
 	if captured != "" {
 		content += "\n"
+	}
+	if bgNote {
+		content += "[shell: a background process still holds the output open; remaining output ignored]\n"
 	}
 
 	return Result{Content: content}, nil

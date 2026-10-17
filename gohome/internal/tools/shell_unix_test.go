@@ -100,3 +100,19 @@ func TestBash_RunsWithoutControllingTerminal(t *testing.T) {
 		}
 	}
 }
+
+func TestBash_BackgroundJobHoldingPipeKeepsOutput(t *testing.T) {
+	res, dur := execBashGuarded(t, 40*time.Second, map[string]any{
+		"command":    "sleep 30 & echo bg",
+		"timeout_ms": 20000,
+	})
+	if res.IsError {
+		t.Fatalf("unexpected IsError: %s", res.Content)
+	}
+	if !strings.Contains(res.Content, "exit 0") || !strings.Contains(res.Content, "bg") {
+		t.Errorf("expected exit 0 and bg, got %q", res.Content)
+	}
+	if dur > 6*time.Second {
+		t.Errorf("expected return near WaitDelay, took %v", dur)
+	}
+}
