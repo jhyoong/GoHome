@@ -96,3 +96,4 @@ Minor items found while reviewing the D1-D9 fixes (plan: `docs/reviews/2026-10-1
 ### Tools (found while fixing T1-T3)
 51. **The shell `cwd` is resolved against the process folder, not the session folder.** This has no effect today: the session folder is always `os.Getwd()` and nothing calls `Chdir`. It matters only if sessions ever run in a different folder (audit T3).
 52. **A file written by `write` must be read before `edit`.** `write` does not mark the file as read, so the model needs an extra `read` call.
+53. **Read-before-edit does not follow symlinks.** Paths are compared in clean absolute form, but symlinks are not resolved. On macOS, reading `/tmp/x/a.txt` and then editing `/private/tmp/x/a.txt` returns "file must be read first". Related to item 39. Found during the live test of the T1-T3 fixes.
