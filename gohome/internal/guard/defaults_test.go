@@ -59,6 +59,7 @@ func TestDefaultDenyPatterns_DeniesBypassCases(t *testing.T) {
 		"mkfs /dev/sda1",
 		"sudo mkfs.ext4 /dev/sda1",
 		"ls; mkfs /dev/sda1",
+		"ls\nmkfs /dev/sda1",
 		":(){ :|:& };:",
 		"echo x > /dev/sda",
 	}

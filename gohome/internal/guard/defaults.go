@@ -13,7 +13,7 @@ var DefaultDenyPatterns = []string{
 	// Other arguments may sit between the parts; shell separators end the match.
 	`regex:(^|[\s;&|(/])rm( [^\s;&|]+)*? (-[A-Za-z]*[rR][A-Za-z]*|--recursive)( [^\s;&|]+)*? ["']?(/\*?|~/?|\$HOME/?|\$\{HOME\}/?)["']?([\s;&|)]|$)`,
 	// mkfs and mkfs.<type> only when run as a command.
-	`regex:(^|[;&|(] ?|sudo |/)mkfs(\.[A-Za-z0-9]+)?([\s;&|)]|$)`,
+	`regex:(^|[;&|(\n] ?|sudo |/)mkfs(\.[A-Za-z0-9]+)?([\s;&|)]|$)`,
 	":(){ :|:& };:",
 	`regex:>\s*/dev/sd[a-z]`,
 }
