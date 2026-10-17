@@ -201,13 +201,17 @@ func sudoRejected(output string) bool {
 }
 
 // handleSudoPasswordKey routes keys while the password stage is open. Every
-// key except Enter, Esc and PgUp/PgDown goes to the password field.
+// key except Enter, Esc, Tab and PgUp/PgDown goes to the password field. Tab
+// toggles the full command, since 'v' would be typed into the password.
 func (m *Model) handleSudoPasswordKey(msg tea.KeyMsg) tea.Cmd {
 	ap := m.activeApproval
 	if m.scrollApprovalPage(msg) {
 		return nil
 	}
 	switch msg.Type {
+	case tea.KeyTab:
+		ap.expandedSummary = !ap.expandedSummary
+		return nil
 	case tea.KeyEnter:
 		if ap.passwordInput.Value() == "" {
 			ap.sudoErr = "Password required"

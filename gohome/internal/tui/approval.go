@@ -204,7 +204,10 @@ func renderSudoDialog(ap *approvalPrompt, width int, focusedSessionID string) st
 
 	const maxCmdLines = 3
 	cmdLines := WrapText(extractToolArg(ap.req.Tool, string(ap.req.Input)), contentW)
-	cmdLines, _ = capLines(cmdLines, maxCmdLines, contentW)
+	truncated := false
+	if !ap.expandedSummary {
+		cmdLines, truncated = capLines(cmdLines, maxCmdLines, contentW)
+	}
 
 	const pwLabel = "Password: "
 	// Keep the field on one line so long passwords scroll instead of wrapping.
@@ -226,6 +229,9 @@ func renderSudoDialog(ap *approvalPrompt, width int, focusedSessionID string) st
 		sb.WriteString("Enter: run | Esc: deny")
 	} else {
 		sb.WriteString("Enter: run | Esc: back | Ctrl+C: deny")
+	}
+	if truncated {
+		sb.WriteString(" | Tab: full command")
 	}
 
 	return sudoBoxStyle.Width(boxW).Render(sb.String())
