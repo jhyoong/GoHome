@@ -3,11 +3,15 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"unicode/utf8"
+
+	"github.com/jhyoong/GoHome/gohome/internal/config"
 )
 
 func execBash(t *testing.T, input any) Result {
@@ -318,4 +322,133 @@ func TestBash_SudoPreauth_TrailingBackslash(t *testing.T) {
 	if strings.Contains(res.Content, "exit") && strings.Contains(res.Content, "a exit") {
 		t.Errorf("trailing backslash joined the exit line: %q", res.Content)
 	}
+}
+
+func TestBash_LargeOutputKeepsHeadAndTail(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix shell command")
+	}
+	res := execBash(t, map[string]any{
+		"command": "printf 'HEAD-MARK\\n'; yes x | head -c 200000; printf 'TAIL-MARK\\n'",
+	})
+	if res.IsError {
+		t.Fatalf("unexpected IsError: %s", res.Content)
+	}
+	if !strings.Contains(res.Content, "HEAD-MARK") {
+		t.Errorf("head missing")
+	}
+	if !strings.Contains(res.Content, "TAIL-MARK") {
+		t.Errorf("tail missing")
+	}
+	if !strings.Contains(res.Content, "bytes omitted ...]") {
+		t.Errorf("omitted marker missing")
+	}
+	if len(res.Content) > 2*shellOutputKeep+200 {
+		t.Errorf("content not capped: %d bytes", len(res.Content))
+	}
+}
+
+func TestBash_LongLineKeepsTailAndLaterOutput(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix shell command")
+	}
+	res := execBash(t, map[string]any{
+		"command": "head -c 2000000 /dev/zero | tr '\\000' a; printf 'zzEND\\nAFTER-LINE\\n'",
+	})
+	if res.IsError {
+		t.Fatalf("unexpected IsError: %s", res.Content)
+	}
+	if !strings.Contains(res.Content, "aaaazzEND\nAFTER-LINE") {
+		t.Errorf("tail of long line or later output missing: ...%q", res.Content[max(0, len(res.Content)-100):])
+	}
+	if strings.Contains(res.Content, "cut off") {
+		t.Errorf("unexpected cut-off note")
+	}
+	if !strings.Contains(res.Content, "bytes omitted ...]") {
+		t.Errorf("omitted marker missing")
+	}
+}
+
+func TestBash_SmallOutputNotMarked(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix shell command")
+	}
+	res := execBash(t, map[string]any{"command": "yes x | head -c 60000"})
+	if strings.Contains(res.Content, "omitted") {
+		t.Errorf("output under the cap should not be marked")
+	}
+	if got := strings.Count(res.Content, "x\n"); got != 30000 {
+		t.Errorf("want 30000 x, got %d", got)
+	}
+}
+
+func TestCappedBuffer_ExactCounts(t *testing.T) {
+	b := newCappedBuffer(4, 4)
+	for _, s := range []string{"ab", "cdef", "ghij", "kl"} {
+		_, _ = b.Write([]byte(s))
+	}
+	want := "abcd\n[... 4 bytes omitted ...]\nijkl"
+	if got := b.String(); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	b2 := newCappedBuffer(4, 4)
+	_, _ = b2.Write([]byte("abcdefgh"))
+	if got := b2.String(); got != "abcdefgh" {
+		t.Errorf("got %q, want no marker", got)
+	}
+}
+
+func TestCappedBuffer_DoesNotSplitRunes(t *testing.T) {
+	// Each "é" is 2 bytes. A cut at an odd offset would split one.
+	b := newCappedBuffer(5, 5)
+	_, _ = b.Write([]byte(strings.Repeat("é", 20)))
+	got := b.String()
+	if !utf8.ValidString(got) {
+		t.Errorf("output has broken runes: %q", got)
+	}
+	if !strings.Contains(got, "[... 32 bytes omitted ...]") {
+		t.Errorf("omitted count should include the moved bytes: %q", got)
+	}
+}
+
+func TestBash_ZeroTimeoutUsesDefault(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix shell command")
+	}
+	for _, ms := range []int{0, -5} {
+		res := execBash(t, map[string]any{"command": "sleep 0.05; echo ran", "timeout_ms": ms})
+		if res.IsError {
+			t.Fatalf("timeout_ms=%d: unexpected IsError: %s", ms, res.Content)
+		}
+		if !strings.Contains(res.Content, "ran") {
+			t.Errorf("timeout_ms=%d: want 'ran', got %q", ms, res.Content)
+		}
+	}
+}
+
+func TestBash_DescriptionAndSchemaUseTimeouts(t *testing.T) {
+	check := func(bt ShellTool, def, maxMs int) {
+		t.Helper()
+		d := bt.Description()
+		if !strings.Contains(d, fmt.Sprintf("%d ms", def)) || !strings.Contains(d, fmt.Sprintf("%d ms", maxMs)) {
+			t.Errorf("description missing %d/%d: %q", def, maxMs, d)
+		}
+		var schema struct {
+			Properties map[string]struct {
+				Description string `json:"description"`
+			} `json:"properties"`
+		}
+		if err := json.Unmarshal(bt.InputSchema(), &schema); err != nil {
+			t.Fatalf("InputSchema is not valid JSON: %v", err)
+		}
+		td := schema.Properties["timeout_ms"].Description
+		if !strings.Contains(td, fmt.Sprintf("default %d", def)) || !strings.Contains(td, fmt.Sprintf("max %d", maxMs)) {
+			t.Errorf("timeout_ms description missing %d/%d: %q", def, maxMs, td)
+		}
+		if strings.Contains(d+td, "120000") && def != 120000 {
+			t.Errorf("hard-coded default left in: %q / %q", d, td)
+		}
+	}
+	check(ShellTool{DefaultTimeoutMs: 5000, MaxTimeoutMs: 9000}, 5000, 9000)
+	check(ShellTool{}, config.DefaultShellTimeoutMs, config.DefaultMaxShellTimeoutMs)
 }

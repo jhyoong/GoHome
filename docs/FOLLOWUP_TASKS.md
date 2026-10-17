@@ -92,3 +92,7 @@ Minor items found while reviewing the D1-D9 fixes (plan: `docs/reviews/2026-10-1
 48. **A new tool-call id at an index already in use concatenates arguments.** Seen only from servers that do not follow the spec (`openai/translate.go`).
 49. **SSE parsing does not handle bare-CR line endings or multi-line OpenAI `data:` payloads.** Both are rare.
 50. **The idle-read watchdog can fire if the stream consumer stalls.** If the TUI or headless stdout is blocked for longer than the idle timeout, the stream is cut even though the server is still sending.
+
+### Tools (found while fixing T1-T3)
+51. **The shell `cwd` is resolved against the process folder, not the session folder.** This has no effect today: the session folder is always `os.Getwd()` and nothing calls `Chdir`. It matters only if sessions ever run in a different folder (audit T3).
+52. **A file written by `write` must be read before `edit`.** `write` does not mark the file as read, so the model needs an extra `read` call.

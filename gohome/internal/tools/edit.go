@@ -45,6 +45,10 @@ func (et EditTool) Execute(ctx context.Context, in json.RawMessage, _ ProgressSi
 		return Result{IsError: true, Content: "edit: invalid input: " + err.Error()}, nil
 	}
 
+	if inp.OldString == "" {
+		return Result{IsError: true, Content: "edit: old_string must not be empty; use the write tool to create or overwrite a file"}, nil
+	}
+
 	// Read-before-edit check: if a session is present, the file must have been read first.
 	if s := SessionFrom(ctx); s != nil {
 		if !s.HasRead(inp.Path) {
@@ -58,7 +62,17 @@ func (et EditTool) Execute(ctx context.Context, in json.RawMessage, _ ProgressSi
 	}
 
 	content := string(data)
-	count := strings.Count(content, inp.OldString)
+	oldStr, newStr := inp.OldString, inp.NewString
+	count := strings.Count(content, oldStr)
+
+	// The read tool strips "\r", so the model sends LF-only text for CRLF
+	// files. Retry with CRLF line endings when the plain match fails.
+	if count == 0 && strings.Contains(content, "\r\n") &&
+		strings.Contains(oldStr, "\n") && !strings.Contains(oldStr, "\r\n") {
+		oldStr = strings.ReplaceAll(oldStr, "\n", "\r\n")
+		newStr = strings.ReplaceAll(newStr, "\n", "\r\n")
+		count = strings.Count(content, oldStr)
+	}
 
 	if count == 0 {
 		return Result{IsError: true, Content: fmt.Sprintf("edit: no match for old_string in %q", inp.Path)}, nil
@@ -74,9 +88,9 @@ func (et EditTool) Execute(ctx context.Context, in json.RawMessage, _ ProgressSi
 
 	var updated string
 	if replaceAll {
-		updated = strings.ReplaceAll(content, inp.OldString, inp.NewString)
+		updated = strings.ReplaceAll(content, oldStr, newStr)
 	} else {
-		updated = strings.Replace(content, inp.OldString, inp.NewString, 1)
+		updated = strings.Replace(content, oldStr, newStr, 1)
 	}
 
 	if err := os.WriteFile(inp.Path, []byte(updated), 0644); err != nil {

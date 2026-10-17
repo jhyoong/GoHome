@@ -372,17 +372,20 @@ Section 8 records the status of their items.
 ### T1. Medium - Output is never truncated
 - **Shell** (`tools/shell.go:170`): a 50 MB output was returned in full and stored in history unchanged (`run.go:143`).
 - **Read:** capped at 2000 lines but has no byte cap. It also fails on lines over 1 MiB (`read.go:64`).
+- **Status:** Fixed on branch `fix/tools-review`. Shell output keeps the first and last 32 KiB with an omitted-bytes marker, and has no line limit. Read handles lines of any length, cuts lines over 2000 characters, and stops at 100 KiB with a note giving the offset to continue from.
 
 ### T2. Medium - Edit tool bugs
 - **Empty `old_string`:** with `replace_all`, "abc" became "XaXbXcX" (`edit.go:61,77`). Without `replace_all`, an empty file also accepts an empty `old_string`.
 - **CRLF files:** read removes `\r` (`read.go:63,77`), so multi-line edits on CRLF files always fail.
 - **Permissions:** edit always writes with mode `0644`, ignoring the file's original permissions (`edit.go:82`).
+- **Status:** Fixed on branch `fix/tools-review`. Empty `old_string` is rejected. On CRLF files, an LF-only `old_string` is retried with CRLF line endings. The permissions item is not a bug: edit only writes existing files, and `os.WriteFile` keeps their mode.
 
 ### T3. Low - Shell parameters and description
 - `timeout_ms` of 0 or less times out immediately (`shell.go:113-118`).
 - The tool description hard-codes 120000/600000 ms, although both are configurable (`shell.go:31,37,47`).
 - The shell `cwd` is resolved relative to the process directory, not the session (prior L14).
 - Read-before-edit compares raw path strings (`session/session.go:53-66`, prior L3).
+- **Status:** Fixed on branch `fix/tools-review`. `timeout_ms` of 0 or less uses the default. The description and schema show the configured timeouts. Read-before-edit compares clean absolute paths. The shell `cwd` item is not a live bug, since the session folder is always the process folder (FOLLOWUP_TASKS).
 
 ---
 
