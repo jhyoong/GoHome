@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestRenderMarkdownHeadings(t *testing.T) {
@@ -84,7 +85,7 @@ func TestRenderMarkdownTableAlignment(t *testing.T) {
 }
 
 func TestHighlightCodeCachesResult(t *testing.T) {
-	clear(highlightCache)
+	resetHighlightCache()
 	code := "func main() {}\n"
 	first := highlightCode(code, "go")
 	if len(highlightCache) != 1 {
@@ -109,16 +110,184 @@ func TestHighlightCodeCachesResult(t *testing.T) {
 }
 
 func TestHighlightCodeCacheBounded(t *testing.T) {
-	clear(highlightCache)
+	resetHighlightCache()
+	for i := 0; i < highlightCacheMax+10; i++ {
+		highlightCode(strings.Repeat("x", i+1), "")
+	}
+	if len(highlightCache) != highlightCacheMax || len(highlightKeys) != highlightCacheMax {
+		t.Fatalf("cache size = %d (keys %d), want %d", len(highlightCache), len(highlightKeys), highlightCacheMax)
+	}
+}
+
+func plainLines(lines []string) []string {
+	out := make([]string, len(lines))
+	for i, l := range lines {
+		out[i] = StripAnsi(l)
+	}
+	return out
+}
+
+func assertMaxWidth(t *testing.T, lines []string, width int) {
+	t.Helper()
+	for _, l := range lines {
+		if w := VisualWidth(l); w > width {
+			t.Errorf("line exceeds width %d (got %d): %q", width, w, StripAnsi(l))
+		}
+	}
+}
+
+func TestRenderMarkdownRawHTML(t *testing.T) {
+	plain := StripAnsi(strings.Join(RenderMarkdown("Returns Vec<String> here.", 80), "\n"))
+	if !strings.Contains(plain, "Vec<String> here.") {
+		t.Errorf("inline raw HTML lost: %q", plain)
+	}
+}
+
+func TestRenderMarkdownHTMLBlock(t *testing.T) {
+	plain := plainLines(RenderMarkdown("<div>\nhello\n</div>\n\nafter", 80))
+	joined := strings.Join(plain, "\n")
+	for _, want := range []string{"<div>", "hello", "</div>", "after"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("HTML block output missing %q: %q", want, joined)
+		}
+	}
+}
+
+func TestRenderMarkdownCodeBlockWrapped(t *testing.T) {
+	for _, md := range []string{
+		"```\n    abcdefghijklmnopqrstuvwxyz\n```",
+		"        x = abcdefghijklmnopqrstuvwxyz",
+	} {
+		lines := RenderMarkdown(md, 10)
+		assertMaxWidth(t, lines, 10)
+		plain := plainLines(lines)
+		if len(plain) < 2 {
+			t.Fatalf("expected wrapped code, got %q", plain)
+		}
+		if !strings.HasPrefix(plain[0], "    ") {
+			t.Errorf("indentation lost: %q", plain[0])
+		}
+		if !strings.Contains(strings.Join(plain, ""), "abcdefghijklmnopqrstuvwxyz") {
+			t.Errorf("code content lost: %q", plain)
+		}
+	}
+}
+
+func TestRenderMarkdownHeadingWrapped(t *testing.T) {
+	lines := RenderMarkdown("# A heading that is much longer than the width", 20)
+	assertMaxWidth(t, lines, 20)
+	plain := strings.Join(plainLines(lines), " ")
+	if !strings.Contains(plain, "much longer") {
+		t.Errorf("heading text lost: %q", plain)
+	}
+}
+
+// sgrStateAt returns the SGR state in effect at byte offset idx of s.
+func sgrStateAt(s string, idx int) sgrState {
+	var st sgrState
+	for _, m := range sgrSequence.FindAllString(s[:idx], -1) {
+		st.apply(m)
+	}
+	return st
+}
+
+func TestRenderMarkdownHeadingStyleAfterEmphasis(t *testing.T) {
+	lines := RenderMarkdown("## Title *em* `code` rest", 80)
+	line := lines[0]
+	idx := strings.Index(line, "rest")
+	if idx < 0 {
+		t.Fatalf("heading text missing: %q", line)
+	}
+	st := sgrStateAt(line, idx)
+	if !st.bold || st.fg != "36" {
+		t.Errorf("heading style lost after emphasis: %+v in %q", st, line)
+	}
+}
+
+func TestRenderMarkdownNestedListIndent(t *testing.T) {
+	lines := plainLines(RenderMarkdown("- a\n  - b\n    - c", 80))
+	want := []string{"- a", "  - b", "    - c"}
+	var got []string
+	for _, l := range lines {
+		if strings.TrimSpace(l) != "" {
+			got = append(got, l)
+		}
+	}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("nested list = %q, want %q", got, want)
+	}
+}
+
+func TestRenderMarkdownTableTooWide(t *testing.T) {
+	md := "| Name | Description |\n|---|---|\n| foo | a long description that does not fit in the width |\n| bar | short |"
+	lines := RenderMarkdown(md, 30)
+	assertMaxWidth(t, lines, 30)
+	plain := plainLines(lines)
+	joined := strings.Join(plain, " ")
+	for _, word := range []string{"foo", "bar", "long", "description", "width", "short"} {
+		if !strings.Contains(joined, word) {
+			t.Errorf("table lost %q: %q", word, plain)
+		}
+	}
+	// Every table line has the same width and keeps its borders.
+	tableW := VisualWidth(plain[0])
+	for _, l := range plain {
+		if l == "" {
+			continue
+		}
+		if VisualWidth(l) != tableW {
+			t.Errorf("table line width %d, want %d: %q", VisualWidth(l), tableW, l)
+		}
+		first, _ := utf8.DecodeRuneInString(l)
+		if !strings.ContainsRune("┌├│└", first) {
+			t.Errorf("table line has no left border: %q", l)
+		}
+	}
+}
+
+func TestRenderMarkdownTableFitsUnchanged(t *testing.T) {
+	md := "| Name | Status |\n|---|---|\n| foo | ok |"
+	plain := plainLines(RenderMarkdown(md, 80))
+	want := []string{
+		"┌──────┬────────┐",
+		"│ Name │ Status │",
+		"├──────┼────────┤",
+		"│ foo  │ ok     │",
+		"└──────┴────────┘",
+	}
+	if strings.Join(plain, "\n") != strings.Join(want, "\n") {
+		t.Errorf("table =\n%s\nwant\n%s", strings.Join(plain, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+func TestHighlightCodeCacheEvictsOne(t *testing.T) {
+	resetHighlightCache()
 	for i := 0; i < highlightCacheMax; i++ {
 		highlightCode(strings.Repeat("x", i+1), "")
 	}
+	highlightCode("overflow", "")
 	if len(highlightCache) != highlightCacheMax {
 		t.Fatalf("cache size = %d, want %d", len(highlightCache), highlightCacheMax)
 	}
-	// One more entry clears the full cache before inserting.
-	highlightCode("overflow", "")
+	if _, ok := highlightCache["\x00x"]; ok {
+		t.Error("oldest entry should be evicted")
+	}
+	if _, ok := highlightCache["\x00xx"]; !ok {
+		t.Error("second entry should still be cached")
+	}
+	if _, ok := highlightCache["\x00overflow"]; !ok {
+		t.Error("new entry should be cached")
+	}
+}
+
+func TestRenderMarkdownStreamingCodeNotCached(t *testing.T) {
+	resetHighlightCache()
+	RenderMarkdown("Text\n\n```go\nfunc a() {}\n", 80)
+	if len(highlightCache) != 0 {
+		t.Errorf("unterminated code block cached: size %d", len(highlightCache))
+	}
+	RenderMarkdown("Text\n\n```go\nfunc a() {}\n```\n", 80)
 	if len(highlightCache) != 1 {
-		t.Errorf("cache size after overflow = %d, want 1", len(highlightCache))
+		t.Errorf("terminated code block not cached: size %d", len(highlightCache))
 	}
 }

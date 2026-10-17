@@ -3,7 +3,7 @@ package tui
 var helpLines = []string{
 	"Keyboard shortcuts",
 	"  Ctrl+C        Cancel turn / double-tap to quit",
-	"  Ctrl+E        Open external editor",
+	"  Ctrl+G        Open external editor",
 	"  Ctrl+P / N    Previous / next prompt from history",
 	"  Ctrl+H        Show this help",
 	"  Ctrl+Right    Focus next session",
@@ -20,7 +20,7 @@ var helpLines = []string{
 	"Slash commands",
 	"  /help         Show this help",
 	"  /new          Start a new session",
-	"  /resume       Resume a past session",
+	"  /resume       Resume a past session (Ctrl+D deletes)",
 	"  /yolo         Toggle YOLO mode (skip approvals)",
 	"  /endpoint     Switch endpoint",
 	"  /model        Switch model",

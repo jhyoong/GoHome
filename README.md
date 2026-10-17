@@ -221,12 +221,13 @@ If `contextWarnPct` >= `contextCritPct`, or either value is outside the (0, 1] r
 | `Esc` `Esc` | Cancel the current run (a single `Esc` shows "Press Esc again to cancel") |
 | `Ctrl+C` (once) | Cancel current LLM turn or close approval prompt |
 | `Ctrl+C` (twice) | Quit |
-| `Ctrl+E` | Open current input in external editor (`$VISUAL` / `$EDITOR` / `vi`) |
+| `Ctrl+G` | Open current input in external editor (`$VISUAL` / `$EDITOR` / `vi`) |
+| `Ctrl+A` / `Ctrl+E` | Move to start / end of the input line |
 | `Ctrl+P` / `Ctrl+N` | Previous / next submitted prompt (saves and restores the draft) |
 | `Ctrl+H` | Open help overlay |
 | `Ctrl+Right` | Focus next session |
 | `Ctrl+Left` | Focus previous session |
-| `Ctrl+D` | Pop last queued pending message |
+| `Ctrl+D` | Pop last queued pending message (in the `/resume` browser: delete the selected session) |
 | `PgUp` / `PgDn` | Scroll viewport |
 | `@` | Trigger file search popup (type a query after `@`) |
 | `/` | Open slash command with inline autocomplete |
@@ -239,7 +240,7 @@ If `contextWarnPct` >= `contextCritPct`, or either value is outside the (0, 1] r
 
 ### Timeline cursor
 
-When the input editor is empty, `Up` and `Down` arrow keys move a `>` cursor through the conversation timeline. The cursor highlights the selected entry. Press `Enter` on a tool or thinking entry to expand or collapse its details. Thinking blocks are expanded by default so reasoning content is always visible as it streams in.
+When the input editor is empty, `Up` and `Down` arrow keys move a `>` cursor through the conversation timeline. The cursor highlights the selected entry. Press `Enter` on a tool or thinking entry to expand or collapse its details. Thinking blocks are expanded by default, so reasoning content is visible as it streams in.
 
 ---
 
@@ -252,7 +253,7 @@ When the input editor is empty, `Up` and `Down` arrow keys move a `>` cursor thr
 | `/quit` | Exits the process |
 | `/cancel` | Cancels the current LLM turn, clears pending message queue |
 | `/new` | Starts a new session (requires backend callback via `SetSlashCallbacks`; shows "not configured" until wired) |
-| `/resume <id>` | Resumes a previous session by ID (requires backend callback; shows "not configured" until wired) |
+| `/resume [filter]` | Opens a session browser to resume a previous session (requires backend callback; shows "not configured" until wired). The argument pre-fills the filter. Type to filter, `Enter` resumes, `Ctrl+D` then `y` (or `Ctrl+D` again) deletes the selected session. The active session cannot be deleted |
 | `/model <name>` | Switches the active model config (rebuilds the LLM client). Without arguments, opens a selector listing all configured model configs |
 | `/mouse` | Toggles mouse tracking on/off |
 | `/clear-queue` | Clears all pending queued messages |

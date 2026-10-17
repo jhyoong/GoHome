@@ -150,3 +150,15 @@ func TestHelpOverlay_EndIndicator_WhenScrolledToBottom(t *testing.T) {
 		t.Fatal("expected --END-- when scrolled to bottom")
 	}
 }
+
+func TestHelpOverlay_ListsExternalEditorOnCtrlG(t *testing.T) {
+	m := newSized()
+	m.OpenHelpOverlay()
+	view := m.View()
+	if !strings.Contains(view, "Ctrl+G        Open external editor") {
+		t.Errorf("help should list Ctrl+G for the external editor:\n%s", view)
+	}
+	if strings.Contains(view, "Ctrl+E        Open external editor") {
+		t.Errorf("help still lists Ctrl+E for the external editor")
+	}
+}

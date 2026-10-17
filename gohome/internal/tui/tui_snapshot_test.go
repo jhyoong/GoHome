@@ -13,7 +13,6 @@ package tui_test
 import (
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -29,15 +28,26 @@ import (
 const snapshotW = 80
 const snapshotH = 24
 
-// apply sends msg to m synchronously and returns the updated *Model.
-var editPathRe = regexp.MustCompile(`(> ┃edit \{"path":").*?\.\.\.`)
-
-// normEditPath replaces the truncated edit tool arg line (which contains a
-// machine-specific temp path) with a fixed string for golden-file stability.
-func normEditPath(s string) string {
-	return editPathRe.ReplaceAllString(s, `${1}/tmp/test/test.go",...`)
+// enterDir changes into dir and returns a func that changes back. The edit
+// diff snapshots use it so the summary shows a fixed relative path, while
+// golden files are still found relative to the package folder.
+func enterDir(t *testing.T, dir string) func() {
+	t.Helper()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	return func() {
+		if err := os.Chdir(old); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
+// apply sends msg to m synchronously and returns the updated *Model.
 func apply(m *tui.Model, msg tea.Msg) *tui.Model {
 	nm, _ := m.Update(msg)
 	return nm.(*tui.Model)
@@ -356,7 +366,8 @@ func TestSnapshots(t *testing.T) {
 	// Edit tool diff box: pending state (no result yet).
 	t.Run("edit_tool_diff_pending", func(t *testing.T) {
 		m := newSized()
-		tmpFile := t.TempDir() + "/test.go"
+		leave := enterDir(t, t.TempDir())
+		tmpFile := "test.go"
 		if err := os.WriteFile(tmpFile, []byte("line1\nline2\nfunc Old() {\nline4\nline5\n"), 0644); err != nil {
 			t.Fatal(err)
 		}
@@ -366,13 +377,16 @@ func TestSnapshots(t *testing.T) {
 			ToolName:  "edit",
 			InputJSON: fmt.Sprintf(`{"path":%q,"old_string":"func Old() {","new_string":"func New() {"}`, tmpFile),
 		}})
-		golden.RequireEqual(t, []byte(normEditPath(m.View())))
+		view := m.View()
+		leave()
+		golden.RequireEqual(t, []byte(view))
 	})
 
 	// Edit tool diff box: success state (completed successfully).
 	t.Run("edit_tool_diff_success", func(t *testing.T) {
 		m := newSized()
-		tmpFile := t.TempDir() + "/test.go"
+		leave := enterDir(t, t.TempDir())
+		tmpFile := "test.go"
 		if err := os.WriteFile(tmpFile, []byte("line1\nline2\nfunc Old() {\nline4\nline5\n"), 0644); err != nil {
 			t.Fatal(err)
 		}
@@ -387,13 +401,16 @@ func TestSnapshots(t *testing.T) {
 			SessionID: "main",
 			Result:    &agent.ToolResult{Content: fmt.Sprintf(`edit: replaced 1 occurrence(s) in %q`, tmpFile)},
 		}})
-		golden.RequireEqual(t, []byte(normEditPath(m.View())))
+		view := m.View()
+		leave()
+		golden.RequireEqual(t, []byte(view))
 	})
 
 	// Edit tool diff box: denied/error state (red border, dimmed text).
 	t.Run("edit_tool_diff_denied", func(t *testing.T) {
 		m := newSized()
-		tmpFile := t.TempDir() + "/test.go"
+		leave := enterDir(t, t.TempDir())
+		tmpFile := "test.go"
 		if err := os.WriteFile(tmpFile, []byte("line1\nline2\nfunc Old() {\nline4\nline5\n"), 0644); err != nil {
 			t.Fatal(err)
 		}
@@ -408,7 +425,9 @@ func TestSnapshots(t *testing.T) {
 			SessionID: "main",
 			Result:    &agent.ToolResult{Content: "denied", IsError: true},
 		}})
-		golden.RequireEqual(t, []byte(normEditPath(m.View())))
+		view := m.View()
+		leave()
+		golden.RequireEqual(t, []byte(view))
 	})
 
 	t.Run("with_cross_session_approval", func(t *testing.T) {
@@ -911,7 +930,7 @@ func TestApproval_FIFOQueueOrder(t *testing.T) {
 		Reply: reply1,
 	})
 	m = apply(m, tui.ApprovalReqMsg{
-		Req:   guard.ApprovalRequest{SessionID: "sub-1", Tool: "read", Input: []byte(`{"file_path":"file.go"}`)},
+		Req:   guard.ApprovalRequest{SessionID: "sub-1", Tool: "read", Input: []byte(`{"path":"file.go"}`)},
 		Reply: reply2,
 	})
 	m = apply(m, tui.ApprovalReqMsg{

@@ -54,13 +54,17 @@ func (sb *SessionBrowserComponent) SetOnCancel(fn func()) {
 	sb.list.onCancel = fn
 }
 
-func (sb *SessionBrowserComponent) SetOnDelete(fn func(listing session.Listing)) {
+func (sb *SessionBrowserComponent) SetOnDelete(fn func(listing session.Listing) bool) {
 	sb.list.onDelete = func(item SelectItem) {
+		deleted := false
 		for _, l := range sb.listings {
 			if l.ID == item.Value {
-				fn(l)
+				deleted = fn(l)
 				break
 			}
+		}
+		if !deleted {
+			return
 		}
 		var remaining []session.Listing
 		for _, l := range sb.listings {

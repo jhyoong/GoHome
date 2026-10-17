@@ -47,7 +47,7 @@ func RenderMarkdown(source string, width int) []string {
 	doc := mdParser.Parse(reader)
 
 	var lines []string
-	renderNode(doc, src, width, 0, false, false, &lines)
+	renderNode(doc, src, width, false, false, &lines)
 
 	// Strip trailing blank lines to avoid double-spacing between timeline entries.
 	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
@@ -57,24 +57,25 @@ func RenderMarkdown(source string, width int) []string {
 }
 
 // renderNode walks an AST node and appends rendered lines to out.
-// listDepth tracks nesting level for lists; ordered/unordered are handled per item.
-func renderNode(node ast.Node, src []byte, width, listDepth int, bold, italic bool, out *[]string) {
+func renderNode(node ast.Node, src []byte, width int, bold, italic bool, out *[]string) {
 	switch n := node.(type) {
 
 	case *ast.Document:
-		renderChildren(n, src, width, listDepth, bold, italic, out)
+		renderChildren(n, src, width, bold, italic, out)
 
 	case *ast.Heading:
-		text := extractInline(n, src, bold, italic)
-		switch n.Level {
-		case 1:
-			*out = append(*out, ansiCyan+ansiBold+ansiUnderline+text+ansiReset)
-		case 2:
-			*out = append(*out, ansiCyan+ansiBold+text+ansiReset)
-		default:
-			prefix := strings.Repeat("#", n.Level) + " "
-			*out = append(*out, ansiCyan+ansiBold+prefix+text+ansiReset)
+		style := ansiCyan + ansiBold
+		if n.Level == 1 {
+			style += ansiUnderline
 		}
+		prefix := ""
+		if n.Level >= 3 {
+			prefix = strings.Repeat("#", n.Level) + " "
+		}
+		text := extractInline(n, src, bold, italic)
+		// Inline styles end with a reset; turn the heading style back on.
+		text = strings.ReplaceAll(text, ansiReset, ansiReset+style)
+		*out = append(*out, WrapText(style+prefix+text+ansiReset, width)...)
 		// blank line after heading
 		*out = append(*out, "")
 
@@ -93,8 +94,15 @@ func renderNode(node ast.Node, src []byte, width, listDepth int, bold, italic bo
 			codeLines = append(codeLines, string(line.Value(src)))
 		}
 		code := strings.Join(codeLines, "")
-		highlighted := highlightCode(code, lang)
-		*out = append(*out, strings.Split(strings.TrimRight(highlighted, "\n"), "\n")...)
+		// A block without its closing fence is still streaming; caching it
+		// would fill the cache with one entry per token.
+		var highlighted string
+		if fenceClosed(n, src) {
+			highlighted = highlightCode(code, lang)
+		} else {
+			highlighted = highlightUncached(code, lang)
+		}
+		*out = append(*out, HardWrapText(strings.TrimRight(highlighted, "\n"), width)...)
 		*out = append(*out, "")
 
 	case *ast.CodeBlock:
@@ -105,22 +113,35 @@ func renderNode(node ast.Node, src []byte, width, listDepth int, bold, italic bo
 		}
 		code := strings.Join(codeLines, "")
 		highlighted := highlightCode(code, "")
-		*out = append(*out, strings.Split(strings.TrimRight(highlighted, "\n"), "\n")...)
+		*out = append(*out, HardWrapText(strings.TrimRight(highlighted, "\n"), width)...)
+		*out = append(*out, "")
+
+	case *ast.HTMLBlock:
+		// Shown as plain text.
+		var html strings.Builder
+		for i := 0; i < n.Lines().Len(); i++ {
+			line := n.Lines().At(i)
+			html.Write(line.Value(src))
+		}
+		if n.HasClosure() {
+			html.Write(n.ClosureLine.Value(src))
+		}
+		*out = append(*out, WrapText(strings.TrimRight(html.String(), "\n"), width)...)
 		*out = append(*out, "")
 
 	case *ast.Blockquote:
 		var inner []string
-		renderChildren(n, src, width-2, listDepth, bold, italic, &inner)
+		renderChildren(n, src, width-2, bold, italic, &inner)
 		for _, l := range inner {
 			*out = append(*out, ansiDim+"| "+ansiReset+l)
 		}
 
 	case *ast.List:
-		renderList(n, src, width, listDepth, bold, italic, out)
+		renderList(n, src, width, bold, italic, out)
 
 	case *ast.ListItem:
 		// ListItem rendering is handled inside renderList
-		renderChildren(n, src, width, listDepth, bold, italic, out)
+		renderChildren(n, src, width, bold, italic, out)
 
 	case *ast.ThematicBreak:
 		*out = append(*out, ansiDim+strings.Repeat("─", max(width, 1))+ansiReset)
@@ -132,19 +153,21 @@ func renderNode(node ast.Node, src []byte, width, listDepth int, bold, italic bo
 			break
 		}
 		// For unrecognized block nodes, recurse into children
-		renderChildren(node, src, width, listDepth, bold, italic, out)
+		renderChildren(node, src, width, bold, italic, out)
 	}
 }
 
 // renderChildren iterates over child nodes and renders each.
-func renderChildren(node ast.Node, src []byte, width, listDepth int, bold, italic bool, out *[]string) {
+func renderChildren(node ast.Node, src []byte, width int, bold, italic bool, out *[]string) {
 	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
-		renderNode(child, src, width, listDepth, bold, italic, out)
+		renderNode(child, src, width, bold, italic, out)
 	}
 }
 
 // renderList handles ordered and unordered lists with correct bullet/number prefixes.
-func renderList(list *ast.List, src []byte, width, listDepth int, bold, italic bool, out *[]string) {
+// Nested content is rendered at the item's inner width and indented by the
+// item's prefix width, so each nesting level adds one indent step.
+func renderList(list *ast.List, src []byte, width int, bold, italic bool, out *[]string) {
 	itemNum := list.Start
 	for child := list.FirstChild(); child != nil; child = child.NextSibling() {
 		item, ok := child.(*ast.ListItem)
@@ -159,9 +182,7 @@ func renderList(list *ast.List, src []byte, width, listDepth int, bold, italic b
 		} else {
 			prefix = "- "
 		}
-		indent := strings.Repeat("  ", listDepth)
-		fullPrefix := indent + prefix
-		innerWidth := width - len(fullPrefix)
+		innerWidth := width - len(prefix)
 		if innerWidth < 10 {
 			innerWidth = 10
 		}
@@ -176,20 +197,20 @@ func renderList(list *ast.List, src []byte, width, listDepth int, bold, italic b
 				itemLines = append(itemLines, wrapped...)
 			case *ast.List:
 				var nested []string
-				renderList(sn, src, width, listDepth+1, bold, italic, &nested)
+				renderList(sn, src, innerWidth, bold, italic, &nested)
 				itemLines = append(itemLines, nested...)
 			default:
 				var sub2Lines []string
-				renderNode(sub, src, innerWidth, listDepth+1, bold, italic, &sub2Lines)
+				renderNode(sub, src, innerWidth, bold, italic, &sub2Lines)
 				itemLines = append(itemLines, sub2Lines...)
 			}
 		}
 
 		// Emit: first line gets the prefix, continuation lines get indentation
-		contIndent := indent + strings.Repeat(" ", len(prefix))
+		contIndent := strings.Repeat(" ", len(prefix))
 		for i, l := range itemLines {
 			if i == 0 {
-				*out = append(*out, fullPrefix+l)
+				*out = append(*out, prefix+l)
 			} else {
 				*out = append(*out, contIndent+l)
 			}
@@ -237,6 +258,8 @@ func renderTable(node ast.Node, src []byte, width int, bold, italic bool, out *[
 		}
 	}
 
+	fitColumns(colWidths, width)
+
 	// Build separator line.
 	var sepParts []string
 	for _, w := range colWidths {
@@ -248,25 +271,82 @@ func renderTable(node ast.Node, src []byte, width int, bold, italic bool, out *[
 
 	*out = append(*out, topBorder)
 	for i, row := range rows {
-		var parts []string
+		// Wrap each cell that is wider than its column.
+		cellLines := make([][]string, numCols)
+		height := 1
 		for c := 0; c < numCols; c++ {
 			cell := ""
 			if c < len(row) {
 				cell = row[c]
 			}
-			padded := cell + strings.Repeat(" ", colWidths[c]-VisualWidth(StripAnsi(cell)))
-			if i < headerCount {
-				padded = ansiBold + padded + ansiReset
+			if VisualWidth(cell) > colWidths[c] {
+				cellLines[c] = WrapText(cell, colWidths[c])
+			} else {
+				cellLines[c] = []string{cell}
 			}
-			parts = append(parts, " "+padded+" ")
+			height = max(height, len(cellLines[c]))
 		}
-		*out = append(*out, ansiDim+"│"+ansiReset+strings.Join(parts, ansiDim+"│"+ansiReset)+ansiDim+"│"+ansiReset)
+		for li := 0; li < height; li++ {
+			var parts []string
+			for c := 0; c < numCols; c++ {
+				cell := ""
+				if li < len(cellLines[c]) {
+					cell = cellLines[c][li]
+				}
+				padded := cell + strings.Repeat(" ", max(colWidths[c]-VisualWidth(cell), 0))
+				if i < headerCount {
+					padded = ansiBold + padded + ansiReset
+				}
+				parts = append(parts, " "+padded+" ")
+			}
+			*out = append(*out, ansiDim+"│"+ansiReset+strings.Join(parts, ansiDim+"│"+ansiReset)+ansiDim+"│"+ansiReset)
+		}
 		if i < headerCount {
 			*out = append(*out, sep)
 		}
 	}
 	*out = append(*out, bottomBorder)
 	*out = append(*out, "")
+}
+
+// fitColumns shrinks the widest columns, one column at a time, until the
+// table (cell padding and borders included) fits within width. Columns never
+// shrink below one column.
+func fitColumns(colWidths []int, width int) {
+	// Each column has one space of padding on both sides plus one border,
+	// and the table has one extra border on the right.
+	avail := width - 3*len(colWidths) - 1
+	total := 0
+	for _, w := range colWidths {
+		total += w
+	}
+	for total > avail {
+		widest := 0
+		for c, w := range colWidths {
+			if w > colWidths[widest] {
+				widest = c
+			}
+		}
+		if colWidths[widest] <= 1 {
+			return
+		}
+		colWidths[widest]--
+		total--
+	}
+}
+
+// fenceClosed reports whether a fenced code block has its closing fence in
+// src. A block without one is still being streamed.
+func fenceClosed(n *ast.FencedCodeBlock, src []byte) bool {
+	lines := n.Lines()
+	if lines.Len() == 0 {
+		return false
+	}
+	rest := src[lines.At(lines.Len()-1).Stop:]
+	line, _, _ := bytes.Cut(rest, []byte("\n"))
+	// Strip list indentation and blockquote markers before the fence.
+	fence := strings.TrimSpace(strings.TrimLeft(string(line), " \t>"))
+	return len(fence) >= 3 && (strings.Trim(fence, "`") == "" || strings.Trim(fence, "~") == "")
 }
 
 // extractInline renders inline content of a node to a string with ANSI styling.
@@ -330,7 +410,12 @@ func extractInlineAppend(node ast.Node, src []byte, bold, italic bool, buf *stri
 			buf.WriteString("\x1b]8;;\x1b\\")
 
 		case *ast.RawHTML:
-			// Skip raw HTML
+			// Shown as plain text, e.g. Vec<String>.
+			for i := 0; i < n.Segments.Len(); i++ {
+				seg := n.Segments.At(i)
+				raw := strings.ReplaceAll(string(seg.Value(src)), "\n", " ")
+				applyInlineStyle(raw, bold, italic, buf)
+			}
 
 		case *ast.String:
 			applyInlineStyle(string(n.Value), bold, italic, buf)
@@ -357,7 +442,7 @@ func applyInlineStyle(text string, bold, italic bool, buf *strings.Builder) {
 }
 
 // highlightCacheMax bounds the number of cached highlighted code blocks.
-// When full, the cache is cleared and refilled on demand.
+// When full, the oldest entry is evicted.
 const highlightCacheMax = 256
 
 var (
@@ -366,6 +451,7 @@ var (
 
 	highlightMu    sync.Mutex
 	highlightCache = make(map[string]string)
+	highlightKeys  []string // insertion order, oldest first
 )
 
 func init() {
@@ -392,12 +478,24 @@ func highlightCode(code, lang string) string {
 	out := highlightUncached(code, lang)
 
 	highlightMu.Lock()
-	if len(highlightCache) >= highlightCacheMax {
-		clear(highlightCache)
+	if _, ok := highlightCache[key]; !ok {
+		if len(highlightKeys) >= highlightCacheMax {
+			delete(highlightCache, highlightKeys[0])
+			highlightKeys = highlightKeys[1:]
+		}
+		highlightKeys = append(highlightKeys, key)
 	}
 	highlightCache[key] = out
 	highlightMu.Unlock()
 	return out
+}
+
+// resetHighlightCache empties the highlight cache.
+func resetHighlightCache() {
+	highlightMu.Lock()
+	clear(highlightCache)
+	highlightKeys = nil
+	highlightMu.Unlock()
 }
 
 func highlightUncached(code, lang string) string {

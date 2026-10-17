@@ -58,6 +58,8 @@ func TestWrapText(t *testing.T) {
 		{"short", "hello", 80, []string{"hello"}},
 		{"exact", "hello", 5, []string{"hello"}},
 		{"wrap at word", "hello world foo", 11, []string{"hello world", "foo"}},
+		{"word moves to next line", "aaa bbb ccc", 5, []string{"aaa", "bbb", "ccc"}},
+		{"long word after short", "ab abcdefgh", 5, []string{"ab", "abcde", "fgh"}},
 		{"force break", "abcdefghij", 5, []string{"abcde", "fghij"}},
 		{"empty", "", 80, []string{""}},
 		{"preserves ansi", "\x1b[31mhello world\x1b[0m", 5, []string{"\x1b[31mhello\x1b[0m", "\x1b[31mworld\x1b[0m"}},
@@ -74,6 +76,74 @@ func TestWrapText(t *testing.T) {
 			if len(got) != len(tt.want) {
 				t.Fatalf("WrapText(%q, %d) returned %d lines, want %d:\n  got:  %q\n  want: %q",
 					tt.input, tt.width, len(got), len(tt.want), got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("line %d: got %q, want %q", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestWrapTextSGRState(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		width int
+		want  []string
+	}{
+		// R1: bold followed by cyan must restore both on the continuation line.
+		{"combined state", "\x1b[1m\x1b[36mhello world\x1b[0m", 5,
+			[]string{"\x1b[1m\x1b[36mhello\x1b[0m", "\x1b[1;36mworld\x1b[0m"}},
+		// A later code that turns off one attribute keeps the others.
+		{"partial off", "\x1b[1;4mhello\x1b[24m world\x1b[0m", 5,
+			[]string{"\x1b[1;4mhello\x1b[24m\x1b[0m", "\x1b[1mworld\x1b[0m"}},
+		// R1: a reset inside a space that is dropped at the break still applies.
+		{"reset in dropped space", "\x1b[1mhello \x1b[0mworld", 5,
+			[]string{"\x1b[1mhello\x1b[0m", "world"}},
+		// 256-colour codes are kept whole.
+		{"256 colour", "\x1b[38;5;12mhello world\x1b[0m", 5,
+			[]string{"\x1b[38;5;12mhello\x1b[0m", "\x1b[38;5;12mworld\x1b[0m"}},
+		// R12: a zero-width token (ANSI only) is not dropped.
+		{"ansi only token", "\x1b[31m hi", 80, []string{"\x1b[31mhi\x1b[0m"}},
+		// R12: a zero-width character is not dropped.
+		{"zero width char", "a \u200b b", 80, []string{"a \u200b b"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := WrapText(tt.input, tt.width)
+			if len(got) != len(tt.want) {
+				t.Fatalf("WrapText(%q, %d) = %q, want %q", tt.input, tt.width, got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("line %d: got %q, want %q", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestHardWrapText(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		width int
+		want  []string
+	}{
+		{"fits", "    foo", 10, []string{"    foo"}},
+		{"keeps spaces", "    foo bar baz", 8, []string{"    foo ", "bar baz"}},
+		{"colour carried", "\x1b[31mabcdefgh\x1b[0m", 4, []string{"\x1b[31mabcd\x1b[0m", "\x1b[31mefgh\x1b[0m"}},
+		{"newlines", "ab\ncdef", 2, []string{"ab", "cd", "ef"}},
+		{"wide on narrow", "日本", 1, []string{"日", "本"}},
+		{"empty", "", 5, []string{""}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := HardWrapText(tt.input, tt.width)
+			if len(got) != len(tt.want) {
+				t.Fatalf("HardWrapText(%q, %d) = %q, want %q", tt.input, tt.width, got, tt.want)
 			}
 			for i := range got {
 				if got[i] != tt.want[i] {
