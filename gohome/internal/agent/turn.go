@@ -24,7 +24,7 @@ func (a *Agent) emitTurnError(sessionID string, err error) {
 // events until the turn ends (EventTurnDone) or an error occurs.
 //
 // It mutates sess.History by appending the assistant message, persists an
-// AssistantMessage to a.Writer (if non-nil), and forwards events to a.Frontend.
+// AssistantMessage to a.State.Writer() (if non-nil), and forwards events to a.Frontend.
 //
 // Returns the stopReason string (e.g. "end_turn", "tool_use") or an error if
 // the stream failed. A cancelled context causes the event loop to stop early;

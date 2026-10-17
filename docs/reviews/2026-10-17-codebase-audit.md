@@ -160,6 +160,7 @@ Section 8 records the status of their items.
 - **Effect:**
   - `--resume` (`main.go:85-100`) silently opens an older session.
   - The session also disappears from `/resume`.
+- **Status:** Fixed on branch `fix/data-loss-d1-d9`. Session files are read with `bufio.Reader`, so long lines load and list. Skipped files are logged.
 
 ### D2. High - Subagent session IDs collide, and `--resume` picks the child
 - **Location:** `agent/spawn.go:32,53`
@@ -169,12 +170,14 @@ Section 8 records the status of their items.
   - `session/list.go:53-55` does not filter on `Depth` and sorts by `StartedAt`.
   - A child always starts after its parent, so `--resume` loads the child. The child then cannot spawn subagents.
   - `/resume` matches by ID, so it can load the wrong `sub-1` file.
+- **Status:** Fixed on branch `fix/data-loss-d1-d9`. Child IDs are `<parentID>-sub-N`. Children are hidden from resume lists and load as read-only views when the parent is resumed.
 
 ### D3. Medium-High - Tool results skipped by a steer are not saved
 - **Location:** `agent/run.go:104-112` adds `skipped: user steered` in memory, then hits `continue` before `w.Emit(ToolResult)` and before `EventToolResult`.
 - **Effect:**
   - After resume, the history has a `tool_use` with no `tool_result`, and the API returns 400.
   - In the TUI the skipped tool entries stay "pending".
+- **Status:** Fixed on branch `fix/data-loss-d1-d9`. Steer-skipped results are saved to JSONL and shown in the TUI. A `tool_use` with no result is repaired on load.
 
 ### D4. High - Invalid tool-call JSON breaks every later Anthropic request
 - **Location:** `anthropic/request.go:156-167` uses `json.RawMessage(b.InputJSON)`. Nothing in `agent/turn.go:87-93` or `run.go:211` validates it.
@@ -182,33 +185,37 @@ Section 8 records the status of their items.
 - **Realistic trigger:** `max_tokens` cuts off a tool_use. The stop reason is never checked (`run.go:39` discards it).
 - **Why it persists:** compaction keeps the last 4 messages unchanged, so it does not repair the history.
 - **Scope:** the OpenAI wire is not affected.
-- **Status:** Prior M6, still open.
+- **Status:** Fixed on branch `fix/data-loss-d1-d9`. Prior M6. `Turn` stores invalid input as `{}` and marks the call; `Run` returns an error result without running it. The Anthropic request builder sends `{}` for invalid stored input.
 
 ### D5. Medium - Streams that end early are treated as complete
 - **OpenAI** (`openai/translate.go:139-150`): EOF without `[DONE]` emits a truncated tool call as complete. Evidence: `args="{\"command\": \"rm -rf build"`, followed by `turn_done`.
 - **Anthropic:** EOF without `message_stop` ends with no error. `agent/turn.go:58-60` treats it as done.
 - **Stop reason:** `max_tokens` and `length` are never acted on.
+- **Status:** Fixed on branch `fix/data-loss-d1-d9`. Anthropic EOF without `message_stop`, OpenAI EOF without `[DONE]` and without `finish_reason`, and `Turn` with no `TurnDone` are errors. `max_tokens` and `length` show a notice.
 
 ### D6. Medium - Compacting a resumed session can orphan tool results
 - **Root cause:** `session/load.go:99-118` replays each tool result as its own message, while the live loop groups them into one (`run.go:150-153`).
 - **Problem:** `compact.go:87-89` steps back only one message.
 - **Evidence:** history from a turn with 2 parallel tool calls compacted to `[u, a, summary, tool(tu1), tool(tu2), ...]`, which the API rejects with a 400.
+- **Status:** Fixed on branch `fix/data-loss-d1-d9`. Replayed tool results are grouped into one message, and compaction steps back over every `RoleTool` message.
 
 ### D7. Medium - Cancelling during compaction saves a cut-off summary
 - **Location:** `agent/compact.go:133-147`
 - **Problem:** `for ev := range events` ends on channel close with no error.
 - **Evidence:** `err=<nil>`, and History[2] became `"[Auto-compact summary]\n\npartial"`. This is persisted as a `Compaction` event.
+- **Status:** Fixed on branch `fix/data-loss-d1-d9`. `compact` applies the summary only after `EventTurnDone` with no context error.
 
 ### D8. Low-Medium - Session write errors are dropped
 - **Location:** `session/writer.go:71-75`
 - **Problem:** `Write` and `Sync` errors are discarded, and events that fail to encode are skipped.
 - **Effect:** a full disk loses history with no warning.
+- **Status:** Fixed on branch `fix/data-loss-d1-d9`. `Writer.Err()` reports write errors and the TUI shows "session not saved".
 
 ### D9. Low - Emit after Close panics
 - **Location:** `session/writer.go:39-41`
 - **Problem:** `w.ch <- ev` on a closed channel panics.
 - **When:** only a narrow race in `runLoop` (`main.go:120-130`). The writer is fetched before `MarkBusy`, and an immediate `/new` swap can close it in between.
-- **Status:** Prior M15, partly confirmed.
+- **Status:** Fixed on branch `fix/data-loss-d1-d9`. Prior M15. `Emit` after `Close` drops the event instead of panicking.
 
 ---
 
@@ -515,14 +522,14 @@ Sources:
 | Auto-scroll re-enable at bottom (TODO) | Partly fixed | Wheel and PgDown work. Arrow Down does not (A7). |
 | Windows multi-line paste (TODO) | Open | R5 |
 | Sudo password testing (TODO) | Implemented (#45, #47) | Manual test status unknown. See S4, A9. |
-| H1 steer in multi-tool turn | Fixed in memory | Not saved to JSONL (D3) |
+| H1 steer in multi-tool turn | Fixed | Saved to JSONL since D3 |
 | H2-H6 | Fixed | |
 | M1 whitelist prefix-only | Open | S1 |
 | M2 empty Allow-always pattern | Open | S3 |
 | M3 shell timeout with grandchild | Open | H2 |
 | M4 sudo + whitelist | Fixed | Now leads to S4. |
 | M5 sudo detection and stdin | Mostly fixed | Password moved to fd 3. Remaining misses: A9. |
-| M6 invalid tool JSON | Open | D4 |
+| M6 invalid tool JSON | Fixed | D4 |
 | M7 `/model` race and defaults | Open | A5 |
 | M8 resume keeps old model | Open | A6 |
 | M9 wizard cancel, nil client | Open | H5 |
@@ -531,7 +538,7 @@ Sources:
 | M12 no HTTP timeouts | Open | L4 |
 | M13 headless Ctrl+C on stdin | Open | A10 |
 | M14 429/408 not retried | Open | L4 |
-| M15 Emit after Close | Open (narrow) | D9 |
+| M15 Emit after Close | Fixed | D9 |
 | L1 tool arg keys | Open | R15 |
 | L2 render throttle default | Fixed | |
 | L3 raw path compare | Open | T3 |
