@@ -45,7 +45,7 @@ All work goes in one PR. Each fix starts with a failing test that reproduces the
 - Child IDs become `<parentID>-sub-N`. Parent IDs are already random (`session.NewID`), so file names are unique.
 - `List` skips sessions with `Depth > 0`. `--resume` and the `/resume` browser then only offer top-level sessions.
 - Add `session.ListChildren(home, cwd, parentID)`. It returns child listings with a matching `ParentID`, sorted by `StartedAt`.
-- On `--resume` and `/resume`, load each child and add it as a session view, the same way live subagents appear. Link each child to the parent's `subagent` tool entries in order (subagents run one at a time). Children loaded this way are read-only.
+- On `--resume` and `/resume`, load each child and add it as a session view, the same way live subagents appear. Link each child to the parent's `subagent` tool entry whose `task` input equals the child's first user message; each entry links to at most one child. Children with no task match take the remaining unlinked entries from the end of the timeline backward (newest child to newest entry), as live linking does. Entries with no match stay unlinked, and children with no entry still get a view. Children loaded this way are read-only.
 - Old colliding `sub-N` files are left as they are.
 - Tests: child IDs are unique across two agents. `List` excludes children. Resuming a parent loads its children and links them.
 

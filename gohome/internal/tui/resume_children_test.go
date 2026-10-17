@@ -134,3 +134,102 @@ func TestSlashResumeLoadsChildren(t *testing.T) {
 	}
 	assertResumedChildren(t, m, "p1")
 }
+
+// subagentTurn is one subagent tool call and its result in a parent history.
+func subagentTurn(id, task, result string, isErr bool) []common.Message {
+	return []common.Message{
+		{Role: common.RoleAssistant, Content: []common.Block{
+			{Kind: common.BlockToolUse, ToolUseID: id, ToolName: "subagent", InputJSON: `{"task":"` + task + `"}`},
+		}},
+		{Role: common.RoleTool, Content: []common.Block{
+			{Kind: common.BlockToolResult, ToolUseID: id, ResultText: result, IsError: isErr},
+		}},
+	}
+}
+
+// subagentLinks returns ChildSessionID for each subagent entry, keyed by ToolUseID.
+func subagentLinks(m *Model, parentID string) map[string]string {
+	links := map[string]string{}
+	for _, e := range m.sessions[parentID].Timeline {
+		if e.Kind == KindTool && e.ToolName == "subagent" {
+			links[e.ToolUseID] = e.ChildSessionID
+		}
+	}
+	return links
+}
+
+func TestLoadResumedSession_DeniedEntryNotLinked(t *testing.T) {
+	m := New(nil, "p1")
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	h := []common.Message{
+		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "go"}}},
+	}
+	h = append(h, subagentTurn("tu0", "denied task", "denied by user", true)...)
+	h = append(h, subagentTurn("tu1", "first", "first done", false)...)
+	h = append(h, subagentTurn("tu2", "second", "second done", false)...)
+
+	m.LoadResumedSession("p1", h, resumedChildren())
+
+	got := subagentLinks(m, "p1")
+	want := map[string]string{"tu0": "", "tu1": "p1-sub-1", "tu2": "p1-sub-2"}
+	for id, w := range want {
+		if got[id] != w {
+			t.Errorf("entry %s linked to %q, want %q (all: %v)", id, got[id], w, got)
+		}
+	}
+}
+
+func TestLoadResumedSession_CompactedParent(t *testing.T) {
+	m := New(nil, "p1")
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	// Compaction removed the entries for the first two subagent calls.
+	h := []common.Message{
+		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "summary of earlier work"}}},
+	}
+	h = append(h, subagentTurn("tu3", "third", "third done", false)...)
+	children := []*session.Session{
+		resumedChild("p1-sub-1", "first"),
+		resumedChild("p1-sub-2", "second"),
+		resumedChild("p1-sub-3", "third"),
+	}
+
+	m.LoadResumedSession("p1", h, children)
+
+	if got := subagentLinks(m, "p1")["tu3"]; got != "p1-sub-3" {
+		t.Errorf("tu3 linked to %q, want p1-sub-3", got)
+	}
+	for _, c := range children {
+		if sv := m.sessions[c.ID]; sv == nil || !sv.Completed {
+			t.Errorf("child %q has no read-only view", c.ID)
+		}
+	}
+}
+
+func TestLoadResumedSession_ChildWithoutEntry(t *testing.T) {
+	m := New(nil, "p1")
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	h := []common.Message{
+		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "go"}}},
+	}
+	h = append(h, subagentTurn("tu1", "first", "first done", false)...)
+	children := []*session.Session{
+		resumedChild("p1-sub-1", "first"),
+		resumedChild("p1-sub-2", "orphan"),
+	}
+
+	m.LoadResumedSession("p1", h, children)
+
+	if got := subagentLinks(m, "p1")["tu1"]; got != "p1-sub-1" {
+		t.Errorf("tu1 linked to %q, want p1-sub-1", got)
+	}
+	sv := m.sessions["p1-sub-2"]
+	if sv == nil {
+		t.Fatalf("no view for unlinked child p1-sub-2")
+	}
+	if !sv.Completed || sv.InFlight {
+		t.Errorf("unlinked child: Completed=%v InFlight=%v, want true/false", sv.Completed, sv.InFlight)
+	}
+	if p, ok := m.childToParent["p1-sub-2"]; ok {
+		t.Errorf("unlinked child has parent %q, want none", p)
+	}
+}

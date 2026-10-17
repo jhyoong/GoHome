@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -220,6 +221,58 @@ func TestCompact_CancelMidStreamKeepsHistory(t *testing.T) {
 
 	if err := a.compact(ctx, sess); err == nil {
 		t.Fatal("expected error from cancelled compact, got nil")
+	}
+
+	if len(sess.History) != len(orig) {
+		t.Fatalf("history length: got %d, want %d", len(sess.History), len(orig))
+	}
+	for i := range orig {
+		if sess.History[i].Content[0].Text != orig[i].Content[0].Text {
+			t.Errorf("History[%d] = %q, want %q", i, sess.History[i].Content[0].Text, orig[i].Content[0].Text)
+		}
+	}
+	for _, ev := range fe.events {
+		if ev.Kind == EventCompacted {
+			t.Error("unexpected EventCompacted")
+		}
+	}
+
+	path := filepath.Join(sess.CWD(), "session.jsonl")
+	for _, m := range readJSONLEvents(t, w, path) {
+		var typ string
+		_ = json.Unmarshal(m["type"], &typ)
+		if typ == "compaction" {
+			t.Error("Compaction event was written")
+		}
+	}
+}
+
+// TestCompact_StreamEndsEarlyKeepsHistory verifies that a compaction stream
+// that closes without EventTurnDone, while ctx is still live, is an error,
+// leaves the history unchanged and writes no Compaction event.
+func TestCompact_StreamEndsEarlyKeepsHistory(t *testing.T) {
+	events := []common.StreamEvent{
+		{Kind: common.EventTextDelta, TextDelta: "partial summary"},
+	}
+	client := &fakeClient{sequences: [][]common.StreamEvent{events}}
+	fe := &fakeRecorder{}
+	a, sess, w := newTestAgent(t, client, fe)
+
+	sess.History = []common.Message{
+		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "first"}}},
+		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "reply"}}},
+		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "second"}}},
+		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "reply2"}}},
+		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "third"}}},
+		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "reply3"}}},
+		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "fourth"}}},
+		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "reply4"}}},
+	}
+	orig := make([]common.Message, len(sess.History))
+	copy(orig, sess.History)
+
+	if err := a.compact(context.Background(), sess); !errors.Is(err, ErrStreamEndedEarly) {
+		t.Fatalf("compact error = %v, want ErrStreamEndedEarly", err)
 	}
 
 	if len(sess.History) != len(orig) {

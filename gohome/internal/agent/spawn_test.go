@@ -493,7 +493,7 @@ func TestSpawn_EmitsSessionEndedOnCancel(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("no EventSessionEnded for sub-1 after cancel; got kinds: %v", eventKinds(fe.events))
+		t.Errorf("no EventSessionEnded for parent-sub-1 after cancel; got kinds: %v", eventKinds(fe.events))
 	}
 }
 
@@ -564,7 +564,7 @@ func TestSpawn_EndReasonCancelled(t *testing.T) {
 			return
 		}
 	}
-	t.Fatal("no EventSessionEnded found for sub-1")
+	t.Fatal("no EventSessionEnded found for parent-sub-1")
 }
 
 // eventKinds returns a slice of EventKind strings for test diagnostics.

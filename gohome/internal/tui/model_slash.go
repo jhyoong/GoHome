@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -246,24 +247,55 @@ func (m *Model) slashPalette() string {
 
 // LoadResumedSession shows a resumed session in the focused view and adds a
 // view for each of its subagent children, the same way live subagents
-// appear. Children are linked to the parent's subagent tool entries in order
-// (subagents run one at a time) and marked completed, so they are read-only.
+// appear. Each child is linked to the parent's subagent tool entry whose task
+// equals the child's first user message (newest first, so a repeated task
+// links newest child to newest entry). Children with no task match take the
+// remaining unlinked entries from the end of the timeline backward, as live
+// linking does. Entries with no match stay unlinked; unlinked children still
+// get a view. All children are marked completed, so they are read-only.
 func (m *Model) LoadResumedSession(id string, history []common.Message, children []*session.Session) {
 	sv := m.getOrCreateSession(id, 0)
 	sv.Timeline = historyToTimeline(history)
 
-	next := 0
+	link := func(i int, childID string) {
+		sv.Timeline[i].ChildSessionID = childID
+		m.childToParent[childID] = id
+	}
+	unlinkedSubagent := func(i int) bool {
+		e := &sv.Timeline[i]
+		return e.Kind == KindTool && e.ToolName == "subagent" && e.ChildSessionID == ""
+	}
+
 	for _, child := range children {
 		childSV := m.getOrCreateSession(child.ID, 1)
 		childSV.Timeline = historyToTimeline(child.History)
 		childSV.InFlight = false
 		childSV.Completed = true
-		for ; next < len(sv.Timeline); next++ {
-			e := &sv.Timeline[next]
-			if e.Kind == KindTool && e.ToolName == "subagent" && e.ChildSessionID == "" {
-				e.ChildSessionID = child.ID
-				m.childToParent[child.ID] = id
-				next++
+	}
+
+	var unmatched []*session.Session
+	for c := len(children) - 1; c >= 0; c-- {
+		child := children[c]
+		task := firstUserText(child.History)
+		matched := false
+		for i := len(sv.Timeline) - 1; task != "" && i >= 0; i-- {
+			if unlinkedSubagent(i) && subagentTask(sv.Timeline[i].Text) == task {
+				link(i, child.ID)
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			unmatched = append(unmatched, child) // newest first
+		}
+	}
+
+	next := len(sv.Timeline) - 1
+	for _, child := range unmatched {
+		for ; next >= 0; next-- {
+			if unlinkedSubagent(next) {
+				link(next, child.ID)
+				next--
 				break
 			}
 		}
@@ -273,4 +305,33 @@ func (m *Model) LoadResumedSession(id string, history []common.Message, children
 	m.cursor = len(sv.Timeline) - 1
 	m.chat.ScrollToBottom()
 	m.rebuildViewport()
+}
+
+// firstUserText returns the text of the first user message in history.
+func firstUserText(history []common.Message) string {
+	for _, msg := range history {
+		if msg.Role != common.RoleUser {
+			continue
+		}
+		var parts []string
+		for _, b := range msg.Content {
+			if b.Kind == common.BlockText {
+				parts = append(parts, b.Text)
+			}
+		}
+		return strings.Join(parts, "\n")
+	}
+	return ""
+}
+
+// subagentTask returns the task field of a subagent call's input JSON, or ""
+// if the input is not valid JSON.
+func subagentTask(inputJSON string) string {
+	var in struct {
+		Task string `json:"task"`
+	}
+	if json.Unmarshal([]byte(inputJSON), &in) != nil {
+		return ""
+	}
+	return in.Task
 }

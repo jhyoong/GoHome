@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -383,5 +384,106 @@ func TestPickResume_SkipsChildAndLoadsChildren(t *testing.T) {
 	children := loadChildren(home, cwd, sess.ID)
 	if len(children) != 1 || children[0].ID != "p1-sub-1" {
 		t.Fatalf("loadChildren = %v, want [p1-sub-1]", children)
+	}
+}
+
+// doneClient answers each request with one text delta and a clean turn end.
+type doneClient struct{}
+
+func (doneClient) Stream(_ context.Context, _ common.Request) (<-chan common.StreamEvent, error) {
+	ch := make(chan common.StreamEvent, 2)
+	ch <- common.StreamEvent{Kind: common.EventTextDelta, TextDelta: "ok"}
+	ch <- common.StreamEvent{Kind: common.EventTurnDone, StopReason: "end_turn"}
+	close(ch)
+	return ch, nil
+}
+
+func TestRunLoop_WriteFailureIsNoticeOnce(t *testing.T) {
+	fe := &recorderFrontend{input: make(chan string, 1)}
+
+	wl, err := guard.Compile(guard.WhitelistFile{}, guard.WhitelistFile{}, "")
+	if err != nil {
+		t.Fatalf("guard compile: %v", err)
+	}
+	g := guard.NewGuard(wl, nil, nil)
+	g.SetYolo(true)
+
+	sess := session.NewSession("test-write-fail", t.TempDir(), "model", "ep")
+	writer, err := session.OpenWriter(t.TempDir() + "/test.jsonl")
+	if err != nil {
+		t.Fatalf("open writer: %v", err)
+	}
+	t.Cleanup(func() { _ = writer.Close() })
+
+	// An unknown event type makes the background writer record an error.
+	writer.Emit(42)
+	deadline := time.After(2 * time.Second)
+	for writer.Err() == nil {
+		select {
+		case <-deadline:
+			t.Fatal("writer error was not recorded")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+
+	a := &agent.Agent{
+		Tools:    tools.NewRegistry(),
+		Guard:    g,
+		Frontend: fe,
+		State:    agent.NewSessionState(sess, writer, doneClient{}),
+		System:   "test",
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var (
+		turnMu     sync.Mutex
+		turnCancel context.CancelFunc
+	)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runLoop(ctx, a, fe, &turnMu, &turnCancel)
+	}()
+
+	// Two runs on the same writer: the notice must appear once.
+	countRunDone := func() int {
+		fe.mu.Lock()
+		defer fe.mu.Unlock()
+		n := 0
+		for _, ev := range fe.events {
+			if ev.Kind == agent.EventRunDone {
+				n++
+			}
+		}
+		return n
+	}
+	for run := 1; run <= 2; run++ {
+		fe.input <- "hello"
+		deadline := time.After(2 * time.Second)
+		for countRunDone() < run {
+			select {
+			case <-deadline:
+				t.Fatalf("run %d did not finish", run)
+			case <-time.After(5 * time.Millisecond):
+			}
+		}
+	}
+	cancel()
+	<-done
+
+	fe.mu.Lock()
+	defer fe.mu.Unlock()
+	notices := 0
+	for _, ev := range fe.events {
+		if ev.Kind == agent.EventError {
+			t.Errorf("got EventError %v; write failure must be a notice", ev.Err)
+		}
+		if ev.Kind == agent.EventNotice && strings.Contains(ev.Notice, "session not saved") {
+			notices++
+		}
+	}
+	if notices != 1 {
+		t.Errorf("session not saved notices = %d, want 1", notices)
 	}
 }
