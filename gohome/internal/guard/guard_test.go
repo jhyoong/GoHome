@@ -455,20 +455,34 @@ func TestCheck_WhitelistedShellNonSudo_NoFrontendCall(t *testing.T) {
 	}
 }
 
-func TestCheck_YoloWhitelistedSudo_NoFrontendCall(t *testing.T) {
-	fe := &fakeFrontend{}
-	g := newTestGuard(whitelistWith(t, nil, []string{"^sudo"}), fe)
+func TestCheck_YoloSudo_AsksPasswordOnly(t *testing.T) {
+	fe := &fakeFrontend{response: ApprovalDecision{Outcome: AllowOnce, SudoPassword: "pw"}}
+	g := newTestGuard(emptyWhitelist(t), fe)
 	g.SetYolo(true)
 
-	dec, err := g.Check(context.Background(), "sess1", "shell", bashCmd("sudo true"))
+	dec, err := g.Check(context.Background(), "sess1", "shell", bashCmd("sudo ls"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !dec.Allow || dec.Reason != "yolo" {
-		t.Errorf("decision: got %+v, want Allow yolo", dec)
+	if !fe.called || !fe.lastReq.PasswordOnly || !fe.lastReq.NeedsSudoPassword {
+		t.Fatalf("yolo sudo: want password-only request, called=%v req=%+v", fe.called, fe.lastReq)
 	}
-	if fe.called {
-		t.Error("yolo: frontend should not be called")
+	if !dec.Allow || dec.Reason != "yolo" || dec.SudoPassword != "pw" {
+		t.Errorf("decision: got %+v, want Allow yolo with pw", dec)
+	}
+}
+
+func TestCheck_YoloSudo_DenyBlocks(t *testing.T) {
+	fe := &fakeFrontend{response: ApprovalDecision{Outcome: Deny}}
+	g := newTestGuard(emptyWhitelist(t), fe)
+	g.SetYolo(true)
+
+	dec, err := g.Check(context.Background(), "sess1", "shell", bashCmd("sudo ls"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if dec.Allow {
+		t.Errorf("decision: got %+v, want deny", dec)
 	}
 }
 

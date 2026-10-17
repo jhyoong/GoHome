@@ -9,6 +9,7 @@ import (
 	"github.com/jhyoong/GoHome/gohome/internal/agent"
 	"github.com/jhyoong/GoHome/gohome/internal/config"
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
+	"github.com/jhyoong/GoHome/gohome/internal/tools"
 )
 
 func newSudoTestModel() *Model {
@@ -500,7 +501,10 @@ func TestSudoRejected(t *testing.T) {
 		"sudo: 1 incorrect password attempt":  true,
 		// Shell tool output after a failed sudo -v pre-auth step.
 		"exit 1\nSorry, try again.\nsudo: no password was provided\nsudo: 1 incorrect password attempt\ngohome: sudo pre-authentication failed, command not run\n": true,
-		"exit 1\nsudo: not found\ngohome: sudo pre-authentication failed, command not run\n":                                                                       false,
+		// Any pre-auth failure carries the marker, so it counts as rejected.
+		"exit 1\nsudo: not found\ngohome: sudo pre-authentication failed, command not run\n": true,
+		// Locale-independent: only the gohome marker is present.
+		"exit 1\nTut mir leid, versuchen Sie es erneut.\n" + tools.SudoPreauthFailedMarker + "\n": true,
 		"Reading package lists... Done": false,
 		"":                              false,
 	}

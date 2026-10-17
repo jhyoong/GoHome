@@ -304,3 +304,18 @@ func TestBash_DefaultTimeoutCapApplied(t *testing.T) {
 		t.Errorf("expected 'cap-test' in output, got %q", res.Content)
 	}
 }
+
+func TestBash_SudoPreauth_TrailingBackslash(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix shell command")
+	}
+	installFakeSudo(t)
+	res := execBashWithSudo(t, "goodpass", `echo a \`)
+	if !strings.HasPrefix(res.Content, "exit 0\n") {
+		t.Errorf("want exit 0, got %q", res.Content)
+	}
+	// A joined "exit $?" would be echoed as an argument.
+	if strings.Contains(res.Content, "exit") && strings.Contains(res.Content, "a exit") {
+		t.Errorf("trailing backslash joined the exit line: %q", res.Content)
+	}
+}

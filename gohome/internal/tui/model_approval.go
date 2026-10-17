@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
+	"github.com/jhyoong/GoHome/gohome/internal/tools"
 )
 
 // handleApprovalReq processes an incoming approval request. If no approval is
@@ -223,9 +224,11 @@ func (m *Model) addNotice(sessionID, text string) {
 }
 
 // sudoRejected reports whether shell output contains sudo's standard
-// wrong-password messages.
+// wrong-password messages, or the pre-auth failure marker the shell tool
+// prints, which does not depend on the sudo locale.
 func sudoRejected(output string) bool {
-	return strings.Contains(output, "Sorry, try again") ||
+	return strings.Contains(output, tools.SudoPreauthFailedMarker) ||
+		strings.Contains(output, "Sorry, try again") ||
 		strings.Contains(output, "incorrect password attempt")
 }
 
