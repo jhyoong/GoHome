@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/rivo/uniseg"
 )
 
 const maxPreviewLines = 3
@@ -310,9 +311,10 @@ func (c *ChatComponent) countLines(maxWidth int) int {
 
 // Render converts the current timeline to a slice of display lines, applying
 // scroll and height constraints. maxWidth is the terminal column width.
-// Uses a two-pass approach: pass 1 computes line offsets via entryLineCount
-// (cheap, cache-aware), pass 2 only renders entries overlapping the visible
-// window, avoiding work for offscreen entries.
+// Uses a two-pass approach: pass 1 computes line offsets via entryLineCount,
+// which renders and caches every entry whose cache is stale (cached entries
+// cost nothing). Pass 2 only assembles entries overlapping the visible window,
+// reading their lines from the cache.
 func (c *ChatComponent) Render(maxWidth int) []string {
 	if c.timeline == nil || len(*c.timeline) == 0 {
 		return nil
@@ -474,6 +476,17 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 		if trimmed == "" {
 			break
 		}
+		if !e.Expanded {
+			// Collapsed: one dimmed summary line with the first line of text.
+			first, _, more := strings.Cut(trimmed, "\n")
+			hint := " (enter to expand)"
+			if more {
+				first += " …"
+			}
+			summary := TruncateText(first, maxWidth-2-VisualWidth(hint)) + hint
+			lines = append(lines, marker+ansiDim+ansiItalic+summary+ansiReset)
+			break
+		}
 		wrapped := WrapText(trimmed, maxWidth-2)
 		for j, l := range wrapped {
 			styled := ansiDim + ansiItalic + l + ansiReset
@@ -503,13 +516,13 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 				}
 			} else {
 				if e.Text != "" {
-					for _, l := range WrapText("args: "+e.Text, maxWidth-11) {
+					for _, l := range WrapText(expandTabs("args: "+e.Text, 4), maxWidth-11) {
 						toolLines = append(toolLines, "  "+ansiDim+l+ansiReset)
 					}
 				}
 				if e.ToolResult != "" {
 					toolLines = append(toolLines, "  "+ansiDim+"result:"+ansiReset)
-					for _, l := range WrapText(e.ToolResult, maxWidth-13) {
+					for _, l := range WrapText(expandTabs(e.ToolResult, 4), maxWidth-13) {
 						toolLines = append(toolLines, "    "+ansiDim+l+ansiReset)
 					}
 				}
@@ -551,13 +564,13 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 				}
 			} else {
 				if e.Text != "" {
-					for _, l := range WrapText("args: "+e.Text, maxWidth-7) {
+					for _, l := range WrapText(expandTabs("args: "+e.Text, 4), maxWidth-7) {
 						toolLines = append(toolLines, "  "+l)
 					}
 				}
 				if e.ToolResult != "" {
 					toolLines = append(toolLines, "  result:")
-					for _, l := range WrapText(e.ToolResult, maxWidth-9) {
+					for _, l := range WrapText(expandTabs(e.ToolResult, 4), maxWidth-9) {
 						toolLines = append(toolLines, "    "+l)
 					}
 				}
@@ -609,11 +622,12 @@ func renderDiffBox(diff string, status string, maxWidth int, indent int) []strin
 	// Color the diff lines.
 	var colored []string
 	for _, line := range strings.Split(diff, "\n") {
-		if containsDiffMarker(line, "  - ") {
+		switch diffLineMarker(line) {
+		case '-':
 			colored = append(colored, "\x1b[31m"+line+"\x1b[0m")
-		} else if containsDiffMarker(line, "  + ") {
+		case '+':
 			colored = append(colored, "\x1b[32m"+line+"\x1b[0m")
-		} else {
+		default:
 			colored = append(colored, ansiDim+line+ansiReset)
 		}
 	}
@@ -637,8 +651,20 @@ func renderDiffBox(diff string, status string, maxWidth int, indent int) []strin
 	return result
 }
 
-func containsDiffMarker(line, marker string) bool {
-	return strings.Contains(line, marker)
+// diffLineMarker returns '-' or '+' for removed or added lines written by
+// generateEditDiff ("<num>  - text", "<num>  + text"), and ' ' otherwise.
+// Only the marker right after the line number counts, so text that contains
+// "  - " on a context line is not mistaken for a removed line.
+func diffLineMarker(line string) byte {
+	rest := strings.TrimLeft(line, " ")
+	rest = strings.TrimLeft(rest, "0123456789")
+	switch {
+	case strings.HasPrefix(rest, "  - "), rest == "  -":
+		return '-'
+	case strings.HasPrefix(rest, "  + "), rest == "  +":
+		return '+'
+	}
+	return ' '
 }
 
 // previewLines returns the last maxLines lines from s for use as a dimmed
@@ -659,44 +685,50 @@ func previewLines(s string, maxLines int) []string {
 		lines = lines[len(lines)-maxLines:]
 	}
 	for i, l := range lines {
-		if strings.ContainsRune(l, '\t') {
-			lines[i] = expandTabs(l, 4)
-		}
+		lines[i] = expandTabs(l, 4)
 	}
 	return lines
 }
 
-// expandTabs replaces each tab with spaces to align to the next tabStop boundary,
-// skipping ANSI escape sequences when computing column position.
+// expandTabs replaces each tab with spaces to align to the next tabStop boundary.
+// Columns are counted in display width (grapheme clusters), and ANSI escape
+// sequences are skipped.
 func expandTabs(s string, tabStop int) string {
 	if tabStop <= 0 {
 		tabStop = 4
+	}
+	if !strings.ContainsRune(s, '\t') {
+		return s
 	}
 	var b strings.Builder
 	b.Grow(len(s) + 16)
 	col := 0
 	i := 0
 	for i < len(s) {
-		if s[i] == '\x1b' {
+		switch s[i] {
+		case '\x1b':
 			loc := ansiEscape.FindStringIndex(s[i:])
 			if loc != nil && loc[0] == 0 {
 				b.WriteString(s[i : i+loc[1]])
 				i += loc[1]
 				continue
 			}
-		}
-		if s[i] == '\t' {
+		case '\t':
 			spaces := tabStop - (col % tabStop)
-			for j := 0; j < spaces; j++ {
-				b.WriteByte(' ')
-			}
+			b.WriteString(strings.Repeat(" ", spaces))
 			col += spaces
 			i++
 			continue
+		case '\n':
+			b.WriteByte('\n')
+			col = 0
+			i++
+			continue
 		}
-		b.WriteByte(s[i])
-		col++
-		i++
+		cluster, rest, _, _ := uniseg.FirstGraphemeClusterInString(s[i:], -1)
+		b.WriteString(cluster)
+		col += uniseg.StringWidth(cluster)
+		i += len(s[i:]) - len(rest)
 	}
 	return b.String()
 }
@@ -724,8 +756,7 @@ func formatTurnStats(s *TurnStatsData) string {
 
 // extractToolArg parses the JSON input for a tool call and returns the most
 // relevant argument for display, with control characters removed. Known
-// fields: "command" (shell), "file_path" (read/write/edit), "prompt"
-// (subagent). Falls back to shortSummary on parse failure or unknown tools.
+// fields: "command" (shell), "path" (read/write/edit), "task" (subagent). Falls back to shortSummary on parse failure or unknown tools.
 func extractToolArg(toolName, inputJSON string) string {
 	// JSON escapes such as \u001b decode to real control characters, so the
 	// decoded value is sanitized.
@@ -744,14 +775,10 @@ func rawToolArg(toolName, inputJSON string) string {
 	switch toolName {
 	case "shell":
 		key = "command"
-	case "read":
-		key = "file_path"
-	case "write":
-		key = "file_path"
-	case "edit":
-		key = "file_path"
+	case "read", "write", "edit":
+		key = "path"
 	case "subagent":
-		key = "prompt"
+		key = "task"
 	}
 
 	if key != "" {
@@ -774,7 +801,12 @@ func rawToolArg(toolName, inputJSON string) string {
 // using contextual display (e.g. "$ cmd" for shell, file paths for read/edit/write).
 func renderToolSummary(e TimelineEntry, maxWidth int) string {
 	arg := extractToolArg(e.ToolName, e.Text)
-	result := shortSummary(e.ToolResult)
+	// Keep the summary on one line: show only the first line of the arg.
+	if first, _, more := strings.Cut(strings.TrimSpace(arg), "\n"); more {
+		arg = first + "…"
+	}
+	arg = expandTabs(arg, 4)
+	result := shortSummary(expandTabs(e.ToolResult, 4))
 
 	var st lipgloss.Style
 	switch e.Status {

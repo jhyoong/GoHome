@@ -17,6 +17,12 @@ type ConfigOverlay struct {
 	onEdit  func(scope string)
 	actions *SelectListComponent
 	maxH    int
+	// scroll is the first visible line when the content is taller than maxH.
+	scroll int
+	// maxScroll is the largest valid scroll, computed by the last Render.
+	maxScroll int
+	// followSel asks the next Render to scroll the selected action into view.
+	followSel bool
 }
 
 // NewConfigOverlay creates a ConfigOverlay with the given annotated settings.
@@ -110,11 +116,63 @@ func (co *ConfigOverlay) Render(width int) []string {
 	lines = append(lines, sb.String())
 	lines = append(lines, co.actions.Render(width)...)
 
-	return lines
+	if co.maxH <= 0 {
+		return lines
+	}
+	return co.clip(strings.Split(strings.Join(lines, "\n"), "\n"))
 }
 
-// HandleInput delegates keyboard input to the embedded select list.
+// clip returns the visible window of lines plus a footer hint when the
+// content is taller than maxH. Content that fits is returned unchanged.
+func (co *ConfigOverlay) clip(lines []string) []string {
+	if len(lines) <= co.maxH {
+		co.scroll, co.maxScroll = 0, 0
+		return lines
+	}
+
+	// Reserve one line for the footer.
+	viewH := max(co.maxH-1, 1)
+
+	if co.followSel {
+		co.followSel = false
+		for i, l := range lines {
+			if strings.HasPrefix(StripAnsi(l), "-> ") {
+				if i < co.scroll {
+					co.scroll = i
+				} else if i >= co.scroll+viewH {
+					co.scroll = i - viewH + 1
+				}
+				break
+			}
+		}
+	}
+
+	co.maxScroll = len(lines) - viewH
+	co.scroll = min(max(co.scroll, 0), co.maxScroll)
+
+	visible := append([]string(nil), lines[co.scroll:co.scroll+viewH]...)
+	if co.scroll >= co.maxScroll {
+		visible = append(visible, "PgUp/PgDn to scroll · --END--")
+	} else {
+		visible = append(visible, "PgUp/PgDn to scroll · more below")
+	}
+	return visible
+}
+
+// HandleInput scrolls on PgUp/PgDn and delegates other keys to the embedded
+// select list. Up/Down move the selection and keep it in view.
 func (co *ConfigOverlay) HandleInput(msg tea.KeyMsg) tea.Cmd {
+	step := max(co.maxH-2, 1)
+	switch msg.Type {
+	case tea.KeyPgUp:
+		co.scroll = max(co.scroll-step, 0)
+		return nil
+	case tea.KeyPgDown:
+		co.scroll = min(co.scroll+step, co.maxScroll)
+		return nil
+	case tea.KeyUp, tea.KeyDown:
+		co.followSel = true
+	}
 	return co.actions.HandleInput(msg)
 }
 
@@ -123,8 +181,10 @@ func (co *ConfigOverlay) HandleInput(msg tea.KeyMsg) tea.Cmd {
 func (m *Model) openConfigOverlayWith(ann config.AnnotatedSettings) {
 	m.configGlobalPath = ann.GlobalPath
 	m.configProjectPath = ann.ProjectPath
-	m.activeModal = NewConfigOverlay(ann, func() { m.activeModal = nil }, func(scope string) {
+	co := NewConfigOverlay(ann, func() { m.activeModal = nil }, func(scope string) {
 		m.configEditScope = scope
 		m.activeModal = nil
 	})
+	co.SetMaxH(m.approvalMaxHeight())
+	m.activeModal = co
 }

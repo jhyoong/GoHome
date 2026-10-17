@@ -2,6 +2,9 @@ package tui_test
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -9,6 +12,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/jhyoong/GoHome/gohome/internal/config"
+	"github.com/jhyoong/GoHome/gohome/internal/session"
 	"github.com/jhyoong/GoHome/gohome/internal/tui"
 	"github.com/muesli/termenv"
 )
@@ -329,4 +333,59 @@ func TestSlashClearQueue(t *testing.T) {
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
 		return bytes.Contains(out, []byte("Cleared 3 queued message(s)"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+}
+
+// resumeAndDelete opens /resume with the given listings in a model whose
+// main session is mainID, then deletes the first listing with Ctrl+D, y.
+func resumeAndDelete(t *testing.T, mainID string, listings []session.Listing) *tui.Model {
+	t.Helper()
+	m := tui.New(nil, mainID)
+	m = apply(m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	m.SetSlashCallbacks(tui.SlashCallbacks{
+		ListSessions: func() ([]session.Listing, error) { return listings, nil },
+	})
+	m = apply(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/resume")})
+	m = apply(m, tea.KeyMsg{Type: tea.KeyEnter})
+	m = apply(m, tea.KeyMsg{Type: tea.KeyCtrlD})
+	m = apply(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	return m
+}
+
+func TestResumeDeleteRefusesActiveSession(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "cur.jsonl")
+	if err := os.WriteFile(path, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m := resumeAndDelete(t, "cur", []session.Listing{{ID: "cur", Title: "current", Path: path}})
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("active session file was removed: %v", err)
+	}
+	if !strings.Contains(m.StatusMsg(), "active session") {
+		t.Errorf("status = %q, want refusal message", m.StatusMsg())
+	}
+}
+
+func TestResumeDeleteShowsRemoveError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing.jsonl")
+	m := resumeAndDelete(t, "cur", []session.Listing{{ID: "old", Title: "old", Path: path}})
+	if strings.Contains(m.StatusMsg(), "Deleted") {
+		t.Errorf("status = %q, should not report success", m.StatusMsg())
+	}
+	if !strings.Contains(m.StatusMsg(), "old") || !strings.Contains(m.StatusMsg(), "delete") {
+		t.Errorf("status = %q, want delete error for old", m.StatusMsg())
+	}
+}
+
+func TestResumeDeleteRemovesFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "old.jsonl")
+	if err := os.WriteFile(path, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m := resumeAndDelete(t, "cur", []session.Listing{{ID: "old", Title: "old", Path: path}})
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("file should be removed, stat err = %v", err)
+	}
+	if m.StatusMsg() != "Deleted session: old" {
+		t.Errorf("status = %q", m.StatusMsg())
+	}
 }

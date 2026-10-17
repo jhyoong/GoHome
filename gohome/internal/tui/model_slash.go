@@ -138,9 +138,17 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 		sb.SetOnCancel(func() {
 			m.activeModal = nil
 		})
-		sb.SetOnDelete(func(l session.Listing) {
-			_ = os.Remove(l.Path)
+		sb.SetOnDelete(func(l session.Listing) bool {
+			if l.ID == m.mainID || l.ID == m.focused {
+				m.statusMsg = "Cannot delete the active session: " + l.ID
+				return false
+			}
+			if err := os.Remove(l.Path); err != nil {
+				m.statusMsg = fmt.Sprintf("Failed to delete session %s: %v", l.ID, err)
+				return false
+			}
 			m.statusMsg = "Deleted session: " + l.ID
+			return true
 		})
 		if len(fields) >= 2 {
 			sb.SetFilter(fields[1])

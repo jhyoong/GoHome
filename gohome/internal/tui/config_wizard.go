@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/jhyoong/GoHome/gohome/internal/config"
@@ -311,7 +312,8 @@ func (w *ConfigWizard) HandleInput(msg tea.KeyMsg) tea.Cmd {
 		}
 	case tea.KeyBackspace:
 		if len(w.textBuf) > 0 {
-			w.textBuf = w.textBuf[:len(w.textBuf)-1]
+			_, size := utf8.DecodeLastRuneInString(w.textBuf)
+			w.textBuf = w.textBuf[:len(w.textBuf)-size]
 		}
 	case tea.KeyRunes:
 		for _, r := range msg.Runes {

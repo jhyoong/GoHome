@@ -419,6 +419,22 @@ All in `gohome/internal/tui/`.
 | R22 | Low (perf) | chat.go:457, ansi.go | Streaming re-parses the whole entry on every frame, and `WrapText` uses regex heavily (prior P5, P6). |
 | R23 | Low (perf) | model.go:458-476,727-733 | Wheel events are not throttled, and each wheel notch creates its own timer (prior P7, P8). |
 
+**Status:** Fixed on branch `fix/tui-audit` (plan: `docs/reviews/2026-10-17-tui-plan.md`), except where noted.
+- R1, R12: the full SGR state is tracked across wraps, codes in dropped spaces are applied, and zero-width tokens are kept. Words that fit on the next line are no longer broken mid-word.
+- R2, R3, R13: raw HTML is shown as text. Code blocks are hard-wrapped with indentation kept. Headings wrap. Nested lists are indented once per level. Wide tables shrink their widest columns and wrap cells. Heading style is restored after inline emphasis.
+- R4: fixed by S5 (the sanitizer removes `\r`). The external editor gap is also fixed.
+- R5: not fixed (FOLLOWUP_TASKS).
+- R6, R11, R14, R15: diff lines are colored by marker position, tabs are expanded by display column, a multi-line command shows its first line plus `…`, and tool args use `path` and `task`.
+- R7, R8: the file-search list scrolls with the selection, results are scored before the cap, fd gets `--`, the `find` fallback skips `.git/`, and the unused `cancel` field is removed.
+- R9: not fixed (FOLLOWUP_TASKS).
+- R10: not a live bug. Untrusted text is sanitized before it reaches the regex (S5).
+- R16-R19: Backspace removes one character. Session-browser delete is Ctrl+D then `y` (or Ctrl+D twice), and `d` filters. The external editor moved to Ctrl+G. `/resume` refuses to delete the active session and shows delete errors.
+- R20: the config overlay is clipped to the screen and scrolls with PgUp/PgDn.
+- R21, R23: the highlight cache evicts one entry at a time and does not cache unclosed code blocks. The wheel uses one idle timer.
+- R22: not fixed (FOLLOWUP_TASKS).
+- Dead code and comments: `paste.go`, the unused theme fields, `flushCur` and the stale TUI comments are fixed. `compact.go:91-94` and the comments outside `internal/tui` are not covered.
+- README: Enter now collapses and expands thinking entries. They are expanded by default.
+
 ### Dead code and stale comments
 - **Unused code:**
   - `paste.go:8-25` is used only by tests.

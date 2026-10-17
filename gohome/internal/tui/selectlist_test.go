@@ -136,18 +136,36 @@ func TestSelectListScrollIndicator(t *testing.T) {
 	}
 }
 
+var ctrlD = tea.KeyMsg{Type: tea.KeyCtrlD}
+
+func runeKey(r rune) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}} }
+
 func TestSelectListDeleteConfirmation(t *testing.T) {
 	deleted := ""
 	sl := NewSelectList(threeItems(), nil)
 	sl.onDelete = func(item SelectItem) { deleted = item.Value }
-	sl.HandleInput(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	sl.HandleInput(ctrlD)
 	if sl.confirmDelete != 0 {
 		t.Fatalf("confirmDelete should be 0 (first item), got %d", sl.confirmDelete)
 	}
 	if deleted != "" {
 		t.Error("should not have deleted yet")
 	}
-	sl.HandleInput(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	if got := StripAnsi(strings.Join(sl.Render(80), "\n")); !strings.Contains(got, "delete? y to confirm") {
+		t.Errorf("missing confirm hint: %q", got)
+	}
+	sl.HandleInput(runeKey('y'))
+	if deleted != "a" {
+		t.Errorf("should have deleted 'a', got %q", deleted)
+	}
+}
+
+func TestSelectListDeleteConfirmCtrlDTwice(t *testing.T) {
+	deleted := ""
+	sl := NewSelectList(threeItems(), nil)
+	sl.onDelete = func(item SelectItem) { deleted = item.Value }
+	sl.HandleInput(ctrlD)
+	sl.HandleInput(ctrlD)
 	if deleted != "a" {
 		t.Errorf("should have deleted 'a', got %q", deleted)
 	}
@@ -157,8 +175,8 @@ func TestSelectListDeleteCancelOnOtherKey(t *testing.T) {
 	deleted := ""
 	sl := NewSelectList(threeItems(), nil)
 	sl.onDelete = func(item SelectItem) { deleted = item.Value }
-	sl.HandleInput(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
-	sl.HandleInput(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	sl.HandleInput(ctrlD)
+	sl.HandleInput(runeKey('d'))
 	if deleted != "" {
 		t.Error("delete should have been cancelled")
 	}
@@ -169,12 +187,36 @@ func TestSelectListDeleteCancelOnOtherKey(t *testing.T) {
 
 func TestSelectListDeleteDisabledWhenNoCallback(t *testing.T) {
 	sl := NewSelectList(threeItems(), nil)
-	sl.HandleInput(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	sl.HandleInput(ctrlD)
 	if sl.confirmDelete != -1 {
 		t.Errorf("confirmDelete should remain -1 when onDelete is nil, got %d", sl.confirmDelete)
 	}
+}
+
+func TestSelectListDFiltersWithEmptyQuery(t *testing.T) {
+	sl := NewSelectList([]SelectItem{
+		{Value: "a", Label: "Alpha"},
+		{Value: "d", Label: "Delta"},
+	}, nil)
+	sl.onDelete = func(SelectItem) {}
+	sl.HandleInput(runeKey('d'))
+	if sl.confirmDelete != -1 {
+		t.Fatalf("'d' must not start delete, confirmDelete=%d", sl.confirmDelete)
+	}
 	if sl.query != "d" {
-		t.Errorf("query should be 'd' when delete is disabled, got %q", sl.query)
+		t.Fatalf("query = %q, want %q", sl.query, "d")
+	}
+	if len(sl.filtered) != 1 || sl.filtered[0].Value != "d" {
+		t.Errorf("filtered = %+v, want only Delta", sl.filtered)
+	}
+}
+
+func TestSelectListBackspaceRemovesRune(t *testing.T) {
+	sl := NewSelectList(threeItems(), nil)
+	sl.SetQuery("caf\u00e9")
+	sl.HandleInput(tea.KeyMsg{Type: tea.KeyBackspace})
+	if sl.query != "caf" {
+		t.Errorf("query = %q, want %q", sl.query, "caf")
 	}
 }
 

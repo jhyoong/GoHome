@@ -204,7 +204,7 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.statusMsg = fmt.Sprintf("Removed last queued message (%d remaining)", len(m.pendingMessages))
 		}
 		return m, nil
-	case tea.KeyCtrlE:
+	case tea.KeyCtrlG:
 		return m, m.openExternalEditor()
 	case tea.KeyCtrlP:
 		m.editor.HistoryPrev()
@@ -281,6 +281,7 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.fileSearching = true
 			m.fileSearch.query = q
 			m.fileSearch.selected = 0
+			m.fileSearch.offset = 0
 			cmds = append(cmds, searchFilesCmd(q))
 		} else if !ok && m.fileSearching {
 			m.fileSearching = false

@@ -120,3 +120,30 @@ func TestRelativeTime(t *testing.T) {
 		}
 	}
 }
+
+func TestSessionBrowserDeleteKeepsItemOnFailure(t *testing.T) {
+	sb := NewSessionBrowser(sampleListings())
+	sb.SetOnDelete(func(session.Listing) bool { return false })
+	sb.HandleInput(tea.KeyMsg{Type: tea.KeyCtrlD})
+	sb.HandleInput(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	if len(sb.listings) != len(sampleListings()) {
+		t.Errorf("listings = %d, want %d", len(sb.listings), len(sampleListings()))
+	}
+}
+
+func TestSessionBrowserDeleteRemovesItemOnSuccess(t *testing.T) {
+	var got string
+	sb := NewSessionBrowser(sampleListings())
+	sb.SetOnDelete(func(l session.Listing) bool { got = l.ID; return true })
+	sb.HandleInput(tea.KeyMsg{Type: tea.KeyCtrlD})
+	sb.HandleInput(tea.KeyMsg{Type: tea.KeyCtrlD})
+	first := sampleListings()[0].ID
+	if got != first {
+		t.Fatalf("deleted %q, want %q", got, first)
+	}
+	for _, l := range sb.listings {
+		if l.ID == first {
+			t.Errorf("deleted listing %q still shown", first)
+		}
+	}
+}

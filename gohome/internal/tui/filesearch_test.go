@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -161,5 +162,95 @@ func TestConfirmFileSearch_Tab(t *testing.T) {
 	}
 	if m.fileSearch.visible {
 		t.Error("popup should be hidden after confirm")
+	}
+}
+
+func manyResults(n int) []ScoredResult {
+	var rs []ScoredResult
+	for i := 0; i < n; i++ {
+		rs = append(rs, ScoredResult{Path: fmt.Sprintf("file%02d.go", i), Score: i})
+	}
+	return rs
+}
+
+func TestFileSearchPopup_SelectedRowStaysVisible(t *testing.T) {
+	p := NewFileSearchPopup()
+	p.results = manyResults(15)
+	p.visible = true
+	for i := 0; i < 12; i++ {
+		p.MoveDown()
+	}
+	joined := StripAnsi(strings.Join(p.Render(80), "\n"))
+	if !strings.Contains(joined, "> file12.go") {
+		t.Fatalf("selected row not visible:\n%s", joined)
+	}
+	if strings.Contains(joined, "file00.go") {
+		t.Errorf("window should have scrolled past file00.go:\n%s", joined)
+	}
+	if !strings.Contains(joined, "... 5 more") {
+		t.Errorf("missing more line:\n%s", joined)
+	}
+
+	// Wrapping up from the top goes to the last row, which must be visible.
+	p.selected = 0
+	p.offset = 0
+	p.MoveUp()
+	joined = StripAnsi(strings.Join(p.Render(80), "\n"))
+	if !strings.Contains(joined, "> file14.go") {
+		t.Fatalf("last row not visible after wrap:\n%s", joined)
+	}
+
+	// Wrapping down from the bottom returns to the top.
+	p.MoveDown()
+	joined = StripAnsi(strings.Join(p.Render(80), "\n"))
+	if !strings.Contains(joined, "> file00.go") {
+		t.Fatalf("first row not visible after wrap:\n%s", joined)
+	}
+}
+
+func TestFileSearchPopup_SetResultsResetsOffset(t *testing.T) {
+	p := NewFileSearchPopup()
+	p.results = manyResults(15)
+	p.visible = true
+	p.selected = 14
+	p.offset = 5
+	p.SetResults("", manyResults(15))
+	if p.offset != 0 || p.selected != 0 {
+		t.Errorf("offset=%d selected=%d, want 0 0", p.offset, p.selected)
+	}
+}
+
+func TestRankFileResults_ScoresBeforeCap(t *testing.T) {
+	var lines []string
+	for i := 0; i < maxFileResults+20; i++ {
+		lines = append(lines, fmt.Sprintf("deep/dir/x%02d/notes_target.txt", i))
+	}
+	// The exact match comes last in the raw output; it must still win.
+	lines = append(lines, "target")
+	got := rankFileResults("target", lines)
+	if len(got) != maxFileResults {
+		t.Fatalf("len=%d, want %d", len(got), maxFileResults)
+	}
+	if got[0].Path != "target" {
+		t.Errorf("best match = %q, want %q", got[0].Path, "target")
+	}
+}
+
+func TestFileSearchArgs(t *testing.T) {
+	name, args := fileSearchArgs("-x", true)
+	if name != "fd" {
+		t.Fatalf("name = %q", name)
+	}
+	if len(args) < 2 || args[len(args)-2] != "--" || args[len(args)-1] != "-x" {
+		t.Errorf("fd args must end with -- query: %v", args)
+	}
+
+	name, args = fileSearchArgs("foo", false)
+	if name != "find" {
+		t.Fatalf("name = %q", name)
+	}
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "-not -path */.git/*") {
+		t.Errorf("find args must exclude .git: %v", args)
 	}
 }

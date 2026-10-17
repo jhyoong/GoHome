@@ -97,3 +97,8 @@ Minor items found while reviewing the D1-D9 fixes (plan: `docs/reviews/2026-10-1
 51. **The shell `cwd` is resolved against the process folder, not the session folder.** This has no effect today: the session folder is always `os.Getwd()` and nothing calls `Chdir`. It matters only if sessions ever run in a different folder (audit T3).
 52. **A file written by `write` must be read before `edit`.** `write` does not mark the file as read, so the model needs an extra `read` call.
 53. **Read-before-edit does not follow symlinks.** Paths are compared in clean absolute form, but symlinks are not resolved. On macOS, reading `/tmp/x/a.txt` and then editing `/private/tmp/x/a.txt` returns "file must be read first". Related to item 39. Found during the live test of the T1-T3 fixes.
+
+### TUI (deferred from the R1-R23 fixes)
+54. **Multi-line paste on Windows submits only the first line (audit R5).** Bubble Tea v1.3.10's Windows console input never sets `Paste`, so each pasted Enter submits. Fix with Bubble Tea v2 or a timing heuristic. Needs testing on Windows.
+55. **The editor works per rune, not per grapheme (audit R9).** ZWJ emoji and combining marks are split by cursor movement and Backspace. Needs a rewrite of the editor's cursor model.
+56. **Streaming re-parses the whole entry on every frame (audit R22).** The render cache is keyed on the full text, so a streaming assistant entry is parsed and wrapped again for each delta. Needs incremental markdown rendering.

@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -105,7 +106,7 @@ func (sl *SelectListComponent) Render(width int) []string {
 		}
 
 		if sl.confirmDelete == i {
-			line = selectDeleteStyle.Render(prefix + label + "  delete? d to confirm")
+			line = selectDeleteStyle.Render(prefix + label + "  delete? y to confirm")
 		} else if i == sl.selected {
 			line = selectHighlight.Render(line)
 		}
@@ -122,7 +123,10 @@ func (sl *SelectListComponent) Render(width int) []string {
 
 func (sl *SelectListComponent) HandleInput(msg tea.KeyMsg) tea.Cmd {
 	if sl.confirmDelete >= 0 {
-		if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == 'd' {
+		// y or a second Ctrl+D confirms; any other key cancels.
+		confirmed := msg.Type == tea.KeyCtrlD ||
+			(msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == 'y')
+		if confirmed {
 			if sl.onDelete != nil && sl.confirmDelete < len(sl.filtered) {
 				sl.onDelete(sl.filtered[sl.confirmDelete])
 			}
@@ -154,17 +158,15 @@ func (sl *SelectListComponent) HandleInput(msg tea.KeyMsg) tea.Cmd {
 		}
 	case tea.KeyBackspace:
 		if len(sl.query) > 0 {
-			sl.query = sl.query[:len(sl.query)-1]
+			_, size := utf8.DecodeLastRuneInString(sl.query)
+			sl.query = sl.query[:len(sl.query)-size]
 			sl.applyFilter()
 		}
-	case tea.KeyRunes:
-		if len(msg.Runes) == 1 {
-			r := msg.Runes[0]
-			if r == 'd' && sl.onDelete != nil && sl.query == "" {
-				sl.confirmDelete = sl.selected
-				return nil
-			}
+	case tea.KeyCtrlD:
+		if sl.onDelete != nil && sl.selected < len(sl.filtered) {
+			sl.confirmDelete = sl.selected
 		}
+	case tea.KeyRunes:
 		sl.query += string(msg.Runes)
 		sl.applyFilter()
 	}

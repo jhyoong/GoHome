@@ -28,7 +28,7 @@ func NewTokensOverlay(sv *SessionView, modelName string, contextWindow int, onCl
 }
 
 // Render implements Component. It returns a single-element slice containing the
-// formatted token usage text -- the same content as Model.renderTokensOverlay().
+// formatted token usage text for the session, model and context window.
 func (o *TokensOverlay) Render(width int) []string {
 	u := o.sv.Usage
 	used := u.InputTokens + u.OutputTokens

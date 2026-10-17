@@ -180,8 +180,12 @@ type Model struct {
 
 	mouseEnabled   bool
 	mouseActive    bool // true when terminal is in mouse capture mode
-	mouseIdleSeq   int  // incremented on each wheel event; stale timeouts are ignored
+	mouseIdleSeq   int  // incremented on each new idle timer; stale timeouts are ignored
 	mouseHintUntil time.Time
+	// lastWheel is the time of the most recent wheel event. mouseIdlePending
+	// is true while an idle timer is scheduled; only one runs at a time.
+	lastWheel        time.Time
+	mouseIdlePending bool
 
 	// slashCB holds optional callbacks wired to slash commands (/new, /resume,
 	// /model, /cancel). Set via SetSlashCallbacks.
@@ -474,6 +478,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.winW = msg.Width
 		m.winH = msg.Height
 		m.editor.SetTermHeight(msg.Height)
+		if co, ok := m.activeModal.(*ConfigOverlay); ok {
+			co.SetMaxH(m.approvalMaxHeight())
+		}
 
 	case spinnerTickMsg:
 		m.spinnerTicking = false
@@ -491,7 +498,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.mouseHintUntil = time.Time{}
 
 	case mouseIdleMsg:
-		if msg.seq == m.mouseIdleSeq && m.mouseEnabled && m.mouseActive && m.activeApproval == nil {
+		if msg.seq != m.mouseIdleSeq {
+			break
+		}
+		m.mouseIdlePending = false
+		if m.mouseEnabled && m.mouseActive && m.activeApproval == nil {
+			// The wheel was used since this timer started: wait out the rest.
+			if remaining := mouseIdleTimeout - time.Since(m.lastWheel); remaining > 0 {
+				return m, m.startMouseIdleTimer(remaining)
+			}
 			m.mouseActive = false
 			return m, func() tea.Msg { return tea.DisableMouse() }
 		}
@@ -773,11 +788,26 @@ func countLines(sections []string) int {
 // Chat returns the chat component (exported for tests).
 func (m *Model) Chat() *ChatComponent { return m.chat }
 
-// scheduleMouseIdle starts a fresh idle timer; older timers become stale.
+// mouseIdleTimeout is how long the wheel must be idle before mouse capture
+// is turned off.
+const mouseIdleTimeout = 2 * time.Second
+
+// scheduleMouseIdle records wheel activity now and starts the idle timer if
+// none is pending. A pending timer reschedules itself when it fires early.
 func (m *Model) scheduleMouseIdle() tea.Cmd {
+	m.lastWheel = time.Now()
+	if m.mouseIdlePending {
+		return nil
+	}
+	return m.startMouseIdleTimer(mouseIdleTimeout)
+}
+
+// startMouseIdleTimer schedules an idle timer that fires after d.
+func (m *Model) startMouseIdleTimer(d time.Duration) tea.Cmd {
+	m.mouseIdlePending = true
 	m.mouseIdleSeq++
 	seq := m.mouseIdleSeq
-	return tea.Tick(2*time.Second, func(time.Time) tea.Msg {
+	return tea.Tick(d, func(time.Time) tea.Msg {
 		return mouseIdleMsg{seq: seq}
 	})
 }

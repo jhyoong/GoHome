@@ -2,7 +2,10 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestExternalEditorMsgSetsContent(t *testing.T) {
@@ -39,5 +42,39 @@ func TestOpenExternalEditorReturnsCmd(t *testing.T) {
 	cmd := m.openExternalEditor()
 	if cmd == nil {
 		t.Error("openExternalEditor() returned nil cmd")
+	}
+}
+
+func TestExternalEditorMsgStripsCR(t *testing.T) {
+	m := New(nil, "")
+	m.Update(ExternalEditorMsg{Content: "line one\r\nline two\r\n"})
+	if got := m.editor.Value(); strings.Contains(got, "\r") {
+		t.Errorf("editor value contains \\r: %q", got)
+	}
+}
+
+func TestCtrlGOpensExternalEditor(t *testing.T) {
+	m := New(nil, "")
+	t.Setenv("VISUAL", "")
+	t.Setenv("EDITOR", "true")
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlG})
+	if cmd == nil {
+		t.Fatal("Ctrl+G should return the external editor command")
+	}
+}
+
+func TestCtrlEReachesEditorEndOfLine(t *testing.T) {
+	m := New(nil, "")
+	t.Setenv("VISUAL", "")
+	t.Setenv("EDITOR", "true")
+	m.editor.InsertText("abc")
+	m.Update(tea.KeyMsg{Type: tea.KeyCtrlA})
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlE})
+	if cmd != nil {
+		t.Errorf("Ctrl+E should not open the external editor")
+	}
+	m.editor.InsertRune('x')
+	if got := m.editor.Value(); got != "abcx" {
+		t.Errorf("editor value = %q, want %q", got, "abcx")
 	}
 }

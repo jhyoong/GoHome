@@ -413,3 +413,13 @@ func TestStartupWizard_ShowsDenylistOfferAfterSave(t *testing.T) {
 		t.Error("modal should close after the denylist step")
 	}
 }
+
+func TestConfigWizard_BackspaceRemovesRune(t *testing.T) {
+	w := NewConfigWizard(func() {}, func(string) {})
+	w.HandleInput(tea.KeyMsg{Type: tea.KeyEnter})
+	w.HandleInput(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("café")})
+	w.HandleInput(tea.KeyMsg{Type: tea.KeyBackspace})
+	if w.textBuf != "caf" {
+		t.Errorf("textBuf = %q, want %q", w.textBuf, "caf")
+	}
+}

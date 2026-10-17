@@ -162,3 +162,83 @@ func TestConfigOverlay_Render_EmptyConfig(t *testing.T) {
 		t.Fatal("expected non-empty render even with empty config")
 	}
 }
+
+func renderedLines(co *ConfigOverlay) []string {
+	return strings.Split(strings.Join(co.Render(80), "\n"), "\n")
+}
+
+func TestConfigOverlay_ClipsToMaxH(t *testing.T) {
+	co := NewConfigOverlay(sampleAnnotated(), func() {}, nil)
+	full := renderedLines(co)
+	co.SetMaxH(8)
+	got := renderedLines(co)
+	if len(got) > 8 {
+		t.Fatalf("got %d lines, want at most 8", len(got))
+	}
+	if len(full) <= 8 {
+		t.Fatalf("sample config too short to test clipping: %d lines", len(full))
+	}
+	if !strings.Contains(got[0], "Configuration") {
+		t.Errorf("expected view to start at the top, got %q", got[0])
+	}
+}
+
+func TestConfigOverlay_NoClipWhenMaxHUnset(t *testing.T) {
+	co := NewConfigOverlay(sampleAnnotated(), func() {}, nil)
+	before := strings.Join(co.Render(80), "\n")
+	co.SetMaxH(1000)
+	after := strings.Join(co.Render(80), "\n")
+	if before != after {
+		t.Errorf("render changed when content fits:\n%s\n---\n%s", before, after)
+	}
+}
+
+func TestConfigOverlay_PgDownPgUpScroll(t *testing.T) {
+	co := NewConfigOverlay(sampleAnnotated(), func() {}, nil)
+	co.SetMaxH(6)
+	top := renderedLines(co)[0]
+	co.HandleInput(tea.KeyMsg{Type: tea.KeyPgDown})
+	scrolled := renderedLines(co)[0]
+	if scrolled == top {
+		t.Fatalf("expected PgDown to scroll, first line still %q", scrolled)
+	}
+	for range 10 {
+		co.HandleInput(tea.KeyMsg{Type: tea.KeyPgUp})
+	}
+	if got := renderedLines(co)[0]; got != top {
+		t.Errorf("after PgUp: got first line %q, want %q", got, top)
+	}
+}
+
+func TestConfigOverlay_SelectionStaysVisible(t *testing.T) {
+	co := NewConfigOverlay(sampleAnnotated(), func() {}, nil)
+	co.SetMaxH(6)
+	co.HandleInput(tea.KeyMsg{Type: tea.KeyDown})
+	co.HandleInput(tea.KeyMsg{Type: tea.KeyDown})
+	joined := strings.Join(renderedLines(co), "\n")
+	if !strings.Contains(joined, "-> Run setup wizard") {
+		t.Errorf("expected selected action visible after Down, got:\n%s", joined)
+	}
+	co.HandleInput(tea.KeyMsg{Type: tea.KeyUp})
+	joined = strings.Join(renderedLines(co), "\n")
+	if !strings.Contains(joined, "-> Edit project config") {
+		t.Errorf("expected selected action visible after Up, got:\n%s", joined)
+	}
+}
+
+func TestSlashConfig_SetsMaxHOnOpenAndResize(t *testing.T) {
+	m := New(nil, "")
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
+	m.openConfigOverlayWith(sampleAnnotated())
+	co, ok := m.activeModal.(*ConfigOverlay)
+	if !ok {
+		t.Fatal("expected config overlay to be open")
+	}
+	if co.maxH != m.approvalMaxHeight() || co.maxH <= 0 {
+		t.Errorf("on open: maxH = %d, want %d", co.maxH, m.approvalMaxHeight())
+	}
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 12})
+	if co.maxH != m.approvalMaxHeight() {
+		t.Errorf("after resize: maxH = %d, want %d", co.maxH, m.approvalMaxHeight())
+	}
+}

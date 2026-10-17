@@ -1,5 +1,5 @@
 Session:  main done 
-> ┃edit {"path":"/tmp/test/test.go",... -> ERROR: 
+> ┃edit test.go -> ERROR: denied                                               
   ╭──────────────────────────────────────────────────────────────────────────╮
   │ [2m[2m1    line1[0m                                                               │
   │ [2m2    line2[0m                                                               │

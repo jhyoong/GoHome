@@ -114,11 +114,11 @@ func TestToolStatusError(t *testing.T) {
 }
 
 func TestChatRenderThinkingInline(t *testing.T) {
-	entries := []TimelineEntry{{Kind: KindThinking, Text: "Let me reason\nabout this\nstep by step."}}
+	entries := []TimelineEntry{{Kind: KindThinking, Text: "Let me reason\nabout this\nstep by step.", Expanded: true}}
 	c := NewChat(&entries, 20)
 	lines := c.Render(80)
 	joined := StripAnsi(strings.Join(lines, "\n"))
-	// Thinking content is now always shown inline (dim italic), not collapsed.
+	// Expanded thinking content is shown inline in full (dim italic).
 	if !strings.Contains(joined, "Let me reason") {
 		t.Errorf("thinking content missing: %q", joined)
 	}
@@ -570,5 +570,169 @@ func TestAgentNoticeEventAddsNoticeEntry(t *testing.T) {
 	last := sv.Timeline[len(sv.Timeline)-1]
 	if last.Kind != KindNotice || last.Text != "Response cut off" {
 		t.Errorf("last entry = %+v, want notice %q", last, "Response cut off")
+	}
+}
+
+func TestChatRenderThinkingCollapsed(t *testing.T) {
+	entries := []TimelineEntry{{Kind: KindThinking, Text: "Let me reason\nabout this\nstep by step."}}
+	c := NewChat(&entries, 20)
+	lines := c.Render(80)
+	if len(lines) != 1 {
+		t.Fatalf("collapsed thinking: got %d lines, want 1: %q", len(lines), lines)
+	}
+	plain := StripAnsi(lines[0])
+	if !strings.Contains(plain, "Let me reason") || !strings.Contains(plain, "enter to expand") {
+		t.Errorf("collapsed summary = %q, want first line and expand hint", plain)
+	}
+	if strings.Contains(plain, "about this") {
+		t.Errorf("collapsed summary shows later lines: %q", plain)
+	}
+	if !strings.Contains(lines[0], ansiDim) || !strings.Contains(lines[0], ansiItalic) {
+		t.Errorf("collapsed summary not dim italic: %q", lines[0])
+	}
+}
+
+func TestChatRenderThinkingCollapsedTruncatesToWidth(t *testing.T) {
+	entries := []TimelineEntry{{Kind: KindThinking, Text: strings.Repeat("word ", 40)}}
+	c := NewChat(&entries, 20)
+	lines := c.Render(40)
+	if len(lines) != 1 {
+		t.Fatalf("got %d lines, want 1: %q", len(lines), lines)
+	}
+	if w := VisualWidth(lines[0]); w > 40 {
+		t.Errorf("summary width = %d, want <= 40: %q", w, StripAnsi(lines[0]))
+	}
+	if !strings.Contains(StripAnsi(lines[0]), "enter to expand") {
+		t.Errorf("hint missing: %q", StripAnsi(lines[0]))
+	}
+}
+
+func TestChatRenderThinkingToggleInvalidatesCache(t *testing.T) {
+	entries := []TimelineEntry{{Kind: KindThinking, Text: "one\ntwo\nthree", Expanded: true}}
+	c := NewChat(&entries, 20)
+	if n := len(c.Render(80)); n != 3 {
+		t.Fatalf("expanded: got %d lines, want 3", n)
+	}
+	entries[0].Expanded = false
+	if n := len(c.Render(80)); n != 1 {
+		t.Fatalf("collapsed: got %d lines, want 1", n)
+	}
+	entries[0].Expanded = true
+	if n := len(c.Render(80)); n != 3 {
+		t.Fatalf("re-expanded: got %d lines, want 3", n)
+	}
+}
+
+func TestDiffLineMarker(t *testing.T) {
+	diff := generateEditDiff("a  - b\nold\nc  + d\n", "old", "new")
+	want := map[string]byte{
+		"1    a  - b": ' ',
+		"2  - old":    '-',
+		"2  + new":    '+',
+		"3    c  + d": ' ',
+		"4    ":       ' ',
+	}
+	for _, line := range strings.Split(diff, "\n") {
+		w, ok := want[line]
+		if !ok {
+			t.Fatalf("unexpected diff line %q in %q", line, diff)
+		}
+		if got := diffLineMarker(line); got != w {
+			t.Errorf("diffLineMarker(%q) = %q, want %q", line, got, w)
+		}
+	}
+}
+
+func TestRenderDiffBox_ContextLineWithMarkerTextNotColored(t *testing.T) {
+	diff := generateEditDiff("x  - y\nold\n", "old", "new")
+	out := renderDiffBox(diff, "success", 80, 2)
+	for _, l := range out {
+		if strings.Contains(l, "x  - y") && strings.Contains(l, "\x1b[31m") {
+			t.Errorf("context line colored as removed: %q", l)
+		}
+		if strings.Contains(l, "- old") && !strings.Contains(l, "\x1b[31m") {
+			t.Errorf("removed line not red: %q", l)
+		}
+	}
+}
+
+func TestExpandTabsDisplayColumns(t *testing.T) {
+	tests := []struct {
+		in, want string
+	}{
+		{"a\tb", "a   b"},
+		{"\u65e5\tx", "\u65e5  x"},
+		{"\u00e9\tx", "\u00e9   x"},
+		{"\x1b[1mab\x1b[0m\tc", "\x1b[1mab\x1b[0m  c"},
+	}
+	for _, tt := range tests {
+		if got := expandTabs(tt.in, 4); got != tt.want {
+			t.Errorf("expandTabs(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestToolRenderExpandsTabs(t *testing.T) {
+	for _, shadow := range []bool{false, true} {
+		for _, expanded := range []bool{false, true} {
+			entries := []TimelineEntry{{
+				Kind:       KindTool,
+				ToolName:   "shell",
+				Text:       "{\"command\":\"ls\"}\tx",
+				ToolResult: "a\tb\nc\td\ne\tf",
+				Status:     "success",
+				Shadow:     shadow,
+				Expanded:   expanded,
+			}}
+			c := NewChat(&entries, 40)
+			joined := strings.Join(c.Render(80), "\n")
+			if strings.Contains(joined, "\t") {
+				t.Errorf("shadow=%v expanded=%v: output has raw tab: %q", shadow, expanded, joined)
+			}
+			if !strings.Contains(StripAnsi(joined), "a   b") {
+				t.Errorf("shadow=%v expanded=%v: tab not expanded: %q", shadow, expanded, StripAnsi(joined))
+			}
+		}
+	}
+}
+
+func TestRenderToolSummary_MultiLineCommandFirstLineOnly(t *testing.T) {
+	e := TimelineEntry{
+		Kind:     KindTool,
+		ToolName: "shell",
+		Text:     `{"command":"echo one\necho two"}`,
+		Status:   "success",
+	}
+	got := StripAnsi(renderToolSummary(e, 80))
+	if strings.Contains(got, "\n") {
+		t.Fatalf("summary spans lines: %q", got)
+	}
+	if !strings.Contains(got, "$ echo one…") {
+		t.Errorf("summary = %q, want first line followed by ellipsis", got)
+	}
+	if strings.Contains(got, "echo two") {
+		t.Errorf("summary shows second line: %q", got)
+	}
+
+	e.Text = `{"command":"echo one"}`
+	if got := StripAnsi(renderToolSummary(e, 80)); strings.Contains(got, "…") {
+		t.Errorf("single-line summary has ellipsis: %q", got)
+	}
+}
+
+func TestExtractToolArgSchemaKeys(t *testing.T) {
+	tests := []struct {
+		tool, input, want string
+	}{
+		{"shell", `{"command":"ls -la"}`, "ls -la"},
+		{"read", `{"path":"a.go"}`, "a.go"},
+		{"write", `{"path":"b.go","content":"x"}`, "b.go"},
+		{"edit", `{"path":"c.go","old_string":"x","new_string":"y"}`, "c.go"},
+		{"subagent", `{"task":"find bugs"}`, "find bugs"},
+	}
+	for _, tt := range tests {
+		if got := extractToolArg(tt.tool, tt.input); got != tt.want {
+			t.Errorf("extractToolArg(%q, %q) = %q, want %q", tt.tool, tt.input, got, tt.want)
+		}
 	}
 }

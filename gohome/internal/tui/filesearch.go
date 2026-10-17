@@ -39,8 +39,8 @@ type FileSearchPopup struct {
 	query    string
 	results  []ScoredResult
 	selected int
+	offset   int // index of the first visible row
 	visible  bool
-	cancel   context.CancelFunc
 }
 
 func NewFileSearchPopup() *FileSearchPopup {
@@ -52,6 +52,7 @@ func (p *FileSearchPopup) MoveDown() {
 		return
 	}
 	p.selected = (p.selected + 1) % len(p.results)
+	p.clampOffset()
 }
 
 func (p *FileSearchPopup) MoveUp() {
@@ -61,6 +62,17 @@ func (p *FileSearchPopup) MoveUp() {
 	p.selected--
 	if p.selected < 0 {
 		p.selected = len(p.results) - 1
+	}
+	p.clampOffset()
+}
+
+// clampOffset scrolls the window so the selected row is visible.
+func (p *FileSearchPopup) clampOffset() {
+	if p.selected < p.offset {
+		p.offset = p.selected
+	}
+	if p.selected >= p.offset+maxVisibleFiles {
+		p.offset = p.selected - maxVisibleFiles + 1
 	}
 }
 
@@ -77,6 +89,7 @@ func (p *FileSearchPopup) SetResults(query string, results []ScoredResult) {
 	}
 	p.results = results
 	p.selected = 0
+	p.offset = 0
 	p.visible = len(results) > 0
 }
 
@@ -84,11 +97,8 @@ func (p *FileSearchPopup) Hide() {
 	p.visible = false
 	p.results = nil
 	p.selected = 0
+	p.offset = 0
 	p.query = ""
-	if p.cancel != nil {
-		p.cancel()
-		p.cancel = nil
-	}
 }
 
 func (p *FileSearchPopup) Render(width int) []string {
@@ -96,15 +106,17 @@ func (p *FileSearchPopup) Render(width int) []string {
 		return nil
 	}
 
-	visible := p.results
-	if len(visible) > maxVisibleFiles {
-		visible = visible[:maxVisibleFiles]
+	end := p.offset + maxVisibleFiles
+	if end > len(p.results) {
+		end = len(p.results)
 	}
+	visible := p.results[p.offset:end]
 
 	topBorder := fileSearchBorder.Render(strings.Repeat("─", width))
 	var lines []string
 	lines = append(lines, topBorder)
-	for i, r := range visible {
+	for j, r := range visible {
+		i := p.offset + j
 		prefix := "  "
 		if i == p.selected {
 			prefix = "> "
@@ -131,12 +143,9 @@ func searchFilesCmd(query string) tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 
-		var cmd *exec.Cmd
-		if _, err := exec.LookPath("fd"); err == nil {
-			cmd = exec.CommandContext(ctx, "fd", "--type", "f", "--color", "never", query)
-		} else {
-			cmd = exec.CommandContext(ctx, "find", ".", "-type", "f", "-name", "*"+query+"*")
-		}
+		_, lookErr := exec.LookPath("fd")
+		name, args := fileSearchArgs(query, lookErr == nil)
+		cmd := exec.CommandContext(ctx, name, args...)
 
 		out, err := cmd.Output()
 		if err != nil {
@@ -147,13 +156,26 @@ func searchFilesCmd(query string) tea.Cmd {
 		if len(rawLines) == 1 && rawLines[0] == "" {
 			return FileSearchResultMsg{Query: query, Results: nil}
 		}
-		if len(rawLines) > maxFileResults {
-			rawLines = rawLines[:maxFileResults]
-		}
-
-		results := scoreResults(query, rawLines)
-		return FileSearchResultMsg{Query: query, Results: results}
+		return FileSearchResultMsg{Query: query, Results: rankFileResults(query, rawLines)}
 	}
+}
+
+// fileSearchArgs returns the command and arguments for a file search.
+// "--" stops fd from reading a query that starts with "-" as a flag.
+func fileSearchArgs(query string, haveFd bool) (string, []string) {
+	if haveFd {
+		return "fd", []string{"--type", "f", "--color", "never", "--", query}
+	}
+	return "find", []string{".", "-type", "f", "-not", "-path", "*/.git/*", "-name", "*" + query + "*"}
+}
+
+// rankFileResults scores all paths, then keeps the best maxFileResults.
+func rankFileResults(query string, paths []string) []ScoredResult {
+	results := scoreResults(query, paths)
+	if len(results) > maxFileResults {
+		results = results[:maxFileResults]
+	}
+	return results
 }
 
 func scoreResults(query string, paths []string) []ScoredResult {

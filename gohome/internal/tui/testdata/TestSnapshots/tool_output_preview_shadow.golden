@@ -1,5 +1,5 @@
 Session:  main done 
-> ┃subagent: {"task":"investigate"}                                            
+> ┃subagent: investigate                                                       
 
       ┃[2m$ find . -name '*.go' -> 5 lines[0m                                         
       ┃  [2mfile3.go[0m                                                               
