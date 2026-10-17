@@ -114,13 +114,14 @@ func (a *Agent) compact(ctx context.Context, sess *session.Session) error {
 		}
 	}
 
+	ms := a.State.ModelSettings()
 	maxTokens := 4096
-	if a.MaxTokens > 0 {
-		maxTokens = a.MaxTokens
+	if ms.MaxTokens > 0 {
+		maxTokens = ms.MaxTokens
 	}
 
 	req := common.Request{
-		Model:     sess.Model,
+		Model:     ms.Name,
 		System:    prompt,
 		Messages:  stripToolBlocks(oldMessages),
 		MaxTokens: maxTokens,

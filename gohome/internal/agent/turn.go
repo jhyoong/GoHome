@@ -30,18 +30,19 @@ func (a *Agent) emitTurnError(sessionID string, err error) {
 // the stream failed. A cancelled context causes the event loop to stop early;
 // Run is responsible for wrapping that into the appropriate events/errors.
 func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, *common.Usage, error) {
+	ms := a.State.ModelSettings()
 	maxTokens := 4096
-	if a.MaxTokens > 0 {
-		maxTokens = a.MaxTokens
+	if ms.MaxTokens > 0 {
+		maxTokens = ms.MaxTokens
 	}
 	req := common.Request{
-		Model:           sess.Model,
+		Model:           ms.Name,
 		System:          a.System,
 		Messages:        sess.History,
 		Tools:           a.Tools.Schemas(),
 		MaxTokens:       maxTokens,
-		ThinkingBudget:  a.ThinkingBudget,
-		ReasoningEffort: a.ReasoningEffort,
+		ThinkingBudget:  ms.ThinkingBudget,
+		ReasoningEffort: ms.ReasoningEffort,
 	}
 
 	start := time.Now()

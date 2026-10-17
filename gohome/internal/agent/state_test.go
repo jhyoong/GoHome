@@ -214,14 +214,21 @@ func TestDrainPendingClosureUsesOldWriter(t *testing.T) {
 	}
 }
 
-func TestSetModelConfigGuarded(t *testing.T) {
+func TestSetModelSettingsUpdatesSession(t *testing.T) {
 	sess := session.NewSession("s1", t.TempDir(), "m", "ep")
 	w := openTestWriter(t)
 	st := NewSessionState(sess, w, nil)
 
-	st.SetModelConfig("cfg-new")
+	want := ModelSettings{Name: "m2", ConfigName: "cfg-new", MaxTokens: 100, ThinkingBudget: 50, ReasoningEffort: "high"}
+	st.SetModelSettings(want)
+	if got := st.ModelSettings(); got != want {
+		t.Errorf("ModelSettings = %+v, want %+v", got, want)
+	}
 	if got := st.Session().ModelConfig; got != "cfg-new" {
-		t.Errorf("ModelConfig = %q, want cfg-new", got)
+		t.Errorf("session ModelConfig = %q, want cfg-new", got)
+	}
+	if got := st.Session().Model; got != "m2" {
+		t.Errorf("session Model = %q, want m2", got)
 	}
 }
 
@@ -273,7 +280,7 @@ func TestSetClientGuarded(t *testing.T) {
 	_ = c2
 }
 
-func TestSetModelGuarded(t *testing.T) {
+func TestSetModelSettingsGuarded(t *testing.T) {
 	sess1 := session.NewSession("s1", t.TempDir(), "m", "ep")
 	w1 := openTestWriter(t)
 	st := NewSessionState(sess1, w1, nil)
@@ -283,7 +290,7 @@ func TestSetModelGuarded(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			st.SetModel("new-model")
+			st.SetModelSettings(ModelSettings{Name: "new-model"})
 		}()
 		wg.Add(1)
 		go func() {
