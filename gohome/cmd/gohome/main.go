@@ -429,6 +429,7 @@ func main() {
 		} else {
 			hfe = headless.NewFrontend(*prompt, *verbose, os.Stdout)
 		}
+		hfe.SetMainSession(sess.ID)
 
 		g := guard.NewGuard(wl, hfe, dl)
 		g.SetYolo(*yolo)
