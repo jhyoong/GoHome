@@ -123,7 +123,7 @@ func newE2EAgent(t *testing.T, cfg e2eConfig, fe agent.Frontend, history []commo
 		BaseURL:   cfg.baseURL,
 		ModelName: cfg.model,
 	}
-	client, err := llm.New(ep, cfg.apiKey)
+	client, err := llm.New(ep, cfg.apiKey, nil)
 	if err != nil {
 		t.Fatalf("llm.New: %v", err)
 	}
@@ -281,7 +281,7 @@ func TestE2EHeadlessMultiTurn(t *testing.T) {
 		BaseURL:   cfg.baseURL,
 		ModelName: cfg.model,
 	}
-	client, err := llm.New(ep, cfg.apiKey)
+	client, err := llm.New(ep, cfg.apiKey, nil)
 	if err != nil {
 		t.Fatalf("llm.New: %v", err)
 	}
@@ -694,7 +694,7 @@ func TestE2ESubagentSpawn(t *testing.T) {
 		BaseURL:   cfg.baseURL,
 		ModelName: cfg.model,
 	}
-	client, err := llm.New(ep, cfg.apiKey)
+	client, err := llm.New(ep, cfg.apiKey, nil)
 	if err != nil {
 		t.Fatalf("llm.New: %v", err)
 	}
@@ -788,7 +788,7 @@ func TestE2ESessionResume(t *testing.T) {
 		BaseURL:   cfg.baseURL,
 		ModelName: cfg.model,
 	}
-	client, err := llm.New(ep, cfg.apiKey)
+	client, err := llm.New(ep, cfg.apiKey, nil)
 	if err != nil {
 		t.Fatalf("llm.New: %v", err)
 	}
@@ -940,7 +940,7 @@ func TestE2EInteractiveWithTools(t *testing.T) {
 		BaseURL:   cfg.baseURL,
 		ModelName: cfg.model,
 	}
-	client, err := llm.New(ep, cfg.apiKey)
+	client, err := llm.New(ep, cfg.apiKey, nil)
 	if err != nil {
 		t.Fatalf("llm.New: %v", err)
 	}

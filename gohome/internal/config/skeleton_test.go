@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -29,7 +30,7 @@ func TestSkeletonJSON_ContainsAllTopLevelFields(t *testing.T) {
 		"contextWarnPct", "contextCritPct",
 		"retryBackoffMs", "renderThrottleMs",
 		"autoCompact", "autoCompactMode",
-		"autoCompactPct", "autoCompactTargetPct",
+		"autoCompactPct",
 		"autoCompactLeftover", "autoCompactPrompt",
 		"cacheSudoPassword",
 	}
@@ -40,31 +41,14 @@ func TestSkeletonJSON_ContainsAllTopLevelFields(t *testing.T) {
 	}
 }
 
-func TestSkeletonJSON_ContainsModelConfigFields(t *testing.T) {
-	data := SkeletonJSON()
+func TestSkeletonJSON_ModelConfigEmpty(t *testing.T) {
 	var raw map[string]any
-	if err := json.Unmarshal(data, &raw); err != nil {
+	if err := json.Unmarshal(SkeletonJSON(), &raw); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-
 	mc, ok := raw["modelConfig"].(map[string]any)
-	if !ok {
-		t.Fatal("modelConfig is not an object")
-	}
-	example, ok := mc["example"].(map[string]any)
-	if !ok {
-		t.Fatal("modelConfig.example is not an object")
-	}
-
-	required := []string{
-		"wire", "baseURL", "apiKey", "apiKeyEnv",
-		"modelName", "contextWindow", "maxTokens",
-		"thinkingBudget", "reasoningEffort", "headers",
-	}
-	for _, key := range required {
-		if _, ok := example[key]; !ok {
-			t.Errorf("missing modelConfig.example field %q", key)
-		}
+	if !ok || len(mc) != 0 {
+		t.Errorf("modelConfig should be an empty object, got %v", raw["modelConfig"])
 	}
 }
 
@@ -167,5 +151,12 @@ func TestEnsureConfigFile_OwnerOnlyPerms(t *testing.T) {
 	}
 	if got := di.Mode().Perm(); got != 0o700 {
 		t.Errorf("dir mode = %o, want 700", got)
+	}
+}
+
+func TestSkeletonJSON_NoPlaceholders(t *testing.T) {
+	data := string(SkeletonJSON())
+	if strings.Contains(data, `"string"`) || strings.Contains(data, `"example"`) || strings.Contains(data, "autoCompactTargetPct") {
+		t.Errorf("skeleton contains placeholder content:\n%s", data)
 	}
 }

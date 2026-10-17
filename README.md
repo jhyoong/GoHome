@@ -96,7 +96,6 @@ Auto-compaction automatically summarizes your conversation history when the cont
   "autoCompact": false,
   "autoCompactMode": "percentage",
   "autoCompactPct": 0.80,
-  "autoCompactTargetPct": 0.50,
   "autoCompactLeftover": 32000,
   "autoCompactPrompt": ""
 }
@@ -107,7 +106,6 @@ Auto-compaction automatically summarizes your conversation history when the cont
 | `autoCompact` | `bool` | `false` | Enable automatic compaction |
 | `autoCompactMode` | `string` | `"percentage"` | Trigger mode: `"percentage"` or `"leftover"` |
 | `autoCompactPct` | `float64` | `0.80` | For percentage mode: compaction triggers when used tokens ≥ `contextWindow × autoCompactPct` |
-| `autoCompactTargetPct` | `float64` | `0.50` | Target context usage ratio after compaction. The middle portion of the conversation is summarized while preserving the first 2 and last 4 messages for cache stability |
 | `autoCompactLeftover` | `int` | `32000` | For leftover mode: compaction triggers when remaining tokens < `autoCompactLeftover` |
 | `autoCompactPrompt` | `string` | (built-in) | Custom prompt for the summarization LLM call. Empty uses the default prompt. |
 
@@ -162,7 +160,6 @@ Auto-compaction automatically summarizes your conversation history when the cont
   "autoCompact": false,
   "autoCompactMode": "percentage",
   "autoCompactPct": 0.80,
-  "autoCompactTargetPct": 0.50,
   "autoCompactLeftover": 32000,
   "autoCompactPrompt": "",
   "cacheSudoPassword": false

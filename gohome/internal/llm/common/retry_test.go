@@ -84,12 +84,6 @@ func TestDoWithRetry_ContextCancel(t *testing.T) {
 	}
 }
 
-func TestDefaultBackoff_Length(t *testing.T) {
-	if len(DefaultBackoff) != 3 {
-		t.Errorf("expected DefaultBackoff length 3, got %d", len(DefaultBackoff))
-	}
-}
-
 // recordSleeps swaps the package sleep function for one that records each
 // requested delay and returns at once. It restores the original on cleanup.
 func recordSleeps(t *testing.T) *[]time.Duration {

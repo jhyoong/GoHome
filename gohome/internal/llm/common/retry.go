@@ -11,10 +11,6 @@ import (
 	"time"
 )
 
-// DefaultBackoff is the base delay schedule used between retry attempts.
-// Jitter is added to each delay unless the server sends Retry-After.
-var DefaultBackoff = []time.Duration{250 * time.Millisecond, time.Second, 2 * time.Second}
-
 // MaxRetryAfter caps the delay taken from a Retry-After header.
 const MaxRetryAfter = 60 * time.Second
 

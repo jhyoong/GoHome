@@ -15,7 +15,6 @@ type CompactConfig struct {
 	Enabled       bool
 	Mode          string  // "percentage" or "leftover"
 	TriggerPct    float64 // fraction (0..1) of context window that triggers compaction
-	TargetPct     float64 // unused for now; reserved for future partial compaction
 	Leftover      int     // minimum remaining tokens before triggering (leftover mode)
 	ContextWindow int     // total context window size in tokens
 }

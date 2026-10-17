@@ -13,9 +13,8 @@ const (
 	DefaultContextCritPct    = 0.95
 	DefaultRenderThrottleMs  = 16
 
-	DefaultAutoCompactPct       = 0.80
-	DefaultAutoCompactTargetPct = 0.50
-	DefaultAutoCompactLeftover  = 32_000
+	DefaultAutoCompactPct      = 0.80
+	DefaultAutoCompactLeftover = 32_000
 )
 
 var DefaultRetryBackoff = []time.Duration{250 * time.Millisecond, time.Second, 2 * time.Second}

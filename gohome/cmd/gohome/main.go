@@ -342,7 +342,7 @@ func main() {
 		}
 
 		// Build LLM client.
-		client, err = llm.New(mc, apiKey)
+		client, err = llm.New(mc, apiKey, settings.RetryBackoffMs)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "gohome: cannot create LLM client: %v\n", err)
 			os.Exit(1)
@@ -458,7 +458,6 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 			Enabled:       settings.AutoCompact,
 			Mode:          settings.AutoCompactMode,
 			TriggerPct:    settings.AutoCompactPct,
-			TargetPct:     settings.AutoCompactTargetPct,
 			Leftover:      settings.AutoCompactLeftover,
 			ContextWindow: contextWindow,
 		}
@@ -467,9 +466,6 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		}
 		if compactCfg.TriggerPct <= 0 {
 			compactCfg.TriggerPct = config.DefaultAutoCompactPct
-		}
-		if compactCfg.TargetPct <= 0 {
-			compactCfg.TargetPct = config.DefaultAutoCompactTargetPct
 		}
 		if compactCfg.Leftover <= 0 {
 			compactCfg.Leftover = config.DefaultAutoCompactLeftover
@@ -640,7 +636,6 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		Enabled:       settings.AutoCompact,
 		Mode:          settings.AutoCompactMode,
 		TriggerPct:    settings.AutoCompactPct,
-		TargetPct:     settings.AutoCompactTargetPct,
 		Leftover:      settings.AutoCompactLeftover,
 		ContextWindow: contextWindow,
 	}
@@ -649,9 +644,6 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 	}
 	if compactCfg.TriggerPct <= 0 {
 		compactCfg.TriggerPct = config.DefaultAutoCompactPct
-	}
-	if compactCfg.TargetPct <= 0 {
-		compactCfg.TargetPct = config.DefaultAutoCompactTargetPct
 	}
 	if compactCfg.Leftover <= 0 {
 		compactCfg.Leftover = config.DefaultAutoCompactLeftover
@@ -753,7 +745,7 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 			if err != nil {
 				return "", 0, fmt.Errorf("no API key for model config %q", name)
 			}
-			newClient, err := llm.New(cfg, apiKey)
+			newClient, err := llm.New(cfg, apiKey, settings.RetryBackoffMs)
 			if err != nil {
 				return "", 0, fmt.Errorf("create client for %q: %w", name, err)
 			}
@@ -822,7 +814,7 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 				fail("Could not resolve API key", err)
 				return
 			}
-			newClient, err := llm.New(cfg, key)
+			newClient, err := llm.New(cfg, key, settings.RetryBackoffMs)
 			if err != nil {
 				fail("Could not create model client", err)
 				return
