@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -16,6 +17,10 @@ import (
 
 	"github.com/jhyoong/GoHome/gohome/internal/config"
 )
+
+// shellWaitDelay bounds how long Wait blocks on output pipes after the
+// process is killed or exits.
+const shellWaitDelay = 2 * time.Second
 
 // ShellTool implements the "shell" tool.
 type ShellTool struct {
@@ -139,6 +144,9 @@ func (s ShellTool) Execute(ctx context.Context, in json.RawMessage, sink Progres
 		cmd = exec.CommandContext(ctx, "/bin/sh", "-c", script)
 	}
 	detachFromTerminal(cmd)
+	// If a grandchild keeps the output pipe open after the shell exits or is
+	// killed, Wait returns after this delay instead of blocking.
+	cmd.WaitDelay = shellWaitDelay
 
 	if inp.CWD != nil {
 		cmd.Dir = *inp.CWD
@@ -171,7 +179,9 @@ func (s ShellTool) Execute(ctx context.Context, in json.RawMessage, sink Progres
 			sink.Update(line)
 		}
 		if err := scanner.Err(); err != nil {
-			fmt.Fprintf(&captureBuf, "\n[shell: scanner error: %v]\n", err)
+			fmt.Fprintf(&captureBuf, "\n[shell: output cut off, truncated: %v]\n", err)
+			// Keep draining so the command never blocks on a full pipe.
+			_, _ = io.Copy(io.Discard, pr)
 		}
 	}()
 
@@ -193,17 +203,26 @@ func (s ShellTool) Execute(ctx context.Context, in json.RawMessage, sink Progres
 	pw.CloseWithError(io.EOF)
 	wg.Wait()
 
-	// Distinguish timeout/cancellation from other errors.
+	// Distinguish timeout/cancellation from other errors. Output captured so
+	// far is kept.
 	if ctx.Err() == context.DeadlineExceeded {
-		return Result{IsError: true, Content: fmt.Sprintf("shell: timed out after %dms", timeoutMs)}, nil
+		return Result{IsError: true, Content: withPartialOutput(fmt.Sprintf("shell: timed out after %dms", timeoutMs), captureBuf.String())}, nil
 	}
 	if ctx.Err() == context.Canceled {
-		return Result{IsError: true, Content: "shell: cancelled"}, nil
+		return Result{IsError: true, Content: withPartialOutput("shell: cancelled", captureBuf.String())}, nil
 	}
 
 	// Determine exit code.
 	exitCode := 0
-	if waitErr != nil {
+	bgNote := false
+	if errors.Is(waitErr, exec.ErrWaitDelay) {
+		// The shell finished but a background process still holds the
+		// output pipe. Keep the output and the shell's own exit code.
+		bgNote = true
+		if cmd.ProcessState != nil {
+			exitCode = cmd.ProcessState.ExitCode()
+		}
+	} else if waitErr != nil {
 		if exitErr, ok := waitErr.(*exec.ExitError); ok {
 			exitCode = exitErr.ExitCode()
 		} else {
@@ -217,6 +236,18 @@ func (s ShellTool) Execute(ctx context.Context, in json.RawMessage, sink Progres
 	if captured != "" {
 		content += "\n"
 	}
+	if bgNote {
+		content += "[shell: a background process still holds the output open; remaining output ignored]\n"
+	}
 
 	return Result{Content: content}, nil
+}
+
+// withPartialOutput appends captured output, if any, to a status message.
+func withPartialOutput(msg, out string) string {
+	out = strings.TrimRight(out, "\n")
+	if out == "" {
+		return msg
+	}
+	return msg + "\n" + out
 }

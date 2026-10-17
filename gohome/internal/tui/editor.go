@@ -337,7 +337,7 @@ func (e *EditorComponent) Render(width int) []string {
 	}
 
 	borderLine := func(indicator string) string {
-		base := strings.Repeat("─", width-len(indicator))
+		base := strings.Repeat("─", max(width-len(indicator), 1))
 		return borderStyle.Render(base + indicator)
 	}
 

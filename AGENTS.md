@@ -1,10 +1,6 @@
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## What is gohome
 
-A single-binary terminal coding agent written in Go. It targets custom LLM endpoints (Anthropic and OpenAI wire formats) and provides tool-call guardrails with human approval, plus built-in sequential subagents. The TUI is built with Bubble Tea (charmbracelet/bubbletea).
+A single-binary terminal coding agent written in Go. It targets custom LLM endpoints (Anthropic and OpenAI wire formats) and provides tool-call guardrails with human approval, plus built-in sequential subagents. The TUI is built with Bubble Tea (charmbracelet/bubbletea). Read GOAL.md.
 
 ## Build and run
 
@@ -90,3 +86,7 @@ Settings file: `~/.gohome/settings.json` (global), `./.gohome/settings.json` (pr
 ## Debug logging
 
 Set `GOHOME_DEBUG=1` to enable debug-level structured JSON logging to `~/.gohome/logs/<YYYY-MM-DD>.log`.
+
+## Ways of working
+
+Investigations, reviews and findings all go into docs/reviews. Subsequent work is then refined and added to either FOLLOWUP_TASKS for future work, or TODO for work to be done next. GOAL.md is for grounding the project direction and core features.

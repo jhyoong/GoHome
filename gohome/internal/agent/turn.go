@@ -9,6 +9,16 @@ import (
 	"github.com/jhyoong/GoHome/gohome/internal/session"
 )
 
+// emitTurnError reports a turn failure to the frontend so the user sees it.
+func (a *Agent) emitTurnError(sessionID string, err error) {
+	a.Frontend.Emit(sessionID, Event{
+		Kind:       EventError,
+		SessionID:  sessionID,
+		Err:        err,
+		ErrMessage: err.Error(),
+	})
+}
+
 // Turn executes one LLM request/response cycle, consuming all streaming
 // events until the turn ends (EventTurnDone) or an error occurs.
 //
@@ -34,8 +44,17 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, *commo
 	}
 
 	start := time.Now()
-	events, err := a.State.Client().Stream(ctx, req)
+	client := a.State.Client()
+	if client == nil {
+		err := ErrNoClient
+		a.emitTurnError(sess.ID, err)
+		return "", nil, err
+	}
+	events, err := client.Stream(ctx, req)
 	if err != nil {
+		if ctx.Err() == nil {
+			a.emitTurnError(sess.ID, err)
+		}
 		return "", nil, err
 	}
 

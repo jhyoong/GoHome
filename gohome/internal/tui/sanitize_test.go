@@ -439,3 +439,16 @@ func TestShowControls(t *testing.T) {
 		}
 	}
 }
+
+func TestShowNoticeAddsNoticeToFocusedSession(t *testing.T) {
+	m := New(nil, "s1")
+	m.ShowNotice("config failed: bad key")
+	sv := m.sessions["s1"]
+	if sv == nil || len(sv.Timeline) == 0 {
+		t.Fatal("no timeline entry")
+	}
+	last := sv.Timeline[len(sv.Timeline)-1]
+	if last.Kind != KindNotice || !strings.Contains(last.Text, "bad key") {
+		t.Errorf("unexpected entry: %+v", last)
+	}
+}

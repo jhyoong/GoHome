@@ -117,6 +117,9 @@ func wrapSingleLine(s string, maxWidth int, initialSGR string) ([]string, string
 	// To handle ANSI correctly we need to track SGR state as we go.
 
 	var lines []string
+	if maxWidth < 1 {
+		maxWidth = 1
+	}
 	var currentLine strings.Builder
 	currentWidth := 0
 	activeSGR := initialSGR
@@ -233,6 +236,11 @@ func wrapSingleLine(s string, maxWidth int, initialSGR string) ([]string, string
 			} else {
 				// Force-break: take as many graphemes as fit.
 				chunk, rest2 := takeWidth(wordText, remaining)
+				if chunk == "" && currentWidth == 0 {
+					// A grapheme wider than the line on an empty line: take
+					// it anyway, otherwise the loop never progresses.
+					chunk, rest2 = takeGrapheme(wordText)
+				}
 				currentLine.WriteString(chunk)
 				activeSGR = updateActiveSGR(activeSGR, chunk)
 
@@ -310,4 +318,24 @@ func takeWidth(s string, maxWidth int) (string, string) {
 		i += len(s[i:]) - len(rest)
 	}
 	return prefix.String(), ""
+}
+
+// takeGrapheme returns the first grapheme cluster of s (with any leading ANSI
+// sequences) and the remainder. It always consumes at least one cluster when s
+// holds visible text.
+func takeGrapheme(s string) (string, string) {
+	i := 0
+	for i < len(s) && s[i] == '\x1b' {
+		loc := ansiEscape.FindStringIndex(s[i:])
+		if loc == nil || loc[0] != 0 {
+			break
+		}
+		i += loc[1]
+	}
+	if i >= len(s) {
+		return s, ""
+	}
+	_, rest, _, _ := uniseg.FirstGraphemeClusterInString(s[i:], -1)
+	end := len(s) - len(rest)
+	return s[:end], s[end:]
 }
