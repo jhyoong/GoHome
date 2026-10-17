@@ -39,8 +39,8 @@ func TestBash_HugeSingleLineDoesNotHang(t *testing.T) {
 	if dur > 5*time.Second {
 		t.Errorf("took too long: %v", dur)
 	}
-	if !strings.Contains(res.Content, "truncated") && !strings.Contains(res.Content, "cut off") {
-		t.Errorf("expected cut-off note, got %.200q", res.Content)
+	if !strings.Contains(res.Content, "bytes omitted ...]") || !strings.Contains(res.Content, "\nafter") {
+		t.Errorf("expected omitted marker and later output, got %.200q", res.Content)
 	}
 }
 

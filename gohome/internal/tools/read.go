@@ -5,11 +5,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
+	"unicode/utf8"
 )
 
-const defaultReadLimit = 2000
+const (
+	defaultReadLimit        = 2000
+	maxReadLineRunes        = 2000
+	maxReadOutputBytes      = 100 * 1024
+	readLineTruncatedMarker = " [line truncated]"
+)
 
 // ReadTool implements the "read" tool.
 type ReadTool struct{}
@@ -18,7 +25,8 @@ func (ReadTool) Name() string { return "read" }
 
 func (ReadTool) Description() string {
 	return "Read a file and return its contents with 1-indexed line numbers. " +
-		"Use offset (1-indexed starting line) and limit (max lines, default 2000) to page through large files."
+		"Use offset (1-indexed starting line) and limit (max lines, default 2000) to page through large files. " +
+		"Lines longer than 2000 characters are cut, and output stops at 100 KiB with a note giving the offset to continue from."
 }
 
 var readSchema = json.RawMessage(`{
@@ -60,25 +68,31 @@ func (rt ReadTool) Execute(ctx context.Context, in json.RawMessage, sink Progres
 	}
 	defer func() { _ = f.Close() }()
 
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	r := bufio.NewReader(f)
 	var sb strings.Builder
 	lineno := 0
 	written := 0
 
-	for scanner.Scan() {
+	for written < limit {
+		line, err := readLineCapped(r, lineno+1 >= offset)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return Result{IsError: true, Content: fmt.Sprintf("read: error reading %q: %v", inp.Path, err)}, nil
+		}
 		lineno++
 		if lineno < offset {
 			continue
 		}
-		if written >= limit {
+		entry := fmt.Sprintf("%d\t%s\n", lineno, line)
+		if written > 0 && sb.Len()+len(entry) > maxReadOutputBytes {
+			last := lineno - 1
+			fmt.Fprintf(&sb, "[output truncated at line %d; use offset=%d to continue]\n", last, last+1)
 			break
 		}
-		fmt.Fprintf(&sb, "%d\t%s\n", lineno, scanner.Text())
+		sb.WriteString(entry)
 		written++
-	}
-	if err := scanner.Err(); err != nil {
-		return Result{IsError: true, Content: fmt.Sprintf("read: error reading %q: %v", inp.Path, err)}, nil
 	}
 
 	content := sb.String()
@@ -89,4 +103,53 @@ func (rt ReadTool) Execute(ctx context.Context, in json.RawMessage, sink Progres
 	}
 
 	return Result{Content: content}, nil
+}
+
+// readLineCapped reads one line from r. The trailing "\n" and a trailing "\r"
+// are stripped. Lines of any length are consumed fully, but only the first
+// maxReadLineRunes runes are kept; longer lines get readLineTruncatedMarker.
+// When keep is false the line is consumed and discarded. It returns io.EOF
+// only when no more lines remain (a last line without "\n" is still returned).
+func readLineCapped(r *bufio.Reader, keep bool) (string, error) {
+	const maxKeepBytes = maxReadLineRunes * utf8.UTFMax
+	var buf []byte
+	overflow := false
+	got := false
+	for {
+		chunk, isPrefix, err := r.ReadLine()
+		if err != nil {
+			if err == io.EOF && got {
+				break
+			}
+			return "", err
+		}
+		got = true
+		if keep {
+			room := maxKeepBytes + 1 - len(buf)
+			if len(chunk) > room {
+				chunk = chunk[:room]
+				overflow = true
+			}
+			if room > 0 {
+				buf = append(buf, chunk...)
+			}
+		}
+		if !isPrefix {
+			break
+		}
+	}
+	if !keep {
+		return "", nil
+	}
+	if !overflow && utf8.RuneCount(buf) <= maxReadLineRunes {
+		return string(buf), nil
+	}
+	// Cut on a rune boundary after maxReadLineRunes runes.
+	n, i := 0, 0
+	for i < len(buf) && n < maxReadLineRunes {
+		_, size := utf8.DecodeRune(buf[i:])
+		i += size
+		n++
+	}
+	return string(buf[:i]) + readLineTruncatedMarker, nil
 }

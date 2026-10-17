@@ -131,3 +131,110 @@ func TestEdit_MissingFile(t *testing.T) {
 		t.Fatal("expected IsError for missing file")
 	}
 }
+
+func TestEdit_EmptyOldStringRejected(t *testing.T) {
+	cases := []struct {
+		name       string
+		content    string
+		replaceAll bool
+	}{
+		{"single", "abc", false},
+		{"replace_all", "abc", true},
+		{"empty_file", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := mustWriteTemp(t, tc.content)
+			res := execEdit(t, map[string]any{
+				"path":        path,
+				"old_string":  "",
+				"new_string":  "X",
+				"replace_all": tc.replaceAll,
+			})
+			if !res.IsError {
+				t.Fatalf("expected IsError for empty old_string, got %q", res.Content)
+			}
+			if !strings.Contains(res.Content, "write tool") {
+				t.Errorf("expected hint to use the write tool, got %q", res.Content)
+			}
+			got, _ := os.ReadFile(path)
+			if string(got) != tc.content {
+				t.Errorf("file changed: got %q, want %q", string(got), tc.content)
+			}
+		})
+	}
+}
+
+func TestEdit_CRLFMultiLine(t *testing.T) {
+	path := mustWriteTemp(t, "line1\r\nline2\r\nline3\r\n")
+
+	res := execEdit(t, map[string]any{
+		"path":       path,
+		"old_string": "line1\nline2",
+		"new_string": "first\nsecond\nextra",
+	})
+	if res.IsError {
+		t.Fatalf("unexpected IsError: %s", res.Content)
+	}
+
+	got, _ := os.ReadFile(path)
+	want := "first\r\nsecond\r\nextra\r\nline3\r\n"
+	if string(got) != want {
+		t.Errorf("got %q, want %q", string(got), want)
+	}
+}
+
+func TestEdit_CRLFRetryRespectsUniqueness(t *testing.T) {
+	content := "a\r\nb\r\nx\r\na\r\nb\r\n"
+	path := mustWriteTemp(t, content)
+
+	res := execEdit(t, map[string]any{
+		"path":       path,
+		"old_string": "a\nb",
+		"new_string": "c\nd",
+	})
+	if !res.IsError {
+		t.Fatalf("expected IsError for non-unique CRLF match, got %q", res.Content)
+	}
+	if !strings.Contains(res.Content, "not unique") {
+		t.Errorf("expected 'not unique' in error, got %q", res.Content)
+	}
+	got, _ := os.ReadFile(path)
+	if string(got) != content {
+		t.Errorf("file changed: got %q", string(got))
+	}
+
+	res = execEdit(t, map[string]any{
+		"path":        path,
+		"old_string":  "a\nb",
+		"new_string":  "c\nd",
+		"replace_all": true,
+	})
+	if res.IsError {
+		t.Fatalf("unexpected IsError with replace_all: %s", res.Content)
+	}
+	got, _ = os.ReadFile(path)
+	want := "c\r\nd\r\nx\r\nc\r\nd\r\n"
+	if string(got) != want {
+		t.Errorf("got %q, want %q", string(got), want)
+	}
+}
+
+func TestEdit_LFFileUnaffected(t *testing.T) {
+	path := mustWriteTemp(t, "line1\nline2\nline3\n")
+
+	res := execEdit(t, map[string]any{
+		"path":       path,
+		"old_string": "line1\nline2",
+		"new_string": "first\nsecond",
+	})
+	if res.IsError {
+		t.Fatalf("unexpected IsError: %s", res.Content)
+	}
+
+	got, _ := os.ReadFile(path)
+	want := "first\nsecond\nline3\n"
+	if string(got) != want {
+		t.Errorf("got %q, want %q", string(got), want)
+	}
+}

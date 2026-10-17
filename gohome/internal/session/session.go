@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base32"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -53,20 +54,34 @@ func NewSession(id, cwd, model, modelConfig string) *Session {
 	}
 }
 
+// normalizeReadPath returns a clean absolute form of path so that
+// "foo.go", "./foo.go" and an absolute path to the same file match.
+// Relative paths resolve against the process working directory.
+// Symlinks are not resolved. If Abs fails, the cleaned path is used.
+func normalizeReadPath(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return filepath.Clean(path)
+	}
+	return abs
+}
+
 // MarkRead records that path has been read in this session.
 // Safe for concurrent use.
 func (s *Session) MarkRead(path string) {
+	key := normalizeReadPath(path)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.readFiles[path] = struct{}{}
+	s.readFiles[key] = struct{}{}
 }
 
 // HasRead reports whether path was previously marked as read.
 // Safe for concurrent use.
 func (s *Session) HasRead(path string) bool {
+	key := normalizeReadPath(path)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	_, ok := s.readFiles[path]
+	_, ok := s.readFiles[key]
 	return ok
 }
 

@@ -1,6 +1,7 @@
 package session
 
 import (
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -47,6 +48,36 @@ func TestMarkReadHasRead(t *testing.T) {
 	}
 	if s.HasRead("/tmp/x/bar.go") {
 		t.Error("HasRead returned true for unread path")
+	}
+}
+
+func TestMarkReadNormalizesPath(t *testing.T) {
+	s := NewSession("id4", "/tmp/x", "m", "e")
+	s.MarkRead("foo.go")
+
+	abs, err := filepath.Abs("foo.go")
+	if err != nil {
+		t.Fatalf("filepath.Abs: %v", err)
+	}
+	for _, p := range []string{"foo.go", "./foo.go", abs, "dir/../foo.go"} {
+		if !s.HasRead(p) {
+			t.Errorf("HasRead(%q) = false, want true", p)
+		}
+	}
+	if s.HasRead("bar.go") {
+		t.Error("HasRead(\"bar.go\") = true, want false")
+	}
+}
+
+func TestMarkReadAbsoluteThenRelative(t *testing.T) {
+	s := NewSession("id5", "/tmp/x", "m", "e")
+	abs, err := filepath.Abs("foo.go")
+	if err != nil {
+		t.Fatalf("filepath.Abs: %v", err)
+	}
+	s.MarkRead(abs)
+	if !s.HasRead("./foo.go") {
+		t.Error("HasRead(\"./foo.go\") = false after MarkRead(abs), want true")
 	}
 }
 

@@ -1,8 +1,6 @@
 package tools
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -30,32 +28,53 @@ type ShellTool struct {
 
 func (s ShellTool) Name() string { return "shell" }
 
-func (s ShellTool) Description() string {
-	if runtime.GOOS == "windows" {
-		return "Execute a PowerShell command. " +
-			"Default timeout is 120 000 ms; max is 600 000 ms. " +
-			"stdout and stderr are merged. " +
-			"Non-zero exit codes are reported as normal results, not errors. " +
-			"Timeout or kill failures return IsError."
+// timeouts returns the default and maximum timeouts in milliseconds,
+// falling back to the config defaults when unset.
+func (s ShellTool) timeouts() (defaultMs, maxMs int) {
+	defaultMs = s.DefaultTimeoutMs
+	if defaultMs <= 0 {
+		defaultMs = config.DefaultShellTimeoutMs
 	}
-	return "Execute a shell command. " +
-		"Default timeout is 120 000 ms; max is 600 000 ms. " +
-		"stdout and stderr are merged. " +
-		"Non-zero exit codes are reported as normal results, not errors. " +
-		"Timeout or kill failures return IsError."
+	maxMs = s.MaxTimeoutMs
+	if maxMs <= 0 {
+		maxMs = config.DefaultMaxShellTimeoutMs
+	}
+	return defaultMs, maxMs
 }
 
-var shellSchema = json.RawMessage(`{
-  "type": "object",
-  "properties": {
-    "command":    {"type": "string",  "description": "Shell command to run"},
-    "timeout_ms": {"type": "integer", "description": "Timeout in milliseconds (default 120000, max 600000)"},
-    "cwd":        {"type": "string",  "description": "Working directory for the command"}
-  },
-  "required": ["command"]
-}`)
+func (s ShellTool) Description() string {
+	defaultMs, maxMs := s.timeouts()
+	kind := "shell"
+	if runtime.GOOS == "windows" {
+		kind = "PowerShell"
+	}
+	return fmt.Sprintf("Execute a %s command. "+
+		"Default timeout is %d ms; max is %d ms. "+
+		"stdout and stderr are merged. "+
+		"Long output keeps the first and last %d KiB. "+
+		"Non-zero exit codes are reported as normal results, not errors. "+
+		"Timeout or kill failures return IsError.",
+		kind, defaultMs, maxMs, shellOutputKeep/1024)
+}
 
-func (s ShellTool) InputSchema() json.RawMessage { return shellSchema }
+func (s ShellTool) InputSchema() json.RawMessage {
+	defaultMs, maxMs := s.timeouts()
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"command": map[string]any{"type": "string", "description": "Shell command to run"},
+			"timeout_ms": map[string]any{"type": "integer", "description": fmt.Sprintf(
+				"Timeout in milliseconds (default %d, max %d)", defaultMs, maxMs)},
+			"cwd": map[string]any{"type": "string", "description": "Working directory for the command"},
+		},
+		"required": []string{"command"},
+	}
+	raw, err := json.Marshal(schema)
+	if err != nil {
+		panic("shell: marshal schema: " + err.Error())
+	}
+	return raw
+}
 
 type shellInput struct {
 	Command   string  `json:"command"`
@@ -106,21 +125,12 @@ func (s ShellTool) Execute(ctx context.Context, in json.RawMessage, sink Progres
 		return Result{IsError: true, Content: "shell: invalid input: " + err.Error()}, nil
 	}
 
-	defaultTimeout := s.DefaultTimeoutMs
-	if defaultTimeout <= 0 {
-		defaultTimeout = config.DefaultShellTimeoutMs
-	}
-	maxTimeout := s.MaxTimeoutMs
-	if maxTimeout <= 0 {
-		maxTimeout = config.DefaultMaxShellTimeoutMs
-	}
+	defaultTimeout, maxTimeout := s.timeouts()
 
+	// A missing, zero or negative timeout_ms means the default.
 	timeoutMs := defaultTimeout
-	if inp.TimeoutMs != nil {
-		timeoutMs = *inp.TimeoutMs
-		if timeoutMs > maxTimeout {
-			timeoutMs = maxTimeout
-		}
+	if inp.TimeoutMs != nil && *inp.TimeoutMs > 0 {
+		timeoutMs = min(*inp.TimeoutMs, maxTimeout)
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeoutMs)*time.Millisecond)
@@ -164,25 +174,26 @@ func (s ShellTool) Execute(ctx context.Context, in json.RawMessage, sink Progres
 	cmd.Stdout = pw
 	cmd.Stderr = pw
 
-	var (
-		captureBuf bytes.Buffer
-		wg         sync.WaitGroup
-	)
+	// Only the first and last shellOutputKeep bytes are kept. The pipe is
+	// read in chunks until EOF, so the command never blocks on a full pipe
+	// and lines of any length are fine. Chunks sent to the sink may split
+	// a line or a multi-byte rune.
+	captureBuf := newCappedBuffer(shellOutputKeep, shellOutputKeep)
+	var wg sync.WaitGroup
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		scanner := bufio.NewScanner(pr)
-		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-		for scanner.Scan() {
-			line := scanner.Text() + "\n"
-			captureBuf.WriteString(line)
-			sink.Update(line)
-		}
-		if err := scanner.Err(); err != nil {
-			fmt.Fprintf(&captureBuf, "\n[shell: output cut off, truncated: %v]\n", err)
-			// Keep draining so the command never blocks on a full pipe.
-			_, _ = io.Copy(io.Discard, pr)
+		buf := make([]byte, 32*1024)
+		for {
+			n, err := pr.Read(buf)
+			if n > 0 {
+				_, _ = captureBuf.Write(buf[:n])
+				sink.Update(string(buf[:n]))
+			}
+			if err != nil {
+				return
+			}
 		}
 	}()
 
