@@ -3,6 +3,8 @@ package tui
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -232,5 +234,109 @@ func TestConfigWizard_CancelOnConfirmStep(t *testing.T) {
 	w.HandleInput(tea.KeyMsg{Type: tea.KeyEnter})
 	if !cancelled {
 		t.Fatal("expected Cancel on confirm step to cancel wizard")
+	}
+}
+
+func wizardAtConfirm(outPath string) *ConfigWizard {
+	w := NewConfigWizard(func() {}, func(string) {})
+	w.outputPath = outPath
+	w.wire, w.baseURL, w.keySource, w.keyValue = "anthropic", "http://x", "literal", "secret"
+	w.modelName, w.configName = "m", "c"
+	w.step = wizardStepConfirm
+	w.buildStep()
+	return w
+}
+
+func TestConfigWizard_SaveWritesOwnerOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix permissions")
+	}
+	outPath := filepath.Join(t.TempDir(), "newdir", "settings.json")
+	w := wizardAtConfirm(outPath)
+	w.HandleInput(tea.KeyMsg{Type: tea.KeyEnter}) // Save
+	if w.step != wizardStepDenylistOffer {
+		t.Fatalf("step = %d, want %d", w.step, wizardStepDenylistOffer)
+	}
+	w.HandleInput(tea.KeyMsg{Type: tea.KeyEnter}) // denylist yes
+
+	for path, want := range map[string]os.FileMode{
+		outPath: 0o600,
+		filepath.Join(filepath.Dir(outPath), "denylist.json"): 0o600,
+		filepath.Dir(outPath): 0o700,
+	} {
+		fi, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("stat %s: %v", path, err)
+		}
+		if got := fi.Mode().Perm(); got != want {
+			t.Errorf("%s mode = %o, want %o", path, got, want)
+		}
+	}
+}
+
+func TestConfigWizard_SaveKeepsExistingFileMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix permissions")
+	}
+	outPath := filepath.Join(t.TempDir(), "settings.json")
+	if err := os.WriteFile(outPath, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	w := wizardAtConfirm(outPath)
+	w.HandleInput(tea.KeyMsg{Type: tea.KeyEnter})
+	fi, err := os.Stat(outPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fi.Mode().Perm(); got != 0o644 {
+		t.Errorf("mode = %o, want 644 (unchanged)", got)
+	}
+}
+
+func TestConfigWizard_SaveFailureStaysAndShowsError(t *testing.T) {
+	dir := t.TempDir()
+	blocker := filepath.Join(dir, "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	saved := false
+	w := NewConfigWizard(func() {}, func(string) { saved = true })
+	w.outputPath = filepath.Join(blocker, "settings.json") // parent is a file
+	w.wire, w.baseURL, w.keySource, w.keyValue = "anthropic", "http://x", "env", "K"
+	w.modelName, w.configName = "m", "c"
+	w.step = wizardStepConfirm
+	w.buildStep()
+
+	w.HandleInput(tea.KeyMsg{Type: tea.KeyEnter}) // Save
+	if w.step != wizardStepConfirm {
+		t.Fatalf("step = %d, want to stay on %d", w.step, wizardStepConfirm)
+	}
+	if saved {
+		t.Error("onSave called despite failed save")
+	}
+	joined := StripAnsi(strings.Join(w.Render(80), "\n"))
+	if !strings.Contains(joined, "Save failed") {
+		t.Errorf("render missing error:\n%s", joined)
+	}
+}
+
+func TestConfigWizard_DenylistFailureStaysAndShowsError(t *testing.T) {
+	dir := t.TempDir()
+	blocker := filepath.Join(dir, "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	w := NewConfigWizard(func() {}, func(string) {})
+	w.outputPath = filepath.Join(blocker, "settings.json")
+	w.step = wizardStepDenylistOffer
+	w.buildStep()
+
+	w.HandleInput(tea.KeyMsg{Type: tea.KeyEnter}) // yes
+	if w.step != wizardStepDenylistOffer {
+		t.Fatalf("step = %d, want to stay on %d", w.step, wizardStepDenylistOffer)
+	}
+	joined := StripAnsi(strings.Join(w.Render(80), "\n"))
+	if !strings.Contains(joined, "Denylist setup failed") {
+		t.Errorf("render missing error:\n%s", joined)
 	}
 }

@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"runtime"
 	"testing"
 )
@@ -142,5 +143,29 @@ func TestEnsureConfigFile_ExistingFileUntouched(t *testing.T) {
 	}
 	if string(data) != string(original) {
 		t.Errorf("existing file was modified: got %s", data)
+	}
+}
+
+func TestEnsureConfigFile_OwnerOnlyPerms(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix permissions")
+	}
+	path := filepath.Join(t.TempDir(), "newdir", "settings.json")
+	if err := EnsureConfigFile(path); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fi.Mode().Perm(); got != 0o600 {
+		t.Errorf("file mode = %o, want 600", got)
+	}
+	di, err := os.Stat(filepath.Dir(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := di.Mode().Perm(); got != 0o700 {
+		t.Errorf("dir mode = %o, want 700", got)
 	}
 }
