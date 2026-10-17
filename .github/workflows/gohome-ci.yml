@@ -13,15 +13,16 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version: "1.26.9"
       - name: go vet
         run: go vet ./gohome/...
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v9
         with:
+          version: v2.15.0
           args: ./gohome/...
       - name: go test
         run: go test ./gohome/...
@@ -29,36 +30,40 @@ jobs:
   build:
     name: cross-build
     runs-on: ubuntu-latest
+    env:
+      LDFLAGS: -X main.version=ci-${{ github.sha }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version: "1.26.9"
       - name: build linux/amd64
         env:
           GOOS: linux
           GOARCH: amd64
-        run: go build -o dist/gohome-linux-amd64 ./gohome/cmd/gohome
-      - name: binary size guard (linux/amd64 <= 25 MB)
-        run: |
-          size=$(du -k dist/gohome-linux-amd64 | cut -f1)
-          echo "size=${size}KB"
-          if [ "$size" -gt 25600 ]; then
-            echo "binary too large: ${size}KB > 25600KB"
-            exit 1
-          fi
+        run: go build -ldflags "$LDFLAGS" -o dist/gohome-linux-amd64 ./gohome/cmd/gohome
       - name: build darwin/arm64
         env:
           GOOS: darwin
           GOARCH: arm64
-        run: go build -o dist/gohome-darwin-arm64 ./gohome/cmd/gohome
+        run: go build -ldflags "$LDFLAGS" -o dist/gohome-darwin-arm64 ./gohome/cmd/gohome
       - name: build darwin/amd64
         env:
           GOOS: darwin
           GOARCH: amd64
-        run: go build -o dist/gohome-darwin-amd64 ./gohome/cmd/gohome
+        run: go build -ldflags "$LDFLAGS" -o dist/gohome-darwin-amd64 ./gohome/cmd/gohome
+      - name: binary size guard (<= 25 MB)
+        run: |
+          for f in dist/*; do
+            size=$(( $(wc -c < "$f") / 1024 ))
+            echo "$f size=${size}KB"
+            if [ "$size" -gt 25600 ]; then
+              echo "binary too large: $f ${size}KB > 25600KB"
+              exit 1
+            fi
+          done
       - name: upload binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gohome-binaries-unix
           path: dist/
@@ -67,15 +72,26 @@ jobs:
   build-windows:
     name: build windows/amd64 (native)
     runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version: "1.26.9"
       - name: build windows/amd64
-        run: go build -o dist/gohome-windows-amd64.exe ./gohome/cmd/gohome
+        run: go build -ldflags "-X main.version=ci-${{ github.sha }}" -o dist/gohome-windows-amd64.exe ./gohome/cmd/gohome
+      - name: binary size guard (<= 25 MB)
+        run: |
+          size=$(( $(wc -c < dist/gohome-windows-amd64.exe) / 1024 ))
+          echo "size=${size}KB"
+          if [ "$size" -gt 25600 ]; then
+            echo "binary too large: ${size}KB > 25600KB"
+            exit 1
+          fi
       - name: upload binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gohome-binaries-windows
           path: dist/

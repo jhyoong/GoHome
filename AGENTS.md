@@ -12,7 +12,7 @@ go build -ldflags "-X main.version=dev" -o bin/gohome ./gohome/cmd/gohome
 ./bin/gohome --model <name>
 ```
 
-**Windows note:** Do not use `-ldflags "-s -w"` (strip flags) when building for Windows. Stripped binaries score higher on antivirus heuristics. The CI workflow builds without strip flags. See `docs/windows-defender.md` for details.
+**Windows note:** Do not use `-ldflags "-s -w"` (strip flags) when building for Windows. Stripped binaries score higher on antivirus heuristics. Both workflows build Windows natively on `windows-latest` without strip flags. The release workflow strips only the Linux and macOS binaries.
 
 ## Test commands
 
@@ -77,7 +77,7 @@ GitHub Actions workflow (`.github/workflows/gohome-ci.yml`): runs `go vet`, `gol
 
 ## Go version
 
-The project uses Go 1.25 (set in `go.mod`).
+The project uses Go 1.26.9 (set in `go.mod` and both workflows).
 
 ## Configuration
 

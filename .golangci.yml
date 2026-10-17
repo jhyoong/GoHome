@@ -7,9 +7,6 @@ linters:
     - errcheck
     - ineffassign
     - unused
-  disable:
-    - funlen
-    - gochecknoinits
 
 formatters:
   enable:

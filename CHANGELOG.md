@@ -14,6 +14,10 @@
 - **Default thinking mode is now adaptive** -- A model config with no `thinkingBudget` used to send a 10240 budget. It now sends adaptive thinking. Older models or proxies without adaptive support need `"thinking": "budget"` or `"thinking": "off"` (L1).
 - **Invalid settings JSON is an error** -- gohome exits and prints the file path instead of treating the file as empty (L7).
 - **Error bodies are capped at 64 KiB** (L4).
+- **Go 1.26.9** -- `go.mod` and both workflows move from Go 1.25, which is no longer supported. This fixes 15 reachable standard library vulnerabilities reported by govulncheck.
+- **Dependencies updated** -- `golang.org/x/sys` v0.49.0 (fixes GO-2026-5024), chroma v2.27.0, goldmark v1.8.6, `x/exp/golden` v0.1.0 and a newer `teatest`.
+- **CI and release workflows** -- GitHub Actions moved to their latest major versions, golangci-lint is pinned to v2.15.0, CI builds set `main.version`, and every built binary has the 25 MB size check.
+- **Release notes** -- A release now uses only its own CHANGELOG section. The release fails if the section is missing.
 
 ### Fixed
 
@@ -25,6 +29,7 @@
 - **Project files could not turn settings off** -- A project file can now set `autoCompact` and `cacheSudoPassword` to false (L7).
 - **`retryBackoffMs` had no effect** -- The clients now use it (L7).
 - **Compaction ignored cache tokens** -- Compaction now counts cache-read and cache-write tokens (L9).
+- **Windows release binaries were stripped and cross-compiled** -- The release workflow now builds Windows natively on `windows-latest` without `-s -w`, matching CI.
 
 ### Removed
 

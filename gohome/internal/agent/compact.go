@@ -88,11 +88,6 @@ func (a *Agent) compact(ctx context.Context, sess *session.Session) error {
 		splitIdx--
 	}
 
-	// If oldMessages would start with RoleTool, push the split forward.
-	if prefixCount < len(sess.History) && sess.History[prefixCount].Role == common.RoleTool {
-		prefixCount++
-	}
-
 	if splitIdx <= prefixCount {
 		return nil
 	}

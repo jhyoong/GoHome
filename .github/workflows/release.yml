@@ -16,29 +16,50 @@ jobs:
           - goos: linux
             goarch: amd64
             suffix: linux-amd64
+            os: ubuntu-latest
+            strip: "-s -w"
           - goos: darwin
             goarch: arm64
             suffix: darwin-arm64
+            os: ubuntu-latest
+            strip: "-s -w"
           - goos: darwin
             goarch: amd64
             suffix: darwin-amd64
+            os: ubuntu-latest
+            strip: "-s -w"
+          # Windows is built natively and not stripped. Stripped binaries
+          # score higher on antivirus heuristics.
           - goos: windows
             goarch: amd64
             suffix: windows-amd64.exe
-    runs-on: ubuntu-latest
+            os: windows-latest
+            strip: ""
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version: "1.26.9"
       - name: build
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: |
-          go build -ldflags "-s -w -X main.version=${{ github.ref_name }}" \
+          go build -ldflags "${{ matrix.strip }} -X main.version=${{ github.ref_name }}" \
             -o dist/gohome-${{ matrix.suffix }} ./gohome/cmd/gohome
-      - uses: actions/upload-artifact@v4
+      - name: binary size guard (<= 25 MB)
+        run: |
+          size=$(( $(wc -c < dist/gohome-${{ matrix.suffix }}) / 1024 ))
+          echo "size=${size}KB"
+          if [ "$size" -gt 25600 ]; then
+            echo "binary too large: ${size}KB > 25600KB"
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v7
         with:
           name: gohome-${{ matrix.suffix }}
           path: dist/
@@ -47,11 +68,19 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           path: dist/
           merge-multiple: true
+      - name: extract release notes
+        run: |
+          tag="${{ github.ref_name }}"
+          awk -v h="## $tag" '$0 == h {f=1; next} /^## /{if (f) exit} f' CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "no CHANGELOG.md section for $tag"
+            exit 1
+          fi
       - name: upload or create draft release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -63,5 +92,5 @@ jobs:
             gh release create "$tag" dist/* \
               --draft \
               --title "$tag" \
-              --notes-file CHANGELOG.md
+              --notes-file notes.md
           fi
