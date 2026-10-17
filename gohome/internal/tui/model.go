@@ -302,6 +302,12 @@ func (m *Model) ShowStartupWizard(onSave func(path string)) {
 	)
 }
 
+// ShowNotice appends a notice to the focused session's timeline. It must be
+// called from the Bubble Tea update loop (for example a wizard callback).
+func (m *Model) ShowNotice(text string) {
+	m.addNotice(m.focused, text)
+}
+
 // SetContextWindow sets the total context window size used in the token bar.
 // If size <= 0 the default is used.
 func (m *Model) SetContextWindow(size int) {

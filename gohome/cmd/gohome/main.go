@@ -751,8 +751,13 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 	// If no model configs exist, show the setup wizard before starting the agent loop.
 	if needsWizard {
 		m.ShowStartupWizard(func(path string) {
+			fail := func(msg string, err error) {
+				slog.Error("setup wizard apply failed", "msg", msg, "err", err)
+				m.ShowNotice(fmt.Sprintf("%s: %v", msg, err))
+			}
 			reloaded, err := config.Load(globalCfgPath, config.DefaultProjectPath(cwd))
 			if err != nil {
+				fail("Could not load saved config", err)
 				return
 			}
 			settings = reloaded
@@ -760,14 +765,17 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 			name := reloaded.DefaultModel
 			cfg, ok := reloaded.ModelConfig[name]
 			if !ok {
+				fail("Saved config is unusable", fmt.Errorf("model %q not found; run /config", name))
 				return
 			}
 			key, err := config.ResolveAPIKey(cfg)
 			if err != nil {
+				fail("Could not resolve API key", err)
 				return
 			}
 			newClient, err := llm.New(cfg, key)
 			if err != nil {
+				fail("Could not create model client", err)
 				return
 			}
 			state.SetClient(newClient)

@@ -125,7 +125,11 @@ func (a *Agent) compact(ctx context.Context, sess *session.Session) error {
 		MaxTokens: maxTokens,
 	}
 
-	events, err := a.State.Client().Stream(ctx, req)
+	client := a.State.Client()
+	if client == nil {
+		return ErrNoClient
+	}
+	events, err := client.Stream(ctx, req)
 	if err != nil {
 		return err
 	}

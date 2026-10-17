@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -422,5 +423,69 @@ func TestTurn_ThinkingWithoutSignature(t *testing.T) {
 	}
 	if blocks[0].Signature != "" {
 		t.Errorf("thinking signature = %q, want empty", blocks[0].Signature)
+	}
+}
+
+type errClient struct{ err error }
+
+func (c *errClient) Stream(_ context.Context, _ common.Request) (<-chan common.StreamEvent, error) {
+	return nil, c.err
+}
+
+func countErrorEvents(fe *fakeRecorder) (n int, last Event) {
+	for _, ev := range fe.events {
+		if ev.Kind == EventError {
+			n++
+			last = ev
+		}
+	}
+	return n, last
+}
+
+func TestTurn_NilClientReturnsError(t *testing.T) {
+	fe := &fakeRecorder{}
+	a, sess, _ := newTestAgent(t, nil, fe)
+
+	_, _, err := a.Turn(context.Background(), sess)
+	if err == nil {
+		t.Fatal("expected error for nil client")
+	}
+	n, ev := countErrorEvents(fe)
+	if n != 1 {
+		t.Fatalf("EventError count: got %d, want 1", n)
+	}
+	if ev.SessionID != sess.ID || ev.ErrMessage == "" {
+		t.Errorf("bad EventError: %+v", ev)
+	}
+}
+
+func TestTurn_StreamErrorEmitsEventError(t *testing.T) {
+	fe := &fakeRecorder{}
+	a, sess, _ := newTestAgent(t, &errClient{err: errors.New("boom")}, fe)
+
+	_, _, err := a.Turn(context.Background(), sess)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	n, ev := countErrorEvents(fe)
+	if n != 1 {
+		t.Fatalf("EventError count: got %d, want 1", n)
+	}
+	if ev.ErrMessage != "boom" || ev.Err == nil {
+		t.Errorf("bad EventError: %+v", ev)
+	}
+}
+
+func TestTurn_StreamErrorOnCancelNotEmitted(t *testing.T) {
+	fe := &fakeRecorder{}
+	a, sess, _ := newTestAgent(t, &errClient{err: context.Canceled}, fe)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if _, _, err := a.Turn(ctx, sess); err == nil {
+		t.Fatal("expected error")
+	}
+	if n, _ := countErrorEvents(fe); n != 0 {
+		t.Errorf("EventError count: got %d, want 0", n)
 	}
 }
