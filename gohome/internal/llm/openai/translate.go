@@ -142,7 +142,9 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 				// only if a finish_reason was received; otherwise the stream
 				// was cut off and any tool call arguments may be truncated.
 				if stopReason == "" {
-					send(common.StreamEvent{Kind: common.EventError, Err: errors.New("stream ended early")})
+					if ctx.Err() == nil {
+						send(common.StreamEvent{Kind: common.EventError, Err: errors.New("stream ended early")})
+					}
 					return
 				}
 				if !emitToolCalls() {

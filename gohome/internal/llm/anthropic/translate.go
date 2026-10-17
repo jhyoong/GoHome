@@ -103,8 +103,9 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 				return
 			}
 			if !ok {
-				// EOF before message_stop means the stream was cut off.
-				if !gotStop {
+				// EOF before message_stop means the stream was cut off
+				// (unless it was cancelled).
+				if !gotStop && ctx.Err() == nil {
 					send(common.StreamEvent{Kind: common.EventError, Err: errors.New("stream ended early")})
 				}
 				return
