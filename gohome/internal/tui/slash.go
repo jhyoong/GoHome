@@ -11,7 +11,7 @@ import (
 type SlashCallbacks struct {
 	NewSession    func() (string, error)
 	ResumeSession func(id string) (string, []common.Message, []*session.Session, error)
-	CancelSession func(id string)
+	CancelSession func(id string) // id is the main session; cancel stops the whole run
 	SetModel      func(name string) (model string, contextWindow int, err error)
 	ListSessions  func() ([]session.Listing, error)
 	OpenConfig    func() (config.AnnotatedSettings, error)

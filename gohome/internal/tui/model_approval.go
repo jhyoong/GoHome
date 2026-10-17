@@ -277,7 +277,7 @@ func (m *Model) resolveApproval(dec guard.ApprovalDecision) tea.Cmd {
 	}
 	if m.activeApproval == nil && (dec.Outcome == guard.AllowOnce || dec.Outcome == guard.AllowAlways) {
 		m.spinner.Start("Processing...")
-		m.spinner.SetOnCancel(m.cancelFocusedSession)
+		m.spinner.SetOnCancel(m.cancelRun)
 		cmds = append(cmds, m.spinnerTickCmd())
 	}
 	return tea.Batch(cmds...)

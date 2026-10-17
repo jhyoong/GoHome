@@ -180,16 +180,28 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 
 	case agent.EventRunDone:
 		sv.InFlight = false
-		if msg.SessionID == m.focused && len(m.pendingMessages) > 0 {
-			combined := strings.Join(m.pendingMessages, "\n")
-			m.pendingMessages = m.pendingMessages[:0]
-			sv.Timeline = append(sv.Timeline, TimelineEntry{
-				Kind: KindUser,
-				Text: combined,
-			})
-			sv.InFlight = true
-			m.cursor = len(sv.Timeline) - 1
-			dequeuedCmd = m.sendInputCmd(combined)
+		// Only the main run's RunDone ends the run and drains the queue,
+		// whatever view is focused. A child's RunDone only ends the child.
+		if sv.Depth == 0 {
+			if m.mainRuns > 0 {
+				m.mainRuns--
+			}
+			// A late RunDone from a cancelled run: the next run is still going.
+			sv.InFlight = m.mainRuns > 0
+			if m.mainRuns == 0 && len(m.pendingMessages) > 0 {
+				combined := strings.Join(m.pendingMessages, "\n")
+				m.pendingMessages = m.pendingMessages[:0]
+				sv.Timeline = append(sv.Timeline, TimelineEntry{
+					Kind: KindUser,
+					Text: combined,
+				})
+				sv.InFlight = true
+				m.mainRuns++
+				if msg.SessionID == m.focused {
+					m.cursor = len(sv.Timeline) - 1
+				}
+				dequeuedCmd = m.sendInputCmd(combined)
+			}
 		}
 
 	case agent.EventSessionStarted:
@@ -224,7 +236,9 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 
 	case agent.EventSessionSwapped:
 		m.focused = ev.SessionID
-		m.getOrCreateSession(ev.SessionID, 0)
+		m.mainID = ev.SessionID
+		// The view may have been created above with the child default depth.
+		m.getOrCreateSession(ev.SessionID, 0).Depth = 0
 		m.statusMsg = "Switched to session: " + ev.SessionID
 
 	case agent.EventError:
@@ -244,26 +258,27 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 	case agent.EventSending:
 		if !m.spinner.Active() {
 			m.spinner.Start("Sending...")
-			m.spinner.SetOnCancel(m.cancelFocusedSession)
+			m.spinner.SetOnCancel(m.cancelRun)
 		} else {
 			m.spinner.SetMessage("Sending...")
 		}
 	case agent.EventThinkingDelta:
 		if !m.spinner.Active() {
 			m.spinner.Start("Thinking...")
-			m.spinner.SetOnCancel(m.cancelFocusedSession)
+			m.spinner.SetOnCancel(m.cancelRun)
 		} else {
 			m.spinner.SetMessage("Thinking...")
 		}
 	case agent.EventTokenDelta:
 		if !m.spinner.Active() {
 			m.spinner.Start("Generating...")
-			m.spinner.SetOnCancel(m.cancelFocusedSession)
+			m.spinner.SetOnCancel(m.cancelRun)
 		} else {
 			m.spinner.SetMessage("Generating...")
 		}
-	case agent.EventRunDone, agent.EventSessionEnded, agent.EventError, agent.EventToolDenied:
-		if !sv.InFlight {
+	case agent.EventRunDone:
+		// The spinner follows the main run; child events never stop it.
+		if sv.Depth == 0 && !sv.InFlight {
 			m.spinner.Stop()
 		}
 	}

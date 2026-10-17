@@ -68,8 +68,13 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 			m.statusMsg = ""
 		}
 	case "/cancel":
-		m.cancelFocusedSession()
+		m.cancelRun()
 	case "/new":
+		// A swap during a run would move the run's output to the new view.
+		if m.runActive() {
+			m.statusMsg = "/new: cancel the run first"
+			break
+		}
 		if m.slashCB.NewSession != nil {
 			id, err := m.slashCB.NewSession()
 			if err != nil {
@@ -77,6 +82,7 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 			} else {
 				m.getOrCreateSession(id, 0)
 				m.focused = id
+				m.mainID = id
 				m.cursor = 0
 				m.statusMsg = "New session: " + id
 			}
@@ -84,6 +90,10 @@ func (m *Model) handleSlashCommand(raw string) tea.Cmd {
 			m.statusMsg = "/new: not configured"
 		}
 	case "/resume":
+		if m.runActive() {
+			m.statusMsg = "/resume: cancel the run first"
+			break
+		}
 		if m.slashCB.ListSessions == nil {
 			m.statusMsg = "/resume: not configured"
 			break
@@ -302,6 +312,7 @@ func (m *Model) LoadResumedSession(id string, history []common.Message, children
 	}
 
 	m.focused = id
+	m.mainID = id
 	m.cursor = len(sv.Timeline) - 1
 	m.chat.ScrollToBottom()
 	m.rebuildViewport()

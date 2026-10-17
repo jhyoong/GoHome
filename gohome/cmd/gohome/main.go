@@ -172,6 +172,8 @@ func runLoop(
 		}
 
 		if errors.Is(runErr, agent.ErrToolDenied) {
+			// Safety net: a swap queued during the run still applies.
+			drainPendingSwap(a, fe)
 			continue
 		}
 
@@ -182,18 +184,26 @@ func runLoop(
 			}
 		}
 
-		if tag, drainErr := a.State.DrainPending(); tag != "" {
-			if drainErr != nil {
-				slog.Error("session swap failed", "tag", tag, "err", drainErr)
-			} else {
-				newSess := a.State.Session()
-				fe.Emit(newSess.ID, agent.Event{
-					Kind:      agent.EventSessionSwapped,
-					SessionID: newSess.ID,
-				})
-			}
-		}
+		drainPendingSwap(a, fe)
 	}
+}
+
+// drainPendingSwap applies a session swap queued while the agent was busy
+// and tells the frontend about the new session.
+func drainPendingSwap(a *agent.Agent, fe agent.Frontend) {
+	tag, drainErr := a.State.DrainPending()
+	if tag == "" {
+		return
+	}
+	if drainErr != nil {
+		slog.Error("session swap failed", "tag", tag, "err", drainErr)
+		return
+	}
+	newSess := a.State.Session()
+	fe.Emit(newSess.ID, agent.Event{
+		Kind:      agent.EventSessionSwapped,
+		SessionID: newSess.ID,
+	})
 }
 
 func main() {
@@ -749,14 +759,17 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		OpenConfig: func() (config.AnnotatedSettings, error) {
 			return config.LoadAnnotated(globalCfgPath, config.DefaultProjectPath(cwd))
 		},
-		CancelSession: func(id string) {
+		// CancelSession cancels the main run. Subagents run inside its
+		// context, so they stop with it. A queued session swap is kept:
+		// the TUI already shows the new session, and runLoop applies it
+		// when the run ends.
+		CancelSession: func(string) {
 			turnMu.Lock()
 			defer turnMu.Unlock()
 			if turnCancel != nil {
 				turnCancel()
 				turnCancel = nil
 			}
-			state.ClearPending()
 		},
 	})
 

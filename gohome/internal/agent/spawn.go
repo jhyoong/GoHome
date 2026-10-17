@@ -77,11 +77,13 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 		sys = a.System
 	}
 
-	// Build the child Agent (shares Guard / Frontend with parent).
+	// Build the child Agent (shares Guard / Frontend with parent). The child
+	// gets no steer channel: steers are for the main run, which picks them up
+	// after the subagent returns.
 	childAgent := &Agent{
 		Tools:           a.Tools.Without("subagent"),
 		Guard:           a.Guard,
-		Frontend:        a.Frontend,
+		Frontend:        noSteerFrontend{a.Frontend},
 		State:           NewSessionState(child, cw, a.State.Client()),
 		System:          sys,
 		MaxTokens:       a.MaxTokens,
@@ -147,6 +149,15 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 	resultText := lastAssistantText(child)
 	return resultText, false, nil
 }
+
+// noSteerFrontend wraps a Frontend so SteerCh returns nil. Child agents use
+// it so they never read steers meant for the parent.
+type noSteerFrontend struct {
+	Frontend
+}
+
+// SteerCh returns nil: a child agent has no steer channel.
+func (noSteerFrontend) SteerCh() <-chan string { return nil }
 
 // lastAssistantText concatenates all BlockText blocks from the last assistant
 // message in sess.History. Returns an empty string if there is none.

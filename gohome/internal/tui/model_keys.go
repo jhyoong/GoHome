@@ -45,9 +45,9 @@ func (m *Model) handleCtrlC() (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
-	sv := m.sessions[m.focused]
-	if sv != nil && sv.InFlight {
-		m.cancelFocusedSessionWith("Cancelled — press Ctrl+C again to quit")
+	// Cancel targets the main run, whichever view is focused.
+	if m.mainSession().InFlight {
+		m.cancelRunWith("Cancelled — press Ctrl+C again to quit")
 		return m, nil
 	}
 
@@ -132,6 +132,10 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if sv.Completed {
 					m.statusMsg = "Session complete"
 					m.editor.SetValue("")
+				} else if sv.Depth > 0 {
+					// Subagent views are read-only; keep the text so the
+					// user can send it from the main session.
+					m.statusMsg = "switch to the main session to send"
 				} else if sv.InFlight {
 					sent := false
 					if m.steerCh != nil {
@@ -161,13 +165,14 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 						Text: text,
 					})
 					sv.InFlight = true
+					m.mainRuns++
 					m.editor.SetValue("")
 					m.statusMsg = ""
 					m.cursor = len(sv.Timeline) - 1
 					m.chat.ScrollToBottom()
 					m.rebuildViewport()
 					m.spinner.Start("Sending...")
-					m.spinner.SetOnCancel(m.cancelFocusedSession)
+					m.spinner.SetOnCancel(m.cancelRun)
 					cmds = append(cmds, m.spinnerTickCmd())
 					cmds = append(cmds, m.sendInputCmd(text))
 				}

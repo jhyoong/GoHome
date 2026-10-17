@@ -58,7 +58,7 @@ func TestRequestApproval_CancelledCtxSendsNoPrompt(t *testing.T) {
 	}
 }
 
-// TestCancelClearsApprovals verifies that cancelling the focused session
+// TestCancelClearsApprovals verifies that cancelling the run
 // denies the active and queued approval prompts and clears both.
 func TestCancelClearsApprovals(t *testing.T) {
 	m := newSudoTestModel()
@@ -70,7 +70,7 @@ func TestCancelClearsApprovals(t *testing.T) {
 		t.Fatalf("setup: active=%v queue=%d", m.activeApproval != nil, len(m.approvalQueue))
 	}
 
-	m.cancelFocusedSession()
+	m.cancelRun()
 
 	if m.activeApproval != nil {
 		t.Error("activeApproval not cleared")
