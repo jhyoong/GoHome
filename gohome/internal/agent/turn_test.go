@@ -489,3 +489,72 @@ func TestTurn_StreamErrorOnCancelNotEmitted(t *testing.T) {
 		t.Errorf("EventError count: got %d, want 0", n)
 	}
 }
+
+// TestTurn_BlocksInArrivalOrder checks that each thinking block keeps its own
+// signature, blocks keep their streamed order, signature-only thinking blocks
+// (display "omitted") are kept, and redacted_thinking is stored unchanged.
+func TestTurn_BlocksInArrivalOrder(t *testing.T) {
+	usage := &common.Usage{InputTokens: 5, OutputTokens: 3}
+	events := []common.StreamEvent{
+		{Kind: common.EventThinkingDelta, ThinkingDelta: "first "},
+		{Kind: common.EventThinkingDelta, ThinkingDelta: "thought"},
+		{Kind: common.EventThinkingDone, Signature: "sig-1"},
+		{Kind: common.EventTextDelta, TextDelta: "Let me look."},
+		{Kind: common.EventToolCallDone, ToolCallID: "tu1", ToolName: "shell", InputJSON: `{"cmd":"ls"}`},
+		{Kind: common.EventThinkingDone, Signature: "sig-2"},
+		{Kind: common.EventRedactedThinking, Data: "opaque-data"},
+		{Kind: common.EventThinkingDelta, ThinkingDelta: "third"},
+		{Kind: common.EventThinkingDone, Signature: "sig-3"},
+		{Kind: common.EventTextDelta, TextDelta: "Done."},
+		{Kind: common.EventTurnDone, StopReason: "end_turn", Usage: usage},
+	}
+	client := &fakeClient{sequences: [][]common.StreamEvent{events}}
+	fe := &fakeRecorder{}
+	a, sess, _ := newTestAgent(t, client, fe)
+
+	if _, _, err := a.Turn(context.Background(), sess); err != nil {
+		t.Fatalf("Turn: %v", err)
+	}
+
+	want := []common.Block{
+		{Kind: common.BlockThinking, Text: "first thought", Signature: "sig-1"},
+		{Kind: common.BlockText, Text: "Let me look."},
+		{Kind: common.BlockToolUse, ToolUseID: "tu1", ToolName: "shell", InputJSON: `{"cmd":"ls"}`},
+		{Kind: common.BlockThinking, Text: "", Signature: "sig-2"},
+		{Kind: common.BlockRedactedThinking, Data: "opaque-data"},
+		{Kind: common.BlockThinking, Text: "third", Signature: "sig-3"},
+		{Kind: common.BlockText, Text: "Done."},
+	}
+	if len(sess.History) != 1 {
+		t.Fatalf("history len = %d, want 1", len(sess.History))
+	}
+	got := sess.History[0].Content
+	if len(got) != len(want) {
+		t.Fatalf("blocks len = %d, want %d: %+v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("block %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
+// TestTurn_EmptyThinkingWithoutSignatureSkipped checks that an empty thinking
+// block with no signature (possible on the OpenAI wire) is not stored.
+func TestTurn_EmptyThinkingWithoutSignatureSkipped(t *testing.T) {
+	events := []common.StreamEvent{
+		{Kind: common.EventThinkingDone},
+		{Kind: common.EventTextDelta, TextDelta: "Result"},
+		{Kind: common.EventTurnDone, StopReason: "stop", Usage: &common.Usage{}},
+	}
+	client := &fakeClient{sequences: [][]common.StreamEvent{events}}
+	a, sess, _ := newTestAgent(t, client, &fakeRecorder{})
+
+	if _, _, err := a.Turn(context.Background(), sess); err != nil {
+		t.Fatalf("Turn: %v", err)
+	}
+	got := sess.History[0].Content
+	if len(got) != 1 || got[0].Kind != common.BlockText {
+		t.Fatalf("blocks = %+v, want only the text block", got)
+	}
+}

@@ -62,13 +62,27 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, *commo
 	}
 
 	var (
-		textBuf     string
-		thinkingBuf string
-		thinkingSig string
-		toolBlocks  []common.Block // tool_use blocks in arrival order
-		stopReason  string
-		usage       *common.Usage
+		// blocks holds content blocks in arrival order. Text and thinking
+		// deltas extend the last block while it is still open.
+		blocks     []common.Block
+		open       bool // last block is a text or thinking block still receiving deltas
+		stopReason string
+		usage      *common.Usage
 	)
+	// appendDelta adds text to the open block of the given kind, or starts a
+	// new block if the last block is closed or of another kind.
+	// Empty deltas are ignored so no empty block is created.
+	appendDelta := func(kind common.BlockKind, text string) {
+		if text == "" {
+			return
+		}
+		if open && blocks[len(blocks)-1].Kind == kind {
+			blocks[len(blocks)-1].Text += text
+			return
+		}
+		blocks = append(blocks, common.Block{Kind: kind, Text: text})
+		open = true
+	}
 
 	for {
 		select {
@@ -89,7 +103,7 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, *commo
 
 			switch ev.Kind {
 			case common.EventTextDelta:
-				textBuf += ev.TextDelta
+				appendDelta(common.BlockText, ev.TextDelta)
 				a.Frontend.Emit(sess.ID, Event{
 					Kind:      EventTokenDelta,
 					SessionID: sess.ID,
@@ -97,7 +111,7 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, *commo
 				})
 
 			case common.EventThinkingDelta:
-				thinkingBuf += ev.ThinkingDelta
+				appendDelta(common.BlockThinking, ev.ThinkingDelta)
 				a.Frontend.Emit(sess.ID, Event{
 					Kind:          EventThinkingDelta,
 					SessionID:     sess.ID,
@@ -105,11 +119,23 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, *commo
 				})
 
 			case common.EventThinkingDone:
-				thinkingSig = ev.Signature
+				// Each thinking block keeps its own signature. A block with no
+				// deltas but a signature (display "omitted") is kept; an empty
+				// block with no signature (OpenAI) is skipped.
+				if open && blocks[len(blocks)-1].Kind == common.BlockThinking {
+					blocks[len(blocks)-1].Signature = ev.Signature
+				} else if ev.Signature != "" {
+					blocks = append(blocks, common.Block{Kind: common.BlockThinking, Signature: ev.Signature})
+				}
+				open = false
 				a.Frontend.Emit(sess.ID, Event{
 					Kind:      EventThinkingDone,
 					SessionID: sess.ID,
 				})
+
+			case common.EventRedactedThinking:
+				blocks = append(blocks, common.Block{Kind: common.BlockRedactedThinking, Data: ev.Data})
+				open = false
 
 			case common.EventToolCallDone:
 				// Invalid input (e.g. cut off by max_tokens) is stored as {}
@@ -119,7 +145,8 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, *commo
 				if invalid {
 					input = "{}"
 				}
-				toolBlocks = append(toolBlocks, common.Block{
+				open = false
+				blocks = append(blocks, common.Block{
 					Kind:         common.BlockToolUse,
 					ToolUseID:    ev.ToolCallID,
 					ToolName:     ev.ToolName,
@@ -158,16 +185,6 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, *commo
 
 done:
 	elapsed := time.Since(start)
-
-	// Build the assistant message: thinking block first, then text, then tool_use blocks.
-	var blocks []common.Block
-	if thinkingBuf != "" {
-		blocks = append(blocks, common.Block{Kind: common.BlockThinking, Text: thinkingBuf, Signature: thinkingSig})
-	}
-	if textBuf != "" {
-		blocks = append(blocks, common.Block{Kind: common.BlockText, Text: textBuf})
-	}
-	blocks = append(blocks, toolBlocks...)
 
 	// Only persist and append when the assistant message has content.
 	// Skipping an empty message prevents a malformed zero-content assistant

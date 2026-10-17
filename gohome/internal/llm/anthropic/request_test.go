@@ -508,3 +508,40 @@ func TestBuildAnthropicBody_OutputConfigEffort(t *testing.T) {
 		t.Error("output_config should be omitted when reasoningEffort is empty")
 	}
 }
+
+func TestTranslateAssistantMessage_RedactedThinking(t *testing.T) {
+	req := common.Request{
+		Model: "claude-x",
+		Messages: []common.Message{
+			{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}},
+			{Role: common.RoleAssistant, Content: []common.Block{
+				{Kind: common.BlockRedactedThinking, Data: "opaque=="},
+				{Kind: common.BlockThinking, Signature: "sig-1"},
+				{Kind: common.BlockText, Text: "hello"},
+			}},
+		},
+		MaxTokens: 1024,
+	}
+	data, err := buildAnthropicBody(req)
+	if err != nil {
+		t.Fatalf("buildAnthropicBody: %v", err)
+	}
+	var body struct {
+		Messages []struct {
+			Content []json.RawMessage `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(data, &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	content := body.Messages[1].Content
+	if len(content) != 3 {
+		t.Fatalf("content len = %d, want 3", len(content))
+	}
+	if got := string(content[0]); got != `{"type":"redacted_thinking","data":"opaque=="}` {
+		t.Errorf("redacted block = %s", got)
+	}
+	if got := string(content[1]); got != `{"type":"thinking","thinking":"","signature":"sig-1"}` {
+		t.Errorf("thinking block = %s", got)
+	}
+}

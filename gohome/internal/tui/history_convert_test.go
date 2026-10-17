@@ -227,3 +227,16 @@ func TestHistoryToTimeline_EmptyThinkingText(t *testing.T) {
 		t.Error("empty thinking should be collapsed on resume")
 	}
 }
+
+func TestHistoryToTimeline_RedactedThinkingSkipped(t *testing.T) {
+	msgs := []common.Message{
+		{Role: common.RoleAssistant, Content: []common.Block{
+			{Kind: common.BlockRedactedThinking, Data: "opaque=="},
+			{Kind: common.BlockText, Text: "answer"},
+		}},
+	}
+	got := historyToTimeline(msgs)
+	if len(got) != 1 || got[0].Kind != KindAssistant {
+		t.Fatalf("got %+v, want only the assistant entry", got)
+	}
+}

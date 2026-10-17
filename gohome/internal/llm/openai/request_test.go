@@ -470,3 +470,32 @@ func TestBuildOpenAIBody_NoSystem(t *testing.T) {
 		t.Errorf("expected 1 message (no system), got %d", len(messages))
 	}
 }
+
+func TestTranslateAssistantMessage_RedactedThinkingDropped(t *testing.T) {
+	req := common.Request{
+		Model: "gpt-4o",
+		Messages: []common.Message{
+			{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}},
+			{Role: common.RoleAssistant, Content: []common.Block{
+				{Kind: common.BlockRedactedThinking, Data: "opaque=="},
+				{Kind: common.BlockText, Text: "hello"},
+			}},
+		},
+		MaxTokens: 1024,
+	}
+	data, err := buildOpenAIBody(req)
+	if err != nil {
+		t.Fatalf("buildOpenAIBody: %v", err)
+	}
+	var body struct {
+		Messages []struct {
+			Content *string `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(data, &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(body.Messages) != 2 || body.Messages[1].Content == nil || *body.Messages[1].Content != "hello" {
+		t.Fatalf("unexpected messages: %s", data)
+	}
+}

@@ -109,3 +109,22 @@ func TestValidateHistoryNoThinkingBlocks(t *testing.T) {
 		t.Errorf("expected no warnings, got: %s", buf.String())
 	}
 }
+
+func TestValidateHistorySignatureOnlyAndRedactedNoWarn(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+	msgs := []common.Message{
+		{Role: common.RoleAssistant, Content: []common.Block{
+			{Kind: common.BlockThinking, Signature: "sig-omitted"},
+			{Kind: common.BlockRedactedThinking, Data: "opaque=="},
+			{Kind: common.BlockText, Text: "answer"},
+		}},
+	}
+
+	validateHistory(logger, "sess-1", msgs)
+
+	if buf.Len() != 0 {
+		t.Errorf("expected no warnings, got: %s", buf.String())
+	}
+}

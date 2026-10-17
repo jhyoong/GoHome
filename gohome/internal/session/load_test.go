@@ -426,3 +426,40 @@ func TestLoad_ContinuesSubagentNumbering(t *testing.T) {
 		t.Errorf("NextSubagentID = %q, want %q", got, "p1-sub-3")
 	}
 }
+
+func TestLoad_ThinkingAndRedactedRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "s.jsonl")
+	w, err := OpenWriter(path)
+	if err != nil {
+		t.Fatalf("OpenWriter: %v", err)
+	}
+	w.Emit(SessionStart{ID: "s1", CWD: "/tmp", Model: "m", StartedAt: time.Now()})
+	w.Emit(UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}})
+	want := []common.Block{
+		{Kind: common.BlockThinking, Text: "a", Signature: "sig-1"},
+		{Kind: common.BlockRedactedThinking, Data: "opaque=="},
+		{Kind: common.BlockThinking, Signature: "sig-2"},
+		{Kind: common.BlockText, Text: "hello"},
+	}
+	w.Emit(AssistantMessage{Content: want, StopReason: "end_turn"})
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	_, history, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("history len = %d, want 2", len(history))
+	}
+	got := history[1].Content
+	if len(got) != len(want) {
+		t.Fatalf("blocks = %+v, want %+v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("block %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}

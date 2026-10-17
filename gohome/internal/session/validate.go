@@ -6,7 +6,8 @@ import (
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 )
 
-// validateHistory checks loaded session messages for malformed thinking blocks.
+// validateHistory checks loaded session messages for malformed thinking
+// blocks (no text and no signature).
 // It logs warnings but does not modify or remove any messages.
 func validateHistory(logger *slog.Logger, sessionID string, msgs []common.Message) {
 	for i, msg := range msgs {
@@ -14,7 +15,10 @@ func validateHistory(logger *slog.Logger, sessionID string, msgs []common.Messag
 			if b.Kind != common.BlockThinking {
 				continue
 			}
-			if b.Text == "" {
+			// A block with no text but a signature is valid: current Claude
+			// models omit thinking text by default. Redacted blocks are
+			// skipped above.
+			if b.Text == "" && b.Signature == "" {
 				logger.Warn("empty thinking block",
 					"session", sessionID,
 					"message", i,
