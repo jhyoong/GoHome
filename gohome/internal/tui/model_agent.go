@@ -136,7 +136,7 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 			Kind: KindNotice,
 			Text: "Tool call denied. Waiting for your input.",
 		})
-		sv.InFlight = false
+		sv.InFlight = sv.Depth == 0 && m.mainRuns > 0
 
 	case agent.EventUsageUpdated:
 		if ev.Usage != nil {
@@ -250,7 +250,8 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 			Kind: KindNotice,
 			Text: errText,
 		})
-		sv.InFlight = false
+		// The main run's RunDone is still coming while mainRuns > 0.
+		sv.InFlight = sv.Depth == 0 && m.mainRuns > 0
 	}
 
 	// Spinner: start on sending/thinking/token delta, stop on completion/error.

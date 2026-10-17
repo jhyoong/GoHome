@@ -146,9 +146,10 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if sv.Completed {
 					m.statusMsg = "Session complete"
 					m.editor.SetValue("")
-				} else if sv.Depth > 0 {
-					// Subagent views are read-only; keep the text so the
-					// user can send it from the main session.
+				} else if sv.Depth > 0 || sv.ID != m.mainID {
+					// Subagent views and the main view of a replaced session
+					// are read-only; keep the text so the user can send it
+					// from the current main session.
 					m.statusMsg = "switch to the main session to send"
 				} else if sv.InFlight {
 					sent := false

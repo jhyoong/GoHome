@@ -240,3 +240,58 @@ func TestSessionSwitchRefusedWhileInFlight(t *testing.T) {
 		t.Errorf("session callbacks called %d times, want 0", calls)
 	}
 }
+
+// TestOldMainViewReadOnlyAfterNew verifies that after /new the previous main
+// view refuses Enter instead of sending a run nobody will finish.
+func TestOldMainViewReadOnlyAfterNew(t *testing.T) {
+	m := New(nil, "main")
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m.SetSlashCallbacks(SlashCallbacks{
+		NewSession: func() (string, error) { return "fresh", nil },
+	})
+	typeRunes(m, "/new")
+	pressKey(m, tea.KeyEnter)
+	if m.mainID != "fresh" {
+		t.Fatalf("mainID = %q, want fresh", m.mainID)
+	}
+
+	m.focused = "main"
+	typeRunes(m, "hello")
+	pressKey(m, tea.KeyEnter)
+
+	if m.sessions["main"].InFlight {
+		t.Error("old view is in flight")
+	}
+	if m.mainRuns != 0 {
+		t.Errorf("mainRuns = %d, want 0", m.mainRuns)
+	}
+	if got := m.editor.Value(); got != "hello" {
+		t.Errorf("editor = %q, want text kept", got)
+	}
+	if want := "switch to the main session to send"; m.statusMsg != want {
+		t.Errorf("statusMsg = %q, want %q", m.statusMsg, want)
+	}
+}
+
+// TestMainErrorKeepsRunInFlightWhileRunsOutstanding verifies that an error
+// event does not end the run while a RunDone is still expected.
+func TestMainErrorKeepsRunInFlightWhileRunsOutstanding(t *testing.T) {
+	for _, kind := range []agent.EventKind{agent.EventError, agent.EventToolDenied} {
+		m := New(nil, "main")
+		m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+		typeRunes(m, "work")
+		pressKey(m, tea.KeyEnter)
+		if m.mainRuns != 1 {
+			t.Fatalf("mainRuns = %d, want 1", m.mainRuns)
+		}
+
+		sendEvent(m, "main", kind)
+		if !m.mainSession().InFlight {
+			t.Errorf("kind %v: main not in flight with a run outstanding", kind)
+		}
+		pressKey(m, tea.KeyCtrlC)
+		if m.mainSession().InFlight {
+			t.Errorf("kind %v: Ctrl+C did not cancel the run", kind)
+		}
+	}
+}
