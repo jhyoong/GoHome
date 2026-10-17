@@ -256,4 +256,27 @@ func TestAddProject_DedupAgainstLegacyUnanchoredEntry(t *testing.T) {
 	if len(wf.Shell) != 1 {
 		t.Errorf("shell = %v, want one entry", wf.Shell)
 	}
+	if len(wl.shell) != 1 {
+		t.Errorf("in-memory patterns = %d, want 1", len(wl.shell))
+	}
+}
+
+func TestAlternationStaysAnchored(t *testing.T) {
+	wl, err := Compile(WhitelistFile{}, WhitelistFile{Shell: []string{"ls|rm"}}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wl.AddProject("shell", "^git status|git diff"); err != nil {
+		t.Fatal(err)
+	}
+	for _, cmd := range []string{"cat x --norm", "chmod 777 /etc/passwd --norm", "echo git diff", "ls-evil"} {
+		if wl.Allows("shell", bashInput(cmd)) {
+			t.Errorf("%q should not be allowed", cmd)
+		}
+	}
+	for _, cmd := range []string{"ls -la", "rm -rf x", "git diff", "git status"} {
+		if !wl.Allows("shell", bashInput(cmd)) {
+			t.Errorf("%q should be allowed", cmd)
+		}
+	}
 }

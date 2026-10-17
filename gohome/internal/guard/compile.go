@@ -41,11 +41,7 @@ func Compile(global, project WhitelistFile, projectPath string) (*Whitelist, err
 	allPatterns = append(allPatterns, project.Shell...)
 
 	for _, pat := range allPatterns {
-		anchored := pat
-		if !strings.HasPrefix(anchored, "^") {
-			anchored = "^" + anchored
-		}
-		re, err := regexp.Compile(anchored)
+		re, err := compileShellPattern(pat)
 		if err != nil {
 			slog.Warn("guard: skipping invalid shell pattern", "pattern", pat, "error", err)
 			continue

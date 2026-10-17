@@ -37,20 +37,20 @@ func (w *Whitelist) AddProject(tool, pattern string) error {
 
 	// --- update in-memory state first ---
 	if tool == "shell" {
-		anchored := pattern
-		// Only add if not already matched by an existing pattern.
+		re, err := compileShellPattern(pattern)
+		if err != nil {
+			return err
+		}
+		// Only add if not already present.
 		alreadyPresent := false
-		for _, re := range w.shell {
-			if re.String() == anchored {
+		for _, have := range w.shell {
+			if have.String() == re.String() {
 				alreadyPresent = true
 				break
 			}
 		}
 		if !alreadyPresent {
-			re, err := regexp.Compile(anchored)
-			if err == nil {
-				w.shell = append(w.shell, re)
-			}
+			w.shell = append(w.shell, re)
 		}
 	} else {
 		w.tools[tool] = struct{}{}
@@ -138,6 +138,17 @@ func NormalizePattern(pattern string) (string, error) {
 		return "", fmt.Errorf("invalid pattern: %w", err)
 	}
 	return anchored, nil
+}
+
+// compileShellPattern compiles pattern for matching. The normalized pattern is
+// wrapped as ^(?:...) so the anchor covers the whole pattern, including
+// top-level alternation ("ls|rm" must not match "rm" anywhere in a command).
+func compileShellPattern(pattern string) (*regexp.Regexp, error) {
+	norm, err := NormalizePattern(pattern)
+	if err != nil {
+		return nil, err
+	}
+	return regexp.Compile("^(?:" + strings.TrimPrefix(norm, "^") + ")")
 }
 
 // containsPattern reports whether slice already holds pattern, comparing the
