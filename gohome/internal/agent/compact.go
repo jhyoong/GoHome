@@ -26,7 +26,7 @@ func (cfg CompactConfig) shouldCompact(usage common.Usage) bool {
 	if !cfg.Enabled || cfg.ContextWindow <= 0 {
 		return false
 	}
-	used := usage.InputTokens + usage.OutputTokens
+	used := usage.InputTokens + usage.CacheReadTokens + usage.CacheWriteTokens + usage.OutputTokens
 	switch cfg.Mode {
 	case "percentage":
 		return float64(used)/float64(cfg.ContextWindow) >= cfg.TriggerPct
