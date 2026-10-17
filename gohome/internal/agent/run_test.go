@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -842,4 +843,67 @@ func TestRun_SteerDuringTextOnlyTurn(t *testing.T) {
 	if !found {
 		t.Error("steer message not found in session history")
 	}
+}
+
+// TestRun_SteerSkipPersistsToolResult verifies that tool calls skipped by a
+// steer get a persisted tool_result and an EventToolResult, so the JSONL has
+// one tool_result per tool_use and the TUI clears the pending entry.
+func TestRun_SteerSkipPersistsToolResult(t *testing.T) {
+	turn1 := []common.StreamEvent{
+		{Kind: common.EventToolCallDone, ToolCallID: "tc1", ToolName: "fake", InputJSON: `{}`},
+		{Kind: common.EventToolCallDone, ToolCallID: "tc2", ToolName: "fake", InputJSON: `{}`},
+		{Kind: common.EventTurnDone, StopReason: "tool_use"},
+	}
+	turn2 := []common.StreamEvent{
+		{Kind: common.EventTextDelta, TextDelta: "ok"},
+		{Kind: common.EventTurnDone, StopReason: "end_turn"},
+	}
+	client := &fakeClient{sequences: [][]common.StreamEvent{turn1, turn2}}
+	steerCh := make(chan string, 1)
+	steerCh <- "stop"
+
+	fe := &fakeRecorder{steerCh: steerCh}
+	reg := tools.NewRegistry()
+	reg.Register(&fakeTool{name: "fake", content: "ok"})
+	g := compileYoloGuard(t)
+	a, sess := newTestAgentWithGuard(t, client, fe, g, reg)
+
+	if err := a.Run(context.Background(), sess); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	skipEvents := 0
+	for _, ev := range fe.events {
+		if ev.Kind == EventToolResult && ev.ToolCallID == "tc2" {
+			skipEvents++
+			if ev.Result == nil || !ev.Result.IsError || ev.Result.Content != "skipped: user steered" {
+				t.Errorf("skip event result = %+v", ev.Result)
+			}
+		}
+	}
+	if skipEvents != 1 {
+		t.Errorf("EventToolResult for tc2 count = %d, want 1", skipEvents)
+	}
+
+	if err := a.State.Writer().Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(sess.CWD(), "session.jsonl"))
+	if err != nil {
+		t.Fatalf("read jsonl: %v", err)
+	}
+	if got := countToolResultLines(string(raw), "tc2"); got != 1 {
+		t.Errorf("tool_result lines for tc2 = %d, want 1\n%s", got, raw)
+	}
+}
+
+// countToolResultLines counts tool_result JSONL lines for the given tool use ID.
+func countToolResultLines(raw, id string) int {
+	n := 0
+	for _, line := range strings.Split(raw, "\n") {
+		if strings.Contains(line, `"tool_result"`) && strings.Contains(line, `"`+id+`"`) {
+			n++
+		}
+	}
+	return n
 }

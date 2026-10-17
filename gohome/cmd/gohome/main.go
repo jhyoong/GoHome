@@ -110,6 +110,9 @@ func runLoop(
 	turnMu *sync.Mutex,
 	turnCancel *context.CancelFunc,
 ) {
+	// warnedWriter is the last writer we reported a failure for, so the
+	// "session not saved" error shows once per session, not once per run.
+	var warnedWriter *session.Writer
 	for {
 		text, err := fe.AwaitUserInput(ctx)
 		if err != nil {
@@ -144,6 +147,17 @@ func runLoop(
 		*turnCancel = nil
 		turnMu.Unlock()
 		cancel()
+
+		if werr := writer.Err(); werr != nil && writer != warnedWriter {
+			warnedWriter = writer
+			slog.Error("session write failed", "session", sess.ID, "err", werr)
+			fe.Emit(sess.ID, agent.Event{
+				Kind:       agent.EventError,
+				SessionID:  sess.ID,
+				Err:        fmt.Errorf("session not saved: %w", werr),
+				ErrMessage: "session not saved: " + werr.Error(),
+			})
+		}
 
 		if errors.Is(runErr, agent.ErrToolDenied) {
 			continue

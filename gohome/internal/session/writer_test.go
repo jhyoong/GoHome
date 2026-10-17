@@ -130,3 +130,31 @@ func TestOpenWriter_OwnerOnlyPerms(t *testing.T) {
 		t.Errorf("file mode = %o, want 600", got)
 	}
 }
+
+func TestWriterErrReportsWriteFailure(t *testing.T) {
+	w, err := OpenWriter(filepath.Join(t.TempDir(), "test.jsonl"))
+	if err != nil {
+		t.Fatalf("OpenWriter: %v", err)
+	}
+	if w.Err() != nil {
+		t.Fatalf("Err before failure = %v, want nil", w.Err())
+	}
+	// Close the underlying file so every write fails.
+	_ = w.f.Close()
+	w.Emit(UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}})
+	_ = w.Close()
+	if w.Err() == nil {
+		t.Fatal("Err() = nil after write to closed file, want error")
+	}
+}
+
+func TestWriterEmitAfterCloseDoesNotPanic(t *testing.T) {
+	w, err := OpenWriter(filepath.Join(t.TempDir(), "test.jsonl"))
+	if err != nil {
+		t.Fatalf("OpenWriter: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	w.Emit(SessionEnd{Reason: "late"})
+}
