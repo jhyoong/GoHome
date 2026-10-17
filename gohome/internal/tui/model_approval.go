@@ -68,16 +68,25 @@ func (m *Model) handleApprovalKey(msg tea.KeyMsg) tea.Cmd {
 	if ap.editing {
 		switch msg.Type {
 		case tea.KeyEnter:
-			// Confirm the edited pattern.
+			// Confirm the edited pattern; keep editing if it is invalid.
+			if ap.req.Tool == "shell" {
+				if _, err := guard.NormalizePattern(ap.patternInput.Value()); err != nil {
+					ap.patternErr = err.Error()
+					return nil
+				}
+			}
+			ap.patternErr = ""
 			ap.pattern = ap.patternInput.Value()
 			ap.editing = false
 			ap.patternInput.Blur()
 		case tea.KeyEsc:
 			// Revert: restore original pattern, exit edit mode.
 			ap.patternInput.SetValue(ap.pattern)
+			ap.patternErr = ""
 			ap.editing = false
 			ap.patternInput.Blur()
 		default:
+			ap.patternErr = ""
 			var tiCmd tea.Cmd
 			ap.patternInput, tiCmd = ap.patternInput.Update(msg)
 			cmds = append(cmds, tiCmd)

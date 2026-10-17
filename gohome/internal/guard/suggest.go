@@ -2,6 +2,7 @@ package guard
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
 )
 
@@ -22,7 +23,9 @@ import (
 //     take first 2 tokens.
 //  6. Otherwise: take first 1 token only.
 //
-// The result is always prefixed with "^".
+// Sudo commands (any position) suggest the full command instead.
+//
+// The result is regex-escaped and always prefixed with "^".
 func Suggest(tool string, inputJSON []byte) string {
 	if tool != "shell" {
 		return ""
@@ -40,8 +43,14 @@ func Suggest(tool string, inputJSON []byte) string {
 		return ""
 	}
 
+	// A sudo suggestion is the full command: a "^sudo" prefix would pre-approve
+	// every sudo command.
+	if IsSudoCommand(args.Command) {
+		return "^" + regexp.QuoteMeta(strings.TrimSpace(args.Command))
+	}
+
 	prefix := buildPrefix(tokens)
-	return "^" + prefix
+	return "^" + regexp.QuoteMeta(prefix)
 }
 
 // buildPrefix selects the appropriate token prefix for a shell command.

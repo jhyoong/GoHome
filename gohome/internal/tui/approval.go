@@ -33,6 +33,7 @@ type approvalPrompt struct {
 	// edit sub-mode: user pressed 'e' to edit the pattern
 	editing      bool
 	patternInput textinput.Model
+	patternErr   string // validation error shown while editing
 
 	// expandedSummary: user pressed 'v' to see full summary
 	expandedSummary bool
@@ -155,6 +156,9 @@ func renderApprovalOverlay(ap *approvalPrompt, width int, focusedSessionID strin
 		fmt.Fprintf(&sb, "  [2] Allow always  %s\n", ap.patternInput.View())
 		sb.WriteString("  [3] Deny\n")
 		sb.WriteString("  [4] Deny + steer\n")
+		if ap.patternErr != "" {
+			fmt.Fprintf(&sb, "Error: %s\n", ap.patternErr)
+		}
 		sb.WriteString("(Enter to confirm, Esc to cancel)")
 	} else {
 		marker := func(i int) string {

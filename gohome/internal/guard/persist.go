@@ -2,6 +2,8 @@ package guard
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -21,15 +23,21 @@ import (
 // A missing projectPath is a no-op for the file portion; in-memory state is
 // still updated.
 func (w *Whitelist) AddProject(tool, pattern string) error {
+	// Validate and normalize before touching memory or the file.
+	if tool == "shell" {
+		var err error
+		pattern, err = NormalizePattern(pattern)
+		if err != nil {
+			return err
+		}
+	}
+
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	// --- update in-memory state first ---
 	if tool == "shell" {
 		anchored := pattern
-		if !strings.HasPrefix(anchored, "^") {
-			anchored = "^" + anchored
-		}
 		// Only add if not already matched by an existing pattern.
 		alreadyPresent := false
 		for _, re := range w.shell {
@@ -92,7 +100,7 @@ func (w *Whitelist) persistToFile(tool, pattern string) error {
 
 	// Merge new entry (idempotent).
 	if tool == "shell" {
-		if !containsStr(wf.Shell, pattern) {
+		if !containsPattern(wf.Shell, pattern) {
 			wf.Shell = append(wf.Shell, pattern)
 		}
 	} else {
@@ -112,6 +120,35 @@ func (w *Whitelist) persistToFile(tool, pattern string) error {
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
 	return enc.Encode(wf)
+}
+
+// NormalizePattern returns pattern in its one stored form (anchored with "^").
+// It rejects a pattern that is empty or whitespace-only (with or without the
+// "^"), since that would match every command, and a pattern that is not a
+// valid regex.
+func NormalizePattern(pattern string) (string, error) {
+	anchored := pattern
+	if !strings.HasPrefix(anchored, "^") {
+		anchored = "^" + anchored
+	}
+	if strings.TrimSpace(strings.TrimPrefix(anchored, "^")) == "" {
+		return "", errors.New("pattern is empty")
+	}
+	if _, err := regexp.Compile(anchored); err != nil {
+		return "", fmt.Errorf("invalid pattern: %w", err)
+	}
+	return anchored, nil
+}
+
+// containsPattern reports whether slice already holds pattern, comparing the
+// normalized forms so "ls" and "^ls" count as the same rule.
+func containsPattern(slice []string, pattern string) bool {
+	for _, v := range slice {
+		if n, err := NormalizePattern(v); err == nil && n == pattern {
+			return true
+		}
+	}
+	return false
 }
 
 func containsStr(slice []string, s string) bool {
