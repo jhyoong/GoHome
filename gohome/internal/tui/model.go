@@ -735,7 +735,7 @@ func (m *Model) render() string {
 // modal, completed label, or the editor.
 func (m *Model) renderInputRegion() string {
 	if m.activeApproval != nil {
-		return renderApprovalOverlay(m.activeApproval, m.winW, m.focused)
+		return renderApprovalOverlay(m.activeApproval, m.winW, m.winH-stripHeight-statusHeight-2, m.focused)
 	}
 	if m.activeModal != nil {
 		return strings.Join(m.activeModal.Render(m.winW), "\n")

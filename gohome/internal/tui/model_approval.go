@@ -94,8 +94,9 @@ func (m *Model) handleApprovalKey(msg tea.KeyMsg) tea.Cmd {
 		return tea.Batch(cmds...)
 	}
 
-	// PgUp/PgDown scroll the timeline even during approval.
-	if m.scrollApprovalPage(msg) {
+	// PgUp/PgDown scroll an expanded summary that does not fit, otherwise
+	// the timeline.
+	if m.scrollApprovalSummary(msg) || m.scrollApprovalPage(msg) {
 		return tea.Batch(cmds...)
 	}
 
@@ -141,6 +142,25 @@ func (m *Model) handleApprovalKey(msg tea.KeyMsg) tea.Cmd {
 		ap.patternInput.CursorEnd()
 	}
 	return tea.Batch(cmds...)
+}
+
+// scrollApprovalSummary scrolls an expanded summary that is taller than the
+// prompt box on PgUp/PgDown. It reports whether the key was handled.
+func (m *Model) scrollApprovalSummary(msg tea.KeyMsg) bool {
+	ap := m.activeApproval
+	if !ap.expandedSummary || ap.scrollMax == 0 {
+		return false
+	}
+	step := max(m.winH/2, 1)
+	switch msg.Type {
+	case tea.KeyPgUp:
+		ap.scroll = max(ap.scroll-step, 0)
+	case tea.KeyPgDown:
+		ap.scroll = min(ap.scroll+step, ap.scrollMax)
+	default:
+		return false
+	}
+	return true
 }
 
 // scrollApprovalPage scrolls the timeline on PgUp/PgDown while an approval is
