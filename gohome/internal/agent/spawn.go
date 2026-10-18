@@ -101,6 +101,7 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 		System:        sys,
 		CompactCfg:    a.CompactCfg,
 		CompactPrompt: a.CompactPrompt,
+		RetryBackoff:  a.RetryBackoff,
 		Home:          a.Home,
 	}
 

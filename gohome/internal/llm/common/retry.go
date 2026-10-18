@@ -24,6 +24,20 @@ var (
 	sleepFn  = sleepCtx
 )
 
+// RetryDelay returns the jittered wait before retry number attempt (from 0).
+// It is 0 when backoff has no entry for that attempt.
+func RetryDelay(backoff []time.Duration, attempt int) time.Duration {
+	if attempt < 0 || attempt >= len(backoff) {
+		return 0
+	}
+	return jitterFn(backoff[attempt])
+}
+
+// Sleep waits for d or until ctx is done.
+func Sleep(ctx context.Context, d time.Duration) error {
+	return sleepFn(ctx, d)
+}
+
 // defaultJitter returns a random delay in [d, 1.5d).
 func defaultJitter(d time.Duration) time.Duration {
 	if d <= 0 {

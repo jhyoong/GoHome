@@ -13,6 +13,11 @@ import (
 // response body sends no bytes for the idle timeout.
 var ErrStreamIdle = errors.New("stream idle timeout")
 
+// ErrOverloaded is wrapped by the error returned when the server reports an
+// overloaded error inside the stream. It is worth retrying before any
+// content has arrived.
+var ErrOverloaded = errors.New("server overloaded")
+
 // ErrStreamEndedEarly is returned when a stream closes before the response is
 // reported as complete.
 var ErrStreamEndedEarly = errors.New("stream ended early")

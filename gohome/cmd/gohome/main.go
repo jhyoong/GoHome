@@ -495,6 +495,7 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 			System:        systemPrompt,
 			CompactCfg:    compactCfg,
 			CompactPrompt: settings.AutoCompactPrompt,
+			RetryBackoff:  llm.Backoff(settings.RetryBackoffMs),
 			Home:          home,
 		}
 		a.RegisterSubagentTool()
@@ -673,6 +674,7 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 		System:        systemPrompt,
 		CompactCfg:    compactCfg,
 		CompactPrompt: settings.AutoCompactPrompt,
+		RetryBackoff:  llm.Backoff(settings.RetryBackoffMs),
 		Home:          home,
 	}
 	a.RegisterSubagentTool()

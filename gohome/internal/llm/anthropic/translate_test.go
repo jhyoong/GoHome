@@ -313,3 +313,29 @@ func TestTranslateEvents_RedactedThinking(t *testing.T) {
 		t.Errorf("event 2 kind = %q, want EventTurnDone", events[2].Kind)
 	}
 }
+
+func TestTranslateEvents_OverloadedError(t *testing.T) {
+	frames := []sseFrame{
+		{event: "error", data: `{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}`},
+	}
+	events := collectEvents(translateEvents(context.Background(), makeFrames(frames)))
+	if len(events) != 1 || events[0].Kind != common.EventError {
+		t.Fatalf("expected one error event, got %v", events)
+	}
+	if !errors.Is(events[0].Err, common.ErrOverloaded) {
+		t.Errorf("error %v does not wrap ErrOverloaded", events[0].Err)
+	}
+}
+
+func TestTranslateEvents_OtherErrorNotOverloaded(t *testing.T) {
+	frames := []sseFrame{
+		{event: "error", data: `{"type":"error","error":{"type":"api_error","message":"boom"}}`},
+	}
+	events := collectEvents(translateEvents(context.Background(), makeFrames(frames)))
+	if len(events) != 1 || events[0].Kind != common.EventError {
+		t.Fatalf("expected one error event, got %v", events)
+	}
+	if errors.Is(events[0].Err, common.ErrOverloaded) {
+		t.Errorf("api_error must not wrap ErrOverloaded")
+	}
+}

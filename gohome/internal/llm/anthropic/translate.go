@@ -115,7 +115,7 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 
 			switch frame.event {
 			case "error":
-				send(common.StreamEvent{Kind: common.EventError, Err: fmt.Errorf("%s", frame.data)})
+				send(common.StreamEvent{Kind: common.EventError, Err: streamError(frame.data)})
 				return
 
 			case "message_start":
@@ -239,4 +239,18 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 	}()
 
 	return ch
+}
+
+// streamError builds the error for an SSE "error" frame. An overloaded_error
+// wraps common.ErrOverloaded so callers can retry it.
+func streamError(data string) error {
+	var d struct {
+		Error struct {
+			Type string `json:"type"`
+		} `json:"error"`
+	}
+	if json.Unmarshal([]byte(data), &d) == nil && d.Error.Type == "overloaded_error" {
+		return fmt.Errorf("%w: %s", common.ErrOverloaded, data)
+	}
+	return fmt.Errorf("%s", data)
 }
