@@ -22,17 +22,20 @@ type Client struct {
 	headers map[string]string
 	hc      *http.Client
 	backoff []time.Duration
+	// promptCache adds cache_control markers to the system prompt and last message.
+	promptCache bool
 }
 
 // New creates a Client from a ModelConfig and resolved API key.
 func New(e config.ModelConfig, apiKey string, backoff []time.Duration) *Client {
 	return &Client{
-		base:    e.BaseURL,
-		apiKey:  apiKey,
-		model:   e.ModelName,
-		headers: e.Headers,
-		hc:      common.NewHTTPClient(common.DefaultResponseHeaderTimeout),
-		backoff: backoff,
+		base:        e.BaseURL,
+		apiKey:      apiKey,
+		model:       e.ModelName,
+		headers:     e.Headers,
+		hc:          common.NewHTTPClient(common.DefaultResponseHeaderTimeout),
+		backoff:     backoff,
+		promptCache: e.PromptCache,
 	}
 }
 
@@ -44,7 +47,7 @@ func (c *Client) Stream(ctx context.Context, req common.Request) (<-chan common.
 		req.Model = c.model
 	}
 
-	body, err := buildAnthropicBody(req)
+	body, err := buildAnthropicBody(req, c.promptCache)
 	if err != nil {
 		return nil, fmt.Errorf("anthropic: build body: %w", err)
 	}

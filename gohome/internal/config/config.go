@@ -29,6 +29,7 @@ type ModelConfig struct {
 	ContextWindow   int               `json:"contextWindow,omitempty"`
 	MaxTokens       int               `json:"maxTokens,omitempty"`
 	MaxTokensField  string            `json:"maxTokensField,omitempty"`
+	PromptCache     bool              `json:"promptCache,omitempty"`
 	Thinking        string            `json:"thinking,omitempty"`
 	ThinkingBudget  int               `json:"thinkingBudget,omitempty"`
 	ReasoningEffort string            `json:"reasoningEffort,omitempty"`

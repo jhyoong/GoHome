@@ -2,9 +2,11 @@ package anthropic
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/jhyoong/GoHome/gohome/internal/config"
@@ -111,5 +113,29 @@ func TestClientStream_HTTPError(t *testing.T) {
 	_, err := client.Stream(context.Background(), req)
 	if err == nil {
 		t.Fatal("expected error for 401 response")
+	}
+}
+
+func TestClientStream_PromptCacheSetting(t *testing.T) {
+	for _, on := range []bool{false, true} {
+		var got []byte
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			got, _ = io.ReadAll(r.Body)
+			http.Error(w, "stop", http.StatusBadRequest)
+		}))
+		client := New(config.ModelConfig{BaseURL: srv.URL, ModelName: "m", PromptCache: on}, "k", nil)
+		req := common.Request{
+			System:    "sys",
+			Messages:  []common.Message{{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}}},
+			MaxTokens: 100,
+		}
+		if ch, err := client.Stream(context.Background(), req); err == nil {
+			for range ch {
+			}
+		}
+		srv.Close()
+		if has := strings.Contains(string(got), "cache_control"); has != on {
+			t.Errorf("promptCache=%v: cache_control present=%v in %s", on, has, got)
+		}
 	}
 }
