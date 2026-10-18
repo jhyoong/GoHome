@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-Fixes for follow-up items 58-62 from the 2026-10-18 live test (`docs/reviews/2026-10-18-outdated-components-live-test.md`), file path fixes for items 39, 52 and 53, terminal output fixes for items 11, 12 and 13, whitelist and approval prompt fixes for items 5, 6, 7, 9, 10 and 14, setup wizard, logging and TUI fixes for items 16, 17, 18, 42, 44 and 65, session loading and writer fixes for items 21-29, subagent session fixes for items 30, 31 and 32, and compaction and failed run fixes for items 40, 64 and 66.
+Fixes for follow-up items 58-62 from the 2026-10-18 live test, file path fixes for items 39, 52 and 53, terminal output fixes for items 11, 12 and 13, whitelist and approval prompt fixes for items 5, 6, 7, 9, 10 and 14, setup wizard, logging and TUI fixes for items 16, 17, 18, 42, 44 and 65, session loading and writer fixes for items 21-29, subagent session fixes for items 30, 31 and 32, and compaction and failed run fixes for items 40, 64 and 66.
 
 ### Added
 
@@ -46,7 +46,7 @@ Fixes for follow-up items 58-62 from the 2026-10-18 live test (`docs/reviews/202
 
 ## v0.4.4-dev2
 
-Fixes from the 2026-10-17 codebase audit (`docs/reviews/2026-10-17-codebase-audit.md`). IDs such as S1 or D4 refer to that report.
+Fixes from the 2026-10-17 codebase audit. IDs such as S1 or D4 refer to that report.
 
 ### Added
 

@@ -47,4 +47,4 @@ Minor items found while reviewing the D1-D9 fixes (plan: `docs/old/2026-10-17-da
 
 
 ### Setup wizard (found in the fix/followup-tasks-batch live test)
-67. **Wizard option descriptions and notices are cut off at narrow widths.** At 50 columns, "read from an env var at r" and "write /tmp/.../setti" are cut instead of wrapped. The "Could not resolve API key" notice behind the wizard is cut too. `main` does the same. Found in `docs/reviews/2026-10-18-fix-followup-tasks-batch-live-test.md`.
+67. **Wizard option descriptions and notices are cut off at narrow widths.** At 50 columns, "read from an env var at r" and "write /tmp/.../setti" are cut instead of wrapped. The "Could not resolve API key" notice behind the wizard is cut too. `main` does the same. Found in the fix/followup-tasks-batch live test report (`docs/old/`).
