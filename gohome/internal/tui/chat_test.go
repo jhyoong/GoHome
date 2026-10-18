@@ -736,3 +736,30 @@ func TestExtractToolArgSchemaKeys(t *testing.T) {
 		}
 	}
 }
+
+// TestChatRenderExpandsTabs verifies that no entry kind sends a raw tab to the
+// terminal. A raw tab moves the cursor without overwriting the cells it skips,
+// so old text (such as the spinner) stays visible there.
+func TestChatRenderExpandsTabs(t *testing.T) {
+	tests := []struct {
+		name  string
+		entry TimelineEntry
+	}{
+		{"assistant code block", TimelineEntry{Kind: KindAssistant, Text: "```go\nfunc main() {\n\tfmt.Println(\"hi\")\n}\n```"}},
+		{"assistant paragraph", TimelineEntry{Kind: KindAssistant, Text: "a\tb"}},
+		{"user", TimelineEntry{Kind: KindUser, Text: "x\ty"}},
+		{"thinking", TimelineEntry{Kind: KindThinking, Text: "p\tq", Expanded: true}},
+		{"thinking collapsed", TimelineEntry{Kind: KindThinking, Text: "p\tq"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			entries := []TimelineEntry{tt.entry}
+			c := NewChat(&entries, 20)
+			for _, l := range c.Render(80) {
+				if strings.ContainsRune(l, '\t') {
+					t.Errorf("rendered line has a raw tab: %q", l)
+				}
+			}
+		})
+	}
+}

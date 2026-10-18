@@ -42,7 +42,10 @@ func RenderMarkdown(source string, width int) []string {
 		return nil
 	}
 
-	src := []byte(source)
+	// Expand tabs first: a raw tab reaching the terminal skips cells without
+	// clearing them. CommonMark also reads tabs as stops of 4, so the parse
+	// does not change.
+	src := []byte(expandTabs(source, 4))
 	reader := text.NewReader(src)
 	doc := mdParser.Parse(reader)
 

@@ -386,6 +386,11 @@ func TestE2EAutoCompact(t *testing.T) {
 	})
 
 	a, sess := newE2EAgent(t, cfg, fe, history)
+	// The summary request uses the model's MaxTokens. With the default 256, a
+	// reasoning model can spend it all on thinking and return no text.
+	ms := a.State.ModelSettings()
+	ms.MaxTokens = 4096
+	a.State.SetModelSettings(ms)
 
 	// Enable auto-compact with a very low trigger threshold.
 	a.CompactCfg = agent.CompactConfig{
@@ -414,6 +419,26 @@ func TestE2EAutoCompact(t *testing.T) {
 	fe.mu.Unlock()
 	if !sawCompacted {
 		t.Error("expected EventCompacted but it was not emitted")
+	}
+
+	// Verify the summary is a summary of the conversation, not a continuation
+	// of it (a tool call written as text, a refusal, or empty).
+	var summary string
+	for _, msg := range sess.History {
+		for _, b := range msg.Content {
+			if b.Kind == common.BlockText && strings.HasPrefix(b.Text, session.CompactSummaryPrefix) {
+				summary = strings.TrimPrefix(b.Text, session.CompactSummaryPrefix)
+			}
+		}
+	}
+	t.Logf("summary: %q", summary)
+	switch {
+	case strings.TrimSpace(summary) == "":
+		t.Error("no compaction summary in history")
+	case strings.Contains(summary, "[Tool call:") || strings.Contains(summary, "<tool_call>"):
+		t.Errorf("summary is a tool call written as text: %q", summary)
+	case !strings.Contains(strings.ToLower(summary), "topic"):
+		t.Errorf("summary does not mention the conversation's topics: %q", summary)
 	}
 
 	// Verify the agent still produced a response after compaction.

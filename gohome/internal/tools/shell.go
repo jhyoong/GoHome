@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"runtime"
@@ -137,6 +138,20 @@ func (s ShellTool) Execute(ctx context.Context, in json.RawMessage, sink Progres
 	defer cancel()
 
 	script := inp.Command
+	// Check cwd first: otherwise exec reports "fork/exec /bin/sh: no such file
+	// or directory", which reads as if the shell is missing.
+	if inp.CWD != nil {
+		info, err := os.Stat(*inp.CWD)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			return Result{IsError: true, Content: "shell: cwd does not exist: " + *inp.CWD}, nil
+		case err != nil:
+			return Result{IsError: true, Content: "shell: cwd: " + err.Error()}, nil
+		case !info.IsDir():
+			return Result{IsError: true, Content: "shell: cwd is not a folder: " + *inp.CWD}, nil
+		}
+	}
+
 	var passwordFile *os.File
 	if pw := SudoPasswordFrom(ctx); pw != "" && runtime.GOOS != "windows" {
 		f, err := sudoPasswordPipe(pw)

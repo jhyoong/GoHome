@@ -422,7 +422,7 @@ All in `gohome/internal/tui/`.
 | R22 | Low (perf) | chat.go:457, ansi.go | Streaming re-parses the whole entry on every frame, and `WrapText` uses regex heavily (prior P5, P6). |
 | R23 | Low (perf) | model.go:458-476,727-733 | Wheel events are not throttled, and each wheel notch creates its own timer (prior P7, P8). |
 
-**Status:** Fixed on branch `fix/tui-audit` (plan: `docs/reviews/2026-10-17-tui-plan.md`), except where noted.
+**Status:** Fixed on branch `fix/tui-audit` (plan: `docs/old/2026-10-17-tui-plan.md`), except where noted.
 - R1, R12: the full SGR state is tracked across wraps, codes in dropped spaces are applied, and zero-width tokens are kept. Words that fit on the next line are no longer broken mid-word.
 - R2, R3, R13: raw HTML is shown as text. Code blocks are hard-wrapped with indentation kept. Headings wrap. Nested lists are indented once per level. Wide tables shrink their widest columns and wrap cells. Heading style is restored after inline emphasis.
 - R4: fixed by S5 (the sanitizer removes `\r`). The external editor gap is also fixed.
@@ -454,7 +454,7 @@ All in `gohome/internal/tui/`.
   - `main.go:740` says shutdown takes "~1s", which is not guaranteed.
   - `list.go:23` says "resumable" but includes subagent sessions.
 - **README mismatch:** the README says Enter expands thinking entries. `chat.go:472-485` never reads `Expanded` for them.
-- **Status:** All fixed. A `deadcode` scan on branch `fix/ci-and-outdated-docs` found one more test-only helper, `resetHighlightCache`, which moved to `markdown_test.go` (plan: `docs/reviews/2026-10-18-docs-ci-plan.md`).
+- **Status:** All fixed. A `deadcode` scan on branch `fix/ci-and-outdated-docs` found one more test-only helper, `resetHighlightCache`, which moved to `markdown_test.go` (plan: `docs/old/2026-10-18-docs-ci-plan.md`).
 
 ---
 
@@ -541,7 +541,7 @@ All in `gohome/internal/tui/`.
 - The queued-messages item is fixed.
 
 ### Status
-Fixed on branch `fix/ci-and-outdated-docs` (plan: `docs/reviews/2026-10-18-docs-ci-plan.md`). Several README and CHANGELOG items had already been fixed by earlier branches (Esc Esc, Ctrl+G, Ctrl+Y, Ctrl+D delete, sudo in yolo, the Unreleased section).
+Fixed on branch `fix/ci-and-outdated-docs` (plan: `docs/old/2026-10-18-docs-ci-plan.md`). Several README and CHANGELOG items had already been fixed by earlier branches (Esc Esc, Ctrl+G, Ctrl+Y, Ctrl+D delete, sudo in yolo, the Unreleased section).
 - README: Alt+Enter, `/new` and `/resume` wording, `/config` select list, `/help`, the compaction prefix, the `contextWindow` default, Deny ends the run, `--prompt -` needs `--yolo`, the whitelist file format, and the denylist file locations and merge rules.
 - `help.go`: Ctrl+Y for copy, `/endpoint` and `--endpoint` removed, and the missing keys, commands and flags added.
 - AGENTS.md (the audit's "CLAUDE.md"): the tools list and `SteerCh()`. The strip-flag note was fixed by `fix/outdated-components`.

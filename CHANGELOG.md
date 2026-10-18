@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+Fixes for follow-up items 58-62 from the 2026-10-18 live test (`docs/reviews/2026-10-18-outdated-components-live-test.md`).
+
+### Fixed
+
+- **Compaction summaries** -- The summary request now ends with a user message asking for the summary. Before, the request often ended with a tool call or tool result, and the model continued the conversation instead of summarizing it (58).
+- **E2E compaction test** -- `TestE2EAutoCompact` raises `MaxTokens` to 4096 for the summary, because a reasoning model could spend the default 256 tokens on thinking and return no text. The test also checks that the summary is a summary (59).
+- **Tabs on screen** -- Tabs in assistant markdown, code blocks and thinking entries are expanded to spaces. Raw tabs left old text, such as the spinner, visible until a full redraw (60).
+- **Shell `cwd` errors** -- A missing `cwd` gives "cwd does not exist: <path>", and a file gives "cwd is not a folder: <path>", instead of `fork/exec /bin/sh: no such file or directory` (61).
+- **Spinner during approval** -- The spinner says "Waiting for approval..." while the approval menu is open (62).
+
 ## v0.4.4-dev2
 
 Fixes from the 2026-10-17 codebase audit (`docs/reviews/2026-10-17-codebase-audit.md`). IDs such as S1 or D4 refer to that report.
