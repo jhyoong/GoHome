@@ -445,7 +445,8 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 
 	switch e.Kind {
 	case KindUser:
-		text := WrapText(e.Text, maxWidth-4)
+		// Live entries hold the raw typed or pasted text, so clean it here.
+		text := WrapText(sanitizeText(e.Text), maxWidth-4)
 		styled := userBlockStyle.Width(maxWidth - 3).Render(strings.Join(text, "\n"))
 		for j, l := range strings.Split(styled, "\n") {
 			if j == 0 {

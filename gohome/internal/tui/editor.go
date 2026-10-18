@@ -376,7 +376,7 @@ func (e *EditorComponent) Render(width int) []string {
 			localCol := e.cursorCol - vr.startCol
 			out = append(out, renderCursorInRow(text, localCol))
 		} else {
-			out = append(out, text)
+			out = append(out, sanitizeText(text))
 		}
 	}
 
@@ -388,17 +388,22 @@ func (e *EditorComponent) Render(width int) []string {
 	return out
 }
 
-// renderCursorInRow inserts reverse-video styling at localCol within a visual row's text.
+// renderCursorInRow inserts reverse-video styling at localCol within a visual
+// row's text. Control characters are removed for display only; the editor
+// value keeps them. A cursor on a removed character is shown as a space.
 func renderCursorInRow(text string, localCol int) string {
 	runes := []rune(text)
 	if localCol > len(runes) {
 		localCol = len(runes)
 	}
 
-	before := string(runes[:localCol])
+	before := sanitizeText(string(runes[:localCol]))
 	if localCol < len(runes) {
-		cursorChar := string(runes[localCol])
-		after := string(runes[localCol+1:])
+		cursorChar := sanitizeText(string(runes[localCol]))
+		if cursorChar == "" {
+			cursorChar = " "
+		}
+		after := sanitizeText(string(runes[localCol+1:]))
 		return before + "\x1b[7m" + cursorChar + "\x1b[0m" + after
 	}
 	return before + "\x1b[7m \x1b[0m"
