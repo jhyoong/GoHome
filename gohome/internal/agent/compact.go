@@ -37,6 +37,13 @@ func (cfg CompactConfig) shouldCompact(usage common.Usage) bool {
 
 const minCompactMessages = 4
 
+// compactWait records a rejected compaction: compact skips sessionID until its
+// history has at least minLen messages.
+type compactWait struct {
+	sessionID string
+	minLen    int
+}
+
 // compact sends older conversation history to the LLM for summarization,
 // keeps the first 2 messages (stable prefix for prompt caching) and the
 // last ~4 messages (recent turns) intact, summarizes everything in between,
@@ -44,6 +51,12 @@ const minCompactMessages = 4
 // Persists a Compaction event and emits an EventCompacted to the frontend.
 func (a *Agent) compact(ctx context.Context, sess *session.Session) error {
 	if len(sess.History) < minCompactMessages {
+		return nil
+	}
+	// After a rejected summary, wait until the messages kept as recent then
+	// are part of what gets summarized, so the same request is not repeated
+	// on every turn.
+	if w := a.compactWait; w.sessionID == sess.ID && len(sess.History) < w.minLen {
 		return nil
 	}
 
@@ -100,11 +113,13 @@ func (a *Agent) compact(ctx context.Context, sess *session.Session) error {
 	copy(recentMessages, sess.History[splitIdx:])
 
 	beforeTokens := 0
+	beforeChars := 0
 	for _, msg := range oldMessages {
 		for _, b := range msg.Content {
 			beforeTokens += len(b.Text) / 4
 			beforeTokens += len(b.InputJSON) / 4
 			beforeTokens += len(b.ResultText) / 4
+			beforeChars += len(b.Text) + len(b.InputJSON) + len(b.ResultText)
 		}
 	}
 
@@ -132,12 +147,14 @@ func (a *Agent) compact(ctx context.Context, sess *session.Session) error {
 
 	var sb strings.Builder
 	turnDone := false
+	stopReason := ""
 	for ev := range events {
 		switch ev.Kind {
 		case common.EventTextDelta:
 			sb.WriteString(ev.TextDelta)
 		case common.EventTurnDone:
 			turnDone = true
+			stopReason = ev.StopReason
 		case common.EventError:
 			return ev.Err
 		}
@@ -152,10 +169,27 @@ func (a *Agent) compact(ctx context.Context, sess *session.Session) error {
 	}
 	summary := sb.String()
 
-	if summary == "" {
-		slog.Warn("compact: LLM returned empty summary, skipping")
+	// Keep the full history when the summary is unusable or gains nothing.
+	reject := ""
+	switch {
+	case stopReason == "max_tokens" || stopReason == "length":
+		reject = "the summary was cut off at the output token limit (" + stopReason + ")"
+	case summary == "":
+		reject = "the summary was empty"
+	case len(summary) >= beforeChars:
+		reject = "the summary was not shorter than the messages it replaces"
+	}
+	if reject != "" {
+		slog.Warn("compact: summary rejected, keeping full history", "reason", reject)
+		a.compactWait = compactWait{sessionID: sess.ID, minLen: len(sess.History) + len(recentMessages)}
+		a.Frontend.Emit(sess.ID, Event{
+			Kind:      EventNotice,
+			SessionID: sess.ID,
+			Notice:    "Compaction skipped: " + reject + ". Keeping the full history.",
+		})
 		return nil
 	}
+	a.compactWait = compactWait{}
 
 	summaryMsg := common.Message{
 		Role: common.RoleUser,

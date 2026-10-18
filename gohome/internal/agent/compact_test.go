@@ -77,12 +77,13 @@ func TestCompact_KeepsRecentMessages(t *testing.T) {
 	fe := &fakeRecorder{}
 	a, sess, _ := newTestAgent(t, client, fe)
 
-	// 8 messages: 2 prefix + 2 to summarize + 4 recent
+	// 8 messages: 2 prefix + 2 to summarize + 4 recent. The summarized
+	// messages are longer than the summary, so it is applied.
 	sess.History = []common.Message{
 		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "first"}}},
 		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "reply"}}},
-		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "second"}}},
-		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "reply2"}}},
+		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "second message with some detail"}}},
+		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "reply2 with some detail"}}},
 		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "third"}}},
 		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "reply3"}}},
 		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "fourth"}}},
@@ -691,5 +692,168 @@ func TestCompact_RequestEndsWithSummaryAsk(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// longHistory returns 8 messages (2 prefix + 2 old + 4 recent) where the old
+// messages are long enough that a short summary is a real gain.
+func longHistory() []common.Message {
+	text := func(role common.Role, s string) common.Message {
+		return common.Message{Role: role, Content: []common.Block{{Kind: common.BlockText, Text: s}}}
+	}
+	long := strings.Repeat("old conversation text ", 20)
+	return []common.Message{
+		text(common.RoleUser, "first"), text(common.RoleAssistant, "reply"),
+		text(common.RoleUser, long), text(common.RoleAssistant, long),
+		text(common.RoleUser, "third"), text(common.RoleAssistant, "reply3"),
+		text(common.RoleUser, "fourth"), text(common.RoleAssistant, "reply4"),
+	}
+}
+
+// assertCompactRejected checks that compact kept the history, emitted a
+// notice containing wantNotice and no EventCompacted.
+func assertCompactRejected(t *testing.T, fe *fakeRecorder, before, after []common.Message, wantNotice string) {
+	t.Helper()
+	if len(after) != len(before) {
+		t.Fatalf("history len = %d, want %d (unchanged)", len(after), len(before))
+	}
+	for i := range before {
+		if after[i].Content[0].Text != before[i].Content[0].Text {
+			t.Errorf("history[%d] changed", i)
+		}
+	}
+	var notice string
+	for _, ev := range fe.events {
+		if ev.Kind == EventCompacted {
+			t.Error("EventCompacted emitted for a rejected summary")
+		}
+		if ev.Kind == EventNotice {
+			notice = ev.Notice
+		}
+	}
+	if !strings.Contains(notice, wantNotice) {
+		t.Errorf("notice = %q, want it to contain %q", notice, wantNotice)
+	}
+}
+
+func TestCompact_RejectsCutOffSummary(t *testing.T) {
+	for _, stop := range []string{"max_tokens", "length"} {
+		t.Run(stop, func(t *testing.T) {
+			events := []common.StreamEvent{
+				{Kind: common.EventTextDelta, TextDelta: "partial"},
+				{Kind: common.EventTurnDone, StopReason: stop},
+			}
+			client := &fakeClient{sequences: [][]common.StreamEvent{events}}
+			fe := &fakeRecorder{}
+			a, sess, _ := newTestAgent(t, client, fe)
+			sess.History = longHistory()
+
+			if err := a.compact(context.Background(), sess); err != nil {
+				t.Fatalf("compact: %v", err)
+			}
+			assertCompactRejected(t, fe, longHistory(), sess.History, "output token limit")
+		})
+	}
+}
+
+func TestCompact_RejectsSummaryNotShorter(t *testing.T) {
+	h := longHistory()
+	oldLen := len(h[2].Content[0].Text) + len(h[3].Content[0].Text)
+	events := []common.StreamEvent{
+		{Kind: common.EventTextDelta, TextDelta: strings.Repeat("x", oldLen)},
+		{Kind: common.EventTurnDone, StopReason: "end_turn"},
+	}
+	client := &fakeClient{sequences: [][]common.StreamEvent{events}}
+	fe := &fakeRecorder{}
+	a, sess, _ := newTestAgent(t, client, fe)
+	sess.History = longHistory()
+
+	if err := a.compact(context.Background(), sess); err != nil {
+		t.Fatalf("compact: %v", err)
+	}
+	assertCompactRejected(t, fe, h, sess.History, "not shorter")
+}
+
+func TestCompact_RejectsEmptySummaryWithNotice(t *testing.T) {
+	events := []common.StreamEvent{{Kind: common.EventTurnDone, StopReason: "end_turn"}}
+	client := &fakeClient{sequences: [][]common.StreamEvent{events}}
+	fe := &fakeRecorder{}
+	a, sess, _ := newTestAgent(t, client, fe)
+	sess.History = longHistory()
+
+	if err := a.compact(context.Background(), sess); err != nil {
+		t.Fatalf("compact: %v", err)
+	}
+	assertCompactRejected(t, fe, longHistory(), sess.History, "empty")
+}
+
+// After a rejected summary, compact does not ask again until the messages it
+// kept as recent have moved into the summarized part.
+func TestCompact_RejectedWaitsForNewMessages(t *testing.T) {
+	cutOff := []common.StreamEvent{{Kind: common.EventTurnDone, StopReason: "length"}}
+	good := []common.StreamEvent{
+		{Kind: common.EventTextDelta, TextDelta: "short summary"},
+		{Kind: common.EventTurnDone, StopReason: "end_turn"},
+	}
+	client := &fakeClient{sequences: [][]common.StreamEvent{cutOff, good}}
+	a, sess, _ := newTestAgent(t, client, &fakeRecorder{})
+	sess.History = longHistory()
+
+	if err := a.compact(context.Background(), sess); err != nil {
+		t.Fatalf("compact 1: %v", err)
+	}
+	if client.callCount != 1 {
+		t.Fatalf("callCount = %d, want 1", client.callCount)
+	}
+
+	// Two new messages: not enough, no new request.
+	more := []common.Message{
+		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "fifth"}}},
+		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockText, Text: "reply5"}}},
+	}
+	sess.History = append(sess.History, more...)
+	if err := a.compact(context.Background(), sess); err != nil {
+		t.Fatalf("compact 2: %v", err)
+	}
+	if client.callCount != 1 {
+		t.Fatalf("callCount = %d after 2 new messages, want 1", client.callCount)
+	}
+
+	// Two more: the old recent messages are now in the summarized part, so
+	// compact tries again.
+	sess.History = append(sess.History, more...)
+	if err := a.compact(context.Background(), sess); err != nil {
+		t.Fatalf("compact 3: %v", err)
+	}
+	if client.callCount != 2 {
+		t.Fatalf("callCount = %d after 4 new messages, want 2", client.callCount)
+	}
+	if !strings.HasPrefix(sess.History[2].Content[0].Text, session.CompactSummaryPrefix) {
+		t.Errorf("history[2] = %q, want the summary", sess.History[2].Content[0].Text)
+	}
+}
+
+// A rejection in one session does not block compaction in another session
+// that the same agent runs after /new or /resume.
+func TestCompact_RejectionIsPerSession(t *testing.T) {
+	cutOff := []common.StreamEvent{{Kind: common.EventTurnDone, StopReason: "length"}}
+	good := []common.StreamEvent{
+		{Kind: common.EventTextDelta, TextDelta: "short summary"},
+		{Kind: common.EventTurnDone, StopReason: "end_turn"},
+	}
+	client := &fakeClient{sequences: [][]common.StreamEvent{cutOff, good}}
+	a, sess, _ := newTestAgent(t, client, &fakeRecorder{})
+	sess.History = longHistory()
+	if err := a.compact(context.Background(), sess); err != nil {
+		t.Fatalf("compact 1: %v", err)
+	}
+
+	other := session.NewSession("sess-other", t.TempDir(), "model", "anthropic")
+	other.History = longHistory()
+	if err := a.compact(context.Background(), other); err != nil {
+		t.Fatalf("compact 2: %v", err)
+	}
+	if client.callCount != 2 {
+		t.Fatalf("callCount = %d, want 2", client.callCount)
 	}
 }
