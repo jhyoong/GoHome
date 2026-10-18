@@ -2,17 +2,6 @@
 
 Open items found while fixing and testing the 2026-10-17 audit items (PRs #48 to #56). Each section names the fixes it came from. None of these are regressions.
 
-## Denylist
-
-1. **A project file can turn off the built-in denylist.** If there is no global `~/.gohome/denylist.json` (for example the user chose "No" in the setup wizard), a repo can ship `.gohome/denylist.json` with `{"shell":[]}`. The built-in rules are then dropped, and `rm -rf /` and `rm -rf ~` are not denied. Approval prompts still apply when yolo is off. Related to audit S2, which was marked as not an issue.
-2. **Bypass forms that are not denied.** These still prompt when yolo is off:
-   - `rm / -rf` (target before the flag)
-   - `rm -rf //` and `rm -rf /.`
-   - `bash -c "rm -rf /"` and `sh -c 'rm -rf ~'`
-   - `find / -delete` and similar commands
-3. **False positive.** `echo "; rm -rf /"` is denied, because the `;` inside the quotes is treated as a separator.
-4. **Write and edit tools are not checked by the denylist.** Excluded from the security fixes plan.
-
 ## Whitelist and approval prompt
 
 5. **"Allow always" on a chained command saves a rule that never matches.** For example `git status; echo x` suggests `^git status;`. Chained commands are never auto-approved, so the rule is useless. Offer no suggestion for commands with shell operators.
