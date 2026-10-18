@@ -2,13 +2,13 @@
 
 ## Unreleased
 
-Fixes for follow-up items 58-62 from the 2026-10-18 live test, file path fixes for items 39, 52 and 53, terminal output fixes for items 11, 12 and 13, whitelist and approval prompt fixes for items 5, 6, 7, 9, 10 and 14, setup wizard, logging and TUI fixes for items 16, 17, 18, 42, 44 and 65, session loading and writer fixes for items 21-29, subagent session fixes for items 30, 31 and 32, and compaction and failed run fixes for items 40, 64 and 66.
+Fixes for follow-up items 58-62 from the 2026-10-18 live test, file path fixes for items 39, 52 and 53, terminal output fixes for items 11, 12 and 13, whitelist and approval prompt fixes for items 5, 6, 7, 9, 10 and 14, setup wizard, logging and TUI fixes for items 16, 17, 18, 42, 44 and 65, session loading and writer fixes for items 21-29, subagent session fixes for items 30, 31 and 32, compaction and failed run fixes for items 40, 64 and 66, stream end fixes for items 33, 34, 35 and 37, retry and watchdog fixes for items 46 and 50, SSE and OpenAI wire fixes for items 47, 48 and 49, prompt caching for item 45, and wizard wrapping for item 67.
 
 ### Added
 
 - **Guard debug logging** -- With `GOHOME_DEBUG=1`, every guard decision (whitelisted, denylisted, yolo, user choice) and every approval or sudo password prompt is written to the debug log with the session, tool and command. The sudo password is never logged (18).
-- **`maxTokensField` model setting** -- Chooses `max_tokens` or `max_completion_tokens` for the OpenAI wire.
-- **`promptCache` model setting** -- Opt-in Anthropic prompt caching.
+- **`maxTokensField` model setting** -- Chooses `max_tokens` or `max_completion_tokens` for the OpenAI wire (47).
+- **`promptCache` model setting** -- Opt-in Anthropic prompt caching (45).
 
 ### Fixed
 
@@ -45,14 +45,14 @@ Fixes for follow-up items 58-62 from the 2026-10-18 live test, file path fixes f
 - **Rejected compaction summaries** -- A summary is not applied when it stopped at the output token limit (`max_tokens` or `length`), is empty, or is not shorter than the messages it replaces. The full history is kept and a notice says why (64, 66).
 - **Fewer repeated compactions** -- After a rejected summary, compaction waits until the messages it kept as recent are part of what gets summarized, instead of asking again on every turn (66).
 - **Failed runs are marked** -- When a run fails (not cancelled), an assistant message "[Run failed] <error>" is added after the unanswered message and saved in the session file. It shows on resume, the model sees it on the next turn, and roles still alternate (40).
-- **Stream ended early** -- Both wires return one `ErrStreamEndedEarly` sentinel, so `errors.Is` works across packages.
-- **Pending tools after a stream error** -- Pending tool entries are marked as failed when a stream error arrives.
-- **Token limit notice on resume** -- The `max_tokens`/`length` notice is rebuilt when a session is resumed.
-- **Overload retry** -- A mid-stream `overloaded_error` is retried when no content has been received yet.
-- **Idle watchdog** -- The idle-read watchdog pauses while the stream consumer is slow, so a slow TUI or stdout no longer cuts the stream.
-- **SSE parsing** -- One SSE parser serves both wires and handles CR and CRLF line endings and multi-line `data:` payloads.
-- **OpenAI tool call ids** -- A new tool call id at an index already in use starts a new tool call instead of joining the arguments.
-- **Wizard wrapping** -- Wizard option descriptions and notices wrap at narrow widths.
+- **Stream ended early** -- Both wires return one `ErrStreamEndedEarly` sentinel, so `errors.Is` works across packages (34, 37).
+- **Pending tools after a stream error** -- Pending tool entries are marked as failed when a stream error arrives (33).
+- **Token limit notice on resume** -- The `max_tokens`/`length` notice is rebuilt when a session is resumed (35).
+- **Overload retry** -- A mid-stream `overloaded_error` is retried when no content has been received yet (46).
+- **Idle watchdog** -- The idle-read watchdog pauses while the stream consumer is slow, so a slow TUI or stdout no longer cuts the stream (50).
+- **SSE parsing** -- One SSE parser serves both wires and handles CR and CRLF line endings and multi-line `data:` payloads (49).
+- **OpenAI tool call ids** -- A new tool call id at an index already in use starts a new tool call instead of joining the arguments (48).
+- **Wizard wrapping** -- Wizard option descriptions and notices wrap at narrow widths (67).
 
 ## v0.4.4-dev2
 
