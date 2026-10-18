@@ -36,7 +36,7 @@ Note: T3 failed once on local-openai (reply text did not contain "OK" for the fi
 - Cache usage is NOT reported by gohome. In the session JSONL and in the `turn_done` events, `inputTokens`, `cacheReadTokens` and `cacheWriteTokens` were all 0 on both turns.
 - Cause: a direct request to the same endpoint (same body shape, `cache_control` on the system block) shows the endpoint sends `usage` with `input_tokens: 0` in `message_start`, and puts the real counts only in `message_delta` (`cache_creation_input_tokens: 6055` on call 1, `cache_read_input_tokens: 6050` on call 2). So caching works on the server. gohome reads input and cache tokens only from `message_start` (`translate.go`, `message_start` case) and only `output_tokens` from `message_delta`.
 - Side effect: with `promptCache` on against this endpoint, `inputTokens` is 0, so the context meter and the compaction trigger (`agent/compact.go` sums usage) under-count. Without `promptCache` the same endpoint reports `inputTokens` 7115 and 7155 in `message_start`, on branch and on main.
-- Main has no `promptCache`, so main does not hit this. Logged as follow-up 64.
+- Main has no `promptCache`, so main does not hit this. Logged as follow-up 68.
 
 ### B. maxTokensField (local-openai, `max_completion_tokens`, `maxTokens` 200)
 Pass. The endpoint accepted the request. The reply stopped at `outputTokens` 200 with `stopReason: length`, the notice "Response cut off: the model reached its output token limit (length)." was emitted, and the run ended normally with no error.
@@ -44,7 +44,7 @@ Pass. The endpoint accepted the request. The reply stopped at `outputTokens` 200
 ### D. Narrow TUI (tmux, 50 columns)
 | Check | Result |
 |---|---|
-| `/resume` list within screen | Pass (no line over 50 columns). Long titles clip the age column ("just now" shows as "just", "1m ago" as "1m ag"). Main shows the same. Logged as follow-up 65 (minor). |
+| `/resume` list within screen | Pass (no line over 50 columns). Long titles clip the age column ("just now" shows as "just", "1m ago" as "1m ag"). Main shows the same. Logged as follow-up 69 (minor). |
 | `/model` list within screen | Pass (all rows 50 columns, description right-aligned) |
 | Setup wizard option descriptions wrap | Pass. Run with `HOME` set to an empty scratch dir, so the real `~/.gohome` was not touched. The "How is your API key provided?" step wraps "read from an env var at / runtime" onto a second indented line. Wire step fits on one line. Only wizard steps 1 to 3 were walked; later steps were not reached. |
 
@@ -58,8 +58,8 @@ Pass. The endpoint accepted the request. The reply stopped at `outputTokens` 200
 | `--resume` reopens the last session, no picker, answers about an earlier turn | Pass | not run |
 
 ## Bugs
-- 64: cache and input tokens are not read from `message_delta` usage (branch only, affects `promptCache` on this endpoint; main has no promptCache).
-- 65: `/resume` list clips the age column at narrow widths (minor; also on main).
+- 68: cache and input tokens are not read from `message_delta` usage (branch only, affects `promptCache` on this endpoint; main has no promptCache).
+- 69: `/resume` list clips the age column at narrow widths (minor; also on main).
 
 ## Not tested
 - The Anthropic fresh-redraw comparison for markdown, and the `[2] Allow always` approval (writes the whitelist).
