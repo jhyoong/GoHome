@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-Fixes for follow-up items 58-62 from the 2026-10-18 live test (`docs/reviews/2026-10-18-outdated-components-live-test.md`), file path fixes for items 39, 52 and 53, and terminal output fixes for items 11, 12 and 13.
+Fixes for follow-up items 58-62 from the 2026-10-18 live test (`docs/reviews/2026-10-18-outdated-components-live-test.md`), file path fixes for items 39, 52 and 53, terminal output fixes for items 11, 12 and 13, and whitelist and approval prompt fixes for items 5, 6, 7, 9, 10 and 14.
 
 ### Fixed
 
@@ -17,6 +17,12 @@ Fixes for follow-up items 58-62 from the 2026-10-18 live test (`docs/reviews/202
 - **Bidi characters** -- Bidi controls (U+061C, U+200E, U+200F, U+202A-U+202E, U+2066-U+2069) can make a command look different from what runs. The approval prompt now shows them as `\uNNNN` with the control-character warning, timeline text drops them, and a command with one gets no suggested whitelist pattern (11).
 - **Unknown-tool summaries** -- The 60-column cut is now made after control characters are removed (timeline) or written out (approval prompt), so it can no longer split an escape sequence (12).
 - **File names and session titles** -- Control sequences are removed from file names in the file search list and from session titles in the `/resume` picker. The selected file path is unchanged (13).
+- **No pattern for chained commands** -- A command with a shell operator (`;`, `|`, `&`, `$(`, redirects, newlines) gets no suggested whitelist pattern. Such commands are never auto-approved, so a rule like `^git status;` never matched (5).
+- **Allow always on sudo** -- A sudo command with no suggested pattern shows "Allow always (not available for this command)" instead of failing with "pattern is empty". Sudo prompts no longer show the "(e edit)" hint, since editing is disabled for sudo (6).
+- **Empty-pattern hint** -- "Allow always" shows "(e edit)" when there is no suggested pattern, and the error line clears when moving with the arrow keys (7).
+- **Tabs in whitelist matching** -- A tab now counts as a word boundary, so `^ls` allows `ls<TAB>-la` (9).
+- **Carriage return** -- `\r` counts as a shell operator, so a command with one is never auto-approved (10).
+- **Whitelist file mode** -- A new project `whitelist.json` is created `0600` and its folder `0700`. Existing files keep their mode (14).
 
 ## v0.4.4-dev2
 

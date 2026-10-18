@@ -87,17 +87,22 @@ func (w *Whitelist) Allows(tool string, inputJSON []byte) bool {
 // hasShellOperator reports whether cmd contains a character sequence that can
 // chain, substitute, or redirect commands. Such commands are never auto-approved.
 func hasShellOperator(cmd string) bool {
-	return strings.ContainsAny(cmd, ";&|\n`<>") || strings.Contains(cmd, "$(")
+	return strings.ContainsAny(cmd, ";&|\n\r`<>") || strings.Contains(cmd, "$(")
 }
 
 // matchesWholeWord reports whether re matches a prefix of cmd that ends at a
-// word boundary: the end of the command, a following space, or a match that
-// itself ends in a space (e.g. the pattern "^git ").
+// word boundary: the end of the command, a following space or tab, or a match
+// that itself ends in a space or tab (e.g. the pattern "^git ").
 func matchesWholeWord(re *regexp.Regexp, cmd string) bool {
 	loc := re.FindStringIndex(cmd)
 	if loc == nil {
 		return false
 	}
 	end := loc[1]
-	return end == len(cmd) || cmd[end] == ' ' || (end > 0 && cmd[end-1] == ' ')
+	return end == len(cmd) || isBlank(cmd[end]) || (end > 0 && isBlank(cmd[end-1]))
+}
+
+// isBlank reports whether b is a space or a tab.
+func isBlank(b byte) bool {
+	return b == ' ' || b == '\t'
 }

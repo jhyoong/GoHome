@@ -70,13 +70,13 @@ func (w *Whitelist) persistToFile(tool, pattern string) error {
 	// Ensure parent directories exist.
 	dir := filepath.Dir(w.projectPath)
 	if dir != "" {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return err
 		}
 	}
 
 	// Open (or create) the file for read+write.
-	f, err := os.OpenFile(w.projectPath, os.O_RDWR|os.O_CREATE, 0o644)
+	f, err := os.OpenFile(w.projectPath, os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
 		return err
 	}

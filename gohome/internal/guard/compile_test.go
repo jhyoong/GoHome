@@ -104,7 +104,7 @@ func TestCompileBadRegex(t *testing.T) {
 }
 
 func TestAllowsBlocksChainingAndPartialWords(t *testing.T) {
-	global := WhitelistFile{Shell: []string{"^git status", "ls", "^cat ", "^echo.*", "^pwd$"}}
+	global := WhitelistFile{Shell: []string{"^git status", "ls", "^cat ", "^echo.*", "^pwd$", "^head\t"}}
 	wl, err := Compile(global, WhitelistFile{}, "")
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
@@ -138,6 +138,13 @@ func TestAllowsBlocksChainingAndPartialWords(t *testing.T) {
 		{"echo hi; id", false},
 		{"pwd", true},
 		{"pwd -P", false},
+		// A tab is a word boundary like a space.
+		{"ls\t-la", true},
+		{"git status\t-s", true},
+		{"head\tfile.txt", true},
+		{"lsof\t-i", false},
+		// A carriage return is treated as a shell operator.
+		{"echo hi\rrm x", false},
 	}
 	for _, c := range cases {
 		b, _ := json.Marshal(map[string]string{"command": c.cmd})

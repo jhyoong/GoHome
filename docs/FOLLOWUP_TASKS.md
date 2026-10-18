@@ -2,20 +2,6 @@
 
 Open items found while fixing and testing the 2026-10-17 audit items (PRs #48 to #56). Each section names the fixes it came from. None of these are regressions.
 
-## Whitelist and approval prompt
-
-5. **"Allow always" on a chained command saves a rule that never matches.** For example `git status; echo x` suggests `^git status;`. Chained commands are never auto-approved, so the rule is useless. Offer no suggestion for commands with shell operators.
-6. **Sudo commands with no suggestion cannot be saved.** Editing the pattern is disabled for sudo, so "Allow always" shows "pattern is empty". "Allow once" and "Deny" still work.
-7. **No "(e edit)" hint when the pattern is empty,** and the `Error:` line stays visible while moving with the arrow keys.
-8. **Old `^sudo` whitelist entries stay active.** Entries saved by the old suggestion still allow every sudo command (silently with the password cache on). Consider a warning in `Compile` or a migration.
-9. **A tab is not a word boundary** in whitelist matching, so `ls<TAB>-la` prompts. Fails closed.
-10. **`\r` is not treated as a shell operator** in `hasShellOperator`. Only matters for hand-written patterns, since commands with control characters get no suggestion.
-
-## File permissions
-
-14. **`whitelist.json` is created `0644`.**
-15. **Existing `~/.gohome` folders created `0755` by older versions keep that mode.** Consider a one-time warning.
-
 ## Setup wizard
 
 16. **No confirmation after the denylist step.** The wizard shows "step 9/10" and closes without saying that `denylist.json` was written.
@@ -94,3 +80,6 @@ Minor items found while reviewing the D1-D9 fixes (plan: `docs/old/2026-10-17-da
 
 ### Terminal output (found while fixing items 11-13)
 65. **The editor and live user entries show raw control characters.** Picking a file whose name holds an escape sequence from the file search list inserts the real path into the editor, and the editor prints it raw (an SGR color applied in the live test). Text typed or pasted into the editor, and the user timeline entry made from it, are also not sanitized, so a pasted U+202E or ESC reaches the terminal. Resumed sessions are not affected (`historyToTimeline` sanitizes). This code is unchanged from `main` (not re-run there).
+
+### Compaction (found in the fix/approval-whitelist live test)
+66. **Compaction can run with little or no gain.** On `local-direct-anthropic`, one compaction went from 114 to 125 tokens, and others saved only a few tokens (94 to 88, 146 to 136 on `main`). One run compacted 9 times in 5 turns. Consider skipping compaction when the history is already small, or rejecting a summary that is not shorter than what it replaces. Found in `docs/reviews/2026-10-18-fix-approval-whitelist-live-test.md`; also on `main`.
