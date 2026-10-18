@@ -188,7 +188,9 @@ retry:
 				case common.EventError:
 					// An overloaded server before any content is retried.
 					if errors.Is(ev.Err, common.ErrOverloaded) && !sent && attempt < len(backoff) {
-						if err := common.Sleep(ctx, common.RetryDelay(backoff, attempt)); err != nil {
+						delay := common.RetryDelay(backoff, attempt)
+						slog.Debug("agent: retrying overloaded stream error", "attempt", attempt+1, "delay", delay)
+						if err := common.Sleep(ctx, delay); err != nil {
 							return "", nil, err
 						}
 						continue retry
