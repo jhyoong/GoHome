@@ -467,6 +467,30 @@ func TestDispatchTool_SudoPasswordInContext(t *testing.T) {
 	}
 }
 
+// TestDispatchTool_ToolUseIDInContext checks that the tool sees the ID of the
+// tool_use block it runs for.
+func TestDispatchTool_ToolUseIDInContext(t *testing.T) {
+	var got string
+	spy := &spyContextTool{onExecute: func(ctx context.Context) { got = tools.ToolUseIDFrom(ctx) }}
+	reg := tools.NewRegistry()
+	reg.Register(spy)
+	turn1 := []common.StreamEvent{
+		{Kind: common.EventToolCallDone, ToolCallID: "tc1", ToolName: "spy", InputJSON: `{}`},
+		{Kind: common.EventTurnDone, StopReason: "tool_use"},
+	}
+	turn2 := []common.StreamEvent{{Kind: common.EventTurnDone, StopReason: "end_turn"}}
+	client := &fakeClient{sequences: [][]common.StreamEvent{turn1, turn2}}
+	fe := &fakeRecorder{}
+	a, sess := newTestAgentWithGuard(t, client, fe, compileYoloGuard(t), reg)
+
+	if err := a.Run(context.Background(), sess); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got != "tc1" {
+		t.Errorf("ToolUseIDFrom = %q, want tc1", got)
+	}
+}
+
 // TestRun_UnknownTool verifies that a tool_use for an unregistered tool name
 // produces an IsError result but does not crash Run.
 func TestRun_UnknownTool(t *testing.T) {
