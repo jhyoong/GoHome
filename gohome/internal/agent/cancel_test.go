@@ -171,7 +171,7 @@ func TestRun_CancelBetweenToolCalls(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read jsonl: %v", err)
 	}
-	if got := countToolResultLines(string(raw), "tc2"); got != 1 {
+	if got := countToolResultLines(t, string(raw), "tc2"); got != 1 {
 		t.Errorf("tool_result lines for tc2 = %d, want 1\n%s", got, raw)
 	}
 }

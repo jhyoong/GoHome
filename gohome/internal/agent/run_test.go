@@ -892,16 +892,27 @@ func TestRun_SteerSkipPersistsToolResult(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read jsonl: %v", err)
 	}
-	if got := countToolResultLines(string(raw), "tc2"); got != 1 {
+	if got := countToolResultLines(t, string(raw), "tc2"); got != 1 {
 		t.Errorf("tool_result lines for tc2 = %d, want 1\n%s", got, raw)
 	}
 }
 
 // countToolResultLines counts tool_result JSONL lines for the given tool use ID.
-func countToolResultLines(raw, id string) int {
+func countToolResultLines(t *testing.T, raw, id string) int {
+	t.Helper()
 	n := 0
 	for _, line := range strings.Split(raw, "\n") {
-		if strings.Contains(line, `"tool_result"`) && strings.Contains(line, `"`+id+`"`) {
+		if line == "" {
+			continue
+		}
+		var ev struct {
+			Type      string `json:"type"`
+			ToolUseID string `json:"toolUseId"`
+		}
+		if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			t.Fatalf("decode JSONL line %q: %v", line, err)
+		}
+		if ev.Type == "tool_result" && ev.ToolUseID == id {
 			n++
 		}
 	}

@@ -172,7 +172,7 @@ func TestRun_InvalidToolJSONNotExecuted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read jsonl: %v", err)
 	}
-	if got := countToolResultLines(string(raw), "tc1"); got != 1 {
+	if got := countToolResultLines(t, string(raw), "tc1"); got != 1 {
 		t.Errorf("tool_result lines for tc1 = %d, want 1\n%s", got, raw)
 	}
 	if strings.Contains(string(raw), `"approval"`) {

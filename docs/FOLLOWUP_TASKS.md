@@ -20,19 +20,6 @@ Open items found while fixing and testing the 2026-10-17 audit items (PRs #48 to
 
 Minor items found while reviewing the D1-D9 fixes (plan: `docs/old/2026-10-17-data-loss-plan.md`). None of them lose data.
 
-### Session loading
-21. **Each line is copied twice.** `load.go` and `list.go` turn each line into a string and back into bytes. Pass the raw bytes to `json.Unmarshal` instead.
-22. **`isBlank` reads the whole file.** It keeps reading after the first `user_message`. Stop at the first one.
-23. **The compaction guard steps forward only once.** When the old messages would start with a `RoleTool` message, `compact.go` moves `prefixCount` by one. This is safe now that `Load` groups results, but a loop would be more robust.
-24. **Repaired results come after the recorded ones.** The synthetic "skipped: no result recorded" results are added after the real results, so their order differs from the `tool_use` order. The API matches results by ID.
-25. **Repair only checks the message right after each assistant turn.** No current code path writes anything else in between.
-
-### Session writer
-26. **`writer.Err()` is read before the write queue drains.** A write failure on the last turn is reported one run late, or never if the user quits. Consider checking `Close()`/`Err()` at shutdown.
-27. **The newline is still written after a failed line write.** This can leave a broken line. `Load` skips lines that do not parse.
-28. **Headless mode never checks `writer.Err()`.** Only the TUI `runLoop` shows "session not saved".
-29. **Emit after Close logs at Debug level**, so it is not visible by default.
-
 ### Subagent sessions
 30. **A child ID can be reused after a crash.** If gohome dies between the child's `session_start` and the parent's `subagent_spawn` marker, the next resume reuses `<parentID>-sub-N`. Fix by also taking the highest N from `ListChildren`.
 31. **Fallback linking can still pick the wrong entry.** A resumed child whose task matches no entry is linked from newest to oldest. This can be wrong when unmatched children and unrelated unlinked entries both exist. Two subagents with the same task text can also swap.
@@ -44,7 +31,7 @@ Minor items found while reviewing the D1-D9 fixes (plan: `docs/old/2026-10-17-da
 35. **The `max_tokens`/`length` notice is not saved.** It is gone after a resume. `StopReason` is saved, so `historyToTimeline` could rebuild it.
 
 ### Testing gaps
-37. **Weak assertions.** `stream_end_test.go` checks `err != nil` instead of the specific error. `countToolResultLines` matches substrings instead of decoding JSON. `TestWriterErrReportsWriteFailure` closes the file directly and ignores the double-close error.
+37. **Weak assertions.** `stream_end_test.go` checks `err != nil` instead of the specific error.
 38. **`TestPickResume_SkipsChildAndLoadsChildren` has no recorded failing run.** `TestListExcludesChildren` covers the same case and did fail first.
 
 ### Agent loop and TUI (found while fixing A1-A10)

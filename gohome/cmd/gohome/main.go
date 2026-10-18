@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -186,6 +187,21 @@ func runLoop(
 
 		drainPendingSwap(a, fe)
 	}
+}
+
+// closeWriter flushes and closes w at shutdown and reports a write or close
+// error on stderr. runLoop checks Err before the write queue drains, so a
+// failure on the last turn is only seen here.
+func closeWriter(w *session.Writer, stderr io.Writer) error {
+	err := w.Close()
+	if werr := w.Err(); werr != nil {
+		err = werr
+	}
+	if err != nil {
+		slog.Error("session write failed", "err", err)
+		_, _ = fmt.Fprintf(stderr, "gohome: session not saved: %v\n", err)
+	}
+	return err
 }
 
 // drainPendingSwap applies a session swap queued while the agent was busy
@@ -556,7 +572,7 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 			}
 
 			writer.Emit(session.SessionEnd{Reason: "prompt_done"})
-			_ = writer.Close()
+			_ = closeWriter(writer, os.Stderr)
 			if logFile != nil {
 				_ = logFile.Close()
 			}
@@ -570,7 +586,7 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 
 		signal.Stop(sigCh)
 		cancel()
-		_ = writer.Close()
+		_ = closeWriter(writer, os.Stderr)
 		if logFile != nil {
 			_ = logFile.Close()
 		}
@@ -851,9 +867,7 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 	wg.Wait()
 
 	state.Writer().Emit(session.SessionEnd{Reason: "user_quit"})
-	if err := state.Writer().Close(); err != nil {
-		slog.Error("writer close error", "err", err)
-	}
+	_ = closeWriter(state.Writer(), os.Stderr)
 
 	if n, err := session.CleanBlankSessions(home, cwd); err != nil {
 		slog.Warn("blank session cleanup failed", "err", err)

@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-Fixes for follow-up items 58-62 from the 2026-10-18 live test (`docs/reviews/2026-10-18-outdated-components-live-test.md`), file path fixes for items 39, 52 and 53, terminal output fixes for items 11, 12 and 13, and whitelist and approval prompt fixes for items 5, 6, 7, 9, 10 and 14.
+Fixes for follow-up items 58-62 from the 2026-10-18 live test (`docs/reviews/2026-10-18-outdated-components-live-test.md`), file path fixes for items 39, 52 and 53, terminal output fixes for items 11, 12 and 13, whitelist and approval prompt fixes for items 5, 6, 7, 9, 10 and 14, and session loading and writer fixes for items 21-29.
 
 ### Fixed
 
@@ -23,6 +23,11 @@ Fixes for follow-up items 58-62 from the 2026-10-18 live test (`docs/reviews/202
 - **Tabs in whitelist matching** -- A tab now counts as a word boundary, so `^ls` allows `ls<TAB>-la` (9).
 - **Carriage return** -- `\r` counts as a shell operator, so a command with one is never auto-approved (10).
 - **Whitelist file mode** -- A new project `whitelist.json` is created `0600` and its folder `0700`. Existing files keep their mode (14).
+- **Session write errors at exit** -- A session write or close error is printed to stderr ("gohome: session not saved") when gohome exits, in both TUI and headless mode. Before, a failure on the last turn was never reported, and headless mode never reported one (26, 28).
+- **No broken lines after a failed write** -- Each session line and its newline are written in one call, so a failed write no longer leaves a lone newline (27).
+- **Late session events** -- An event emitted after the session file is closed is logged at Warn instead of Debug (29).
+- **Repaired tool results** -- Synthetic "skipped: no result recorded" results are now in `tool_use` order with the recorded ones (24).
+- **Session loading** -- Lines are decoded without an extra copy, and blank-session cleanup stops reading a file at the first user message (21, 22).
 
 ## v0.4.4-dev2
 
