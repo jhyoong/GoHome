@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -35,17 +36,43 @@ type StreamConfig struct {
 // idleReader resets an idle timer on every read that returns data. When the
 // timer fires, the request context is cancelled with an ErrStreamIdle cause,
 // and the reader reports that cause instead of a bare "context canceled".
+//
+// While paused (the consumer is slow), the timer stays stopped so a blocked
+// consumer is not mistaken for server silence.
 type idleReader struct {
 	r       io.Reader
 	ctx     context.Context
 	timer   *time.Timer
 	timeout time.Duration
+
+	mu     sync.Mutex
+	paused bool
+}
+
+// pause stops the idle timer until resume is called.
+func (ir *idleReader) pause() {
+	ir.mu.Lock()
+	ir.paused = true
+	ir.timer.Stop()
+	ir.mu.Unlock()
+}
+
+// resume restarts the idle timer.
+func (ir *idleReader) resume() {
+	ir.mu.Lock()
+	ir.paused = false
+	ir.timer.Reset(ir.timeout)
+	ir.mu.Unlock()
 }
 
 func (ir *idleReader) Read(p []byte) (int, error) {
 	n, err := ir.r.Read(p)
 	if n > 0 {
-		ir.timer.Reset(ir.timeout)
+		ir.mu.Lock()
+		if !ir.paused {
+			ir.timer.Reset(ir.timeout)
+		}
+		ir.mu.Unlock()
 	}
 	if err != nil {
 		if cause := context.Cause(ir.ctx); errors.Is(cause, ErrStreamIdle) {
@@ -97,7 +124,8 @@ func StreamRequest(
 	idleErr := fmt.Errorf("%s: %w: no data received for %s", cfg.Prefix, ErrStreamIdle, idle)
 	timer := time.AfterFunc(idle, func() { cancel(idleErr) })
 
-	events := pump(ctx, &idleReader{r: resp.Body, ctx: reqCtx, timer: timer, timeout: idle})
+	ir := &idleReader{r: resp.Body, ctx: reqCtx, timer: timer, timeout: idle}
+	events := pump(ctx, ir)
 
 	out := make(chan StreamEvent, 16)
 	go func() {
@@ -115,11 +143,14 @@ func StreamRequest(
 				if !ok {
 					return
 				}
+				// A blocked send is the consumer's delay, not server silence.
+				ir.pause()
 				select {
 				case out <- e:
 				case <-ctx.Done():
 					return
 				}
+				ir.resume()
 			}
 		}
 	}()
