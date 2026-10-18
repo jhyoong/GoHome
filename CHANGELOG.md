@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-Fixes for follow-up items 58-62 from the 2026-10-18 live test (`docs/reviews/2026-10-18-outdated-components-live-test.md`), file path fixes for items 39, 52 and 53, terminal output fixes for items 11, 12 and 13, and whitelist and approval prompt fixes for items 5, 6, 7, 9, 10 and 14.
+Fixes for follow-up items 58-62 from the 2026-10-18 live test (`docs/reviews/2026-10-18-outdated-components-live-test.md`), file path fixes for items 39, 52 and 53, terminal output fixes for items 11, 12 and 13, whitelist and approval prompt fixes for items 5, 6, 7, 9, 10 and 14, and compaction and failed run fixes for items 40, 64 and 66.
 
 ### Fixed
 
@@ -23,6 +23,9 @@ Fixes for follow-up items 58-62 from the 2026-10-18 live test (`docs/reviews/202
 - **Tabs in whitelist matching** -- A tab now counts as a word boundary, so `^ls` allows `ls<TAB>-la` (9).
 - **Carriage return** -- `\r` counts as a shell operator, so a command with one is never auto-approved (10).
 - **Whitelist file mode** -- A new project `whitelist.json` is created `0600` and its folder `0700`. Existing files keep their mode (14).
+- **Rejected compaction summaries** -- A summary is not applied when it stopped at the output token limit (`max_tokens` or `length`), is empty, or is not shorter than the messages it replaces. The full history is kept and a notice says why (64, 66).
+- **Fewer repeated compactions** -- After a rejected summary, compaction waits until the messages it kept as recent are part of what gets summarized, instead of asking again on every turn (66).
+- **Failed runs are marked** -- When a run fails (not cancelled), an assistant message "[Run failed] <error>" is added after the unanswered message and saved in the session file. It shows on resume, the model sees it on the next turn, and roles still alternate (40).
 
 ## v0.4.4-dev2
 
