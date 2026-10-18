@@ -41,13 +41,11 @@ func Load(path string) (*Session, []common.Message, error) {
 	spawned := 0
 
 	err = forEachLine(f, func(raw []byte) {
-		line := string(raw)
-
 		var envelope struct {
 			Type string `json:"type"`
 			TS   string `json:"ts"`
 		}
-		if err := json.Unmarshal([]byte(line), &envelope); err != nil {
+		if err := json.Unmarshal(raw, &envelope); err != nil {
 			return
 		}
 
@@ -63,7 +61,7 @@ func Load(path string) (*Session, []common.Message, error) {
 				StartedAt   time.Time `json:"startedAt"`
 				TS          string    `json:"ts"`
 			}
-			if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			if err := json.Unmarshal(raw, &ev); err != nil {
 				return
 			}
 			sess = NewSession(ev.ID, ev.CWD, ev.Model, ev.ModelConfig)
@@ -80,7 +78,7 @@ func Load(path string) (*Session, []common.Message, error) {
 			var ev struct {
 				Content []common.Block `json:"content"`
 			}
-			if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			if err := json.Unmarshal(raw, &ev); err != nil {
 				return
 			}
 			history = append(history, common.Message{
@@ -92,7 +90,7 @@ func Load(path string) (*Session, []common.Message, error) {
 			var ev struct {
 				Content []common.Block `json:"content"`
 			}
-			if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			if err := json.Unmarshal(raw, &ev); err != nil {
 				return
 			}
 			history = append(history, common.Message{
@@ -106,7 +104,7 @@ func Load(path string) (*Session, []common.Message, error) {
 				Content   string `json:"content"`
 				IsError   bool   `json:"isError"`
 			}
-			if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			if err := json.Unmarshal(raw, &ev); err != nil {
 				return
 			}
 			blk := common.Block{
@@ -134,7 +132,7 @@ func Load(path string) (*Session, []common.Message, error) {
 				Summary string           `json:"summary"`
 				History []common.Message `json:"history"`
 			}
-			if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			if err := json.Unmarshal(raw, &ev); err != nil {
 				return
 			}
 			if len(ev.History) > 0 {
@@ -171,11 +169,22 @@ func Load(path string) (*Session, []common.Message, error) {
 // has no line length limit, so large tool results and compaction events are
 // read intact. The slice passed to fn is only valid during the call.
 func forEachLine(r io.Reader, fn func(line []byte)) error {
+	return forEachLineUntil(r, func(line []byte) bool {
+		fn(line)
+		return true
+	})
+}
+
+// forEachLineUntil is forEachLine, but stops reading as soon as fn returns
+// false.
+func forEachLineUntil(r io.Reader, fn func(line []byte) bool) error {
 	br := bufio.NewReader(r)
 	for {
 		line, err := br.ReadBytes('\n')
 		if trimmed := bytes.TrimRight(line, "\r\n"); len(trimmed) > 0 {
-			fn(trimmed)
+			if !fn(trimmed) {
+				return nil
+			}
 		}
 		if errors.Is(err, io.EOF) {
 			return nil
