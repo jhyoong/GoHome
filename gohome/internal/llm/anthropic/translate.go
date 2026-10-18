@@ -30,7 +30,10 @@ type msgDeltaData struct {
 		StopReason string `json:"stop_reason"`
 	} `json:"delta"`
 	Usage struct {
-		OutputTokens int `json:"output_tokens"`
+		InputTokens              int `json:"input_tokens"`
+		OutputTokens             int `json:"output_tokens"`
+		CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+		CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 	} `json:"usage"`
 }
 
@@ -222,6 +225,18 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 				}
 				stopReason = d.Delta.StopReason
 				usage.OutputTokens = d.Usage.OutputTokens
+				// Some endpoints send zero input counts in message_start and the
+				// real counts here. Override (never add) when non-zero, because
+				// the real API may repeat the same cumulative counts.
+				if d.Usage.InputTokens != 0 {
+					usage.InputTokens = d.Usage.InputTokens
+				}
+				if d.Usage.CacheReadInputTokens != 0 {
+					usage.CacheReadTokens = d.Usage.CacheReadInputTokens
+				}
+				if d.Usage.CacheCreationInputTokens != 0 {
+					usage.CacheWriteTokens = d.Usage.CacheCreationInputTokens
+				}
 
 			case "message_stop":
 				gotStop = true
