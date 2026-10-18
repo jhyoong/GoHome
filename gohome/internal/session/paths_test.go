@@ -1,6 +1,7 @@
 package session
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -67,5 +68,20 @@ func TestSessionPath(t *testing.T) {
 	wantPrefix := filepath.Join(home, "sessions") + string(filepath.Separator)
 	if !strings.HasPrefix(path, wantPrefix) {
 		t.Errorf("SessionPath: expected prefix %q, got %q", wantPrefix, path)
+	}
+}
+
+func TestProjectSlugResolvesSymlinks(t *testing.T) {
+	tmp := t.TempDir()
+	real := filepath.Join(tmp, "proj")
+	link := filepath.Join(tmp, "link")
+	if err := os.Mkdir(real, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("symlinks not supported: %v", err)
+	}
+	if got, want := ProjectSlug(link), ProjectSlug(real); got != want {
+		t.Errorf("ProjectSlug(link) = %q, ProjectSlug(real) = %q, want equal", got, want)
 	}
 }

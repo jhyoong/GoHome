@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -111,5 +112,29 @@ func TestEdit_NoSessionSkipsCheck(t *testing.T) {
 	}
 	if res.IsError {
 		t.Fatalf("expected success when no session in context, got: %s", res.Content)
+	}
+}
+
+func TestEdit_AfterWriteSucceeds(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "new.txt")
+	ctx, _ := makeSessionCtx()
+
+	raw, _ := json.Marshal(map[string]any{"path": path, "content": "hello world\n"})
+	res, err := (&WriteTool{}).Execute(ctx, raw, NullSink{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("unexpected write error: %s", res.Content)
+	}
+
+	// No read: the write alone should satisfy read-before-edit.
+	res = execEditWithCtx(t, ctx, map[string]any{
+		"path":       path,
+		"old_string": "hello",
+		"new_string": "goodbye",
+	})
+	if res.IsError {
+		t.Fatalf("unexpected edit error: %s", res.Content)
 	}
 }

@@ -1,1 +1,17 @@
 # What to focus on
+
+## Next PR: file paths (FOLLOWUP_TASKS 39, 52, 53)
+
+Branch: `fix/file-paths`. All three come from symlinks and read tracking, and 52 shows up in every live test.
+
+1. **52 `write` does not mark the file as read.** `tools/write.go` calls `SessionFrom(ctx).MarkRead(inp.Path)` after a successful write, the same way `tools/read.go` does. The model wrote the content, so it knows the file. Test: write then edit in one session succeeds with no read.
+2. **53 Read-before-edit does not follow symlinks.** `session.normalizeReadPath` (`session/session.go`) resolves symlinks with `filepath.EvalSymlinks` after `filepath.Abs`. If that fails (for example the file does not exist yet), resolve the parent folder and join the base name; if that also fails, keep the clean absolute path. Test: read `<tmp>/link/a.txt`, then `HasRead` on the real path is true, and the other way round.
+3. **39 A symlinked cwd makes two session folders.** `/var/...` and `/private/var/...` map to two slugs, so `/resume` from one path misses sessions from the other. Resolve the cwd with `filepath.EvalSymlinks` in `session.ProjectSlug` (`session/paths.go`), falling back to the given path on error. Keep the displayed cwd unchanged. Test: `ProjectSlug` of a symlink and of its target are equal.
+   - Note: sessions already saved under an unresolved symlinked path get a new slug and no longer show in `/resume`. Paths without symlinks keep the same slug. Mention this in the CHANGELOG.
+
+Then:
+- Remove items 39, 52 and 53 from `docs/FOLLOWUP_TASKS.md`. Add a CHANGELOG Unreleased entry.
+- Each fix gets a failing test first. Run `go vet`, `go test`, `golangci-lint`.
+- Live test with the gohome-full-test skill. The headless T1 test should no longer show `edit: file must be read first`. Also check `--resume` from `/tmp/<dir>` and from `/private/tmp/<dir>` finds the same session.
+
+Out of scope: item 51 (shell `cwd` against the session folder) and other FOLLOWUP_TASKS items.

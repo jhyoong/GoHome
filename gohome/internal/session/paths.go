@@ -9,7 +9,12 @@ import (
 
 // ProjectSlug returns a stable, filesystem-safe identifier for cwd.
 // Format: <basename>-<first 6 hex chars of sha1(cwd)>
+// Symlinks in cwd are resolved first, so a link and its target share a
+// slug. If resolving fails, cwd is used as given.
 func ProjectSlug(cwd string) string {
+	if resolved, err := filepath.EvalSymlinks(cwd); err == nil {
+		cwd = resolved
+	}
 	base := filepath.Base(cwd)
 	sum := sha1.Sum([]byte(cwd))
 	return fmt.Sprintf("%s-%x", base, sum[:3]) // 3 bytes = 6 hex chars
