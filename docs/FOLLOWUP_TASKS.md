@@ -105,3 +105,6 @@ Minor items found while reviewing the D1-D9 fixes (plan: `docs/reviews/2026-10-1
 
 ### Dependencies (deferred from the outdated components fixes)
 57. **Bubble Tea, Lip Gloss and Bubbles v2 are out at `charm.land/...`.** gohome is on Bubble Tea v1.3.10, Lip Gloss v1.1.0 and Bubbles v1.0.0. Moving to v2 is a migration with API changes. It may also fix item 54 (Windows paste) and allow Shift+Enter.
+
+### Compaction (found during the live test of the outdated components branch)
+58. **Compaction summaries are often not summaries.** The summary request has the instructions only in the system prompt and does not end with a user message asking for a summary. The model often continues the conversation instead, so the "summary" is a tool call written as text or a refusal. The model then loses track of its work. This existed before the branch. See `docs/reviews/2026-10-18-outdated-components-live-test.md`.
