@@ -98,3 +98,36 @@ func TestApprovalTinyTerminalStillCapsHeight(t *testing.T) {
 		t.Fatalf("approvalMaxHeight = %d, want >= 1", got)
 	}
 }
+
+func TestSudoExpandedLongCommandIsCappedAndScrolls(t *testing.T) {
+	m := New(nil, "")
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
+	var lines []string
+	for i := 0; i < 42; i++ {
+		lines = append(lines, fmt.Sprintf("LINE_%02d", i))
+	}
+	sendPasswordOnlyReq(m, "main", "sudo true\n"+strings.Join(lines, "\n"))
+	pressKey(m, tea.KeyTab)
+
+	view := StripAnsi(m.View())
+	if !strings.Contains(view, "LINE_00") || strings.Contains(view, "LINE_41") {
+		t.Fatalf("expected a capped window from the top:\n%s", view)
+	}
+	if n := strings.Count(view, "\n") + 1; n > 20 {
+		t.Fatalf("view has %d lines, want <= 20:\n%s", n, view)
+	}
+	if !strings.Contains(view, "of 43") || !strings.Contains(view, "Password:") {
+		t.Fatalf("expected position hint and password field:\n%s", view)
+	}
+
+	for i := 0; i < 10; i++ {
+		pressKey(m, tea.KeyPgDown)
+	}
+	view = StripAnsi(m.View())
+	if !strings.Contains(view, "LINE_41") || strings.Contains(view, "LINE_00") {
+		t.Fatalf("expected the end of the command after PgDn:\n%s", view)
+	}
+	if m.activeApproval.passwordInput.Value() != "" {
+		t.Error("scroll keys must not type into the password field")
+	}
+}

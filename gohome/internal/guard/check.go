@@ -36,7 +36,20 @@ func NewGuard(wl *Whitelist, fe Frontend, dl *Denylist) *Guard {
 // Check decides whether the given tool call is allowed.
 // Order: denylist (hard reject) -> yolo -> whitelist -> prompt user.
 // Sudo commands (whitelisted or yolo) still ask the frontend for the password.
+// Each decision is written to the debug log. The sudo password is never logged.
 func (g *Guard) Check(ctx context.Context, sessionID, tool string, input json.RawMessage) (Decision, error) {
+	dec, err := g.check(ctx, sessionID, tool, input)
+	if err != nil {
+		slog.Debug("guard error", "session", sessionID, "tool", tool, "err", err)
+		return dec, err
+	}
+	slog.Debug("guard decision", "session", sessionID, "tool", tool,
+		"summary", summaryFor(tool, input), "allow", dec.Allow, "reason", dec.Reason,
+		"deny_info", dec.DenyInfo, "saved_pattern", dec.SavedPattern)
+	return dec, nil
+}
+
+func (g *Guard) check(ctx context.Context, sessionID, tool string, input json.RawMessage) (Decision, error) {
 	// 1. Denylist: reject immediately, overrides everything.
 	if g.denylist != nil {
 		if matched, pattern := g.denylist.Denies(tool, input); matched {
@@ -80,6 +93,7 @@ func (g *Guard) Check(ctx context.Context, sessionID, tool string, input json.Ra
 
 	// 4. Ask the frontend for approval.
 	req.SuggestedPattern = Suggest(tool, input)
+	slog.Debug("guard prompt", "session", sessionID, "tool", tool, "summary", summary)
 	dec, err := g.frontend.RequestApproval(ctx, req)
 	if err != nil {
 		return Decision{}, err
@@ -110,6 +124,7 @@ func (g *Guard) Check(ctx context.Context, sessionID, tool string, input json.Ra
 // whitelisted command. No whitelist entry is added.
 func (g *Guard) askSudoPassword(ctx context.Context, req ApprovalRequest) (Decision, error) {
 	req.PasswordOnly = true
+	slog.Debug("guard sudo password prompt", "session", req.SessionID, "tool", req.Tool, "summary", req.Summary)
 	dec, err := g.frontend.RequestApproval(ctx, req)
 	if err != nil {
 		return Decision{}, err

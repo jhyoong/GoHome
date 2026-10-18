@@ -28,7 +28,7 @@ func (p *PendingMessagesComponent) Render(width int) []string {
 		if maxW < 10 {
 			maxW = 10
 		}
-		text := msg
+		text := sanitizeText(msg)
 		if VisualWidth(text) > maxW {
 			text = TruncateText(text, maxW-3) + "..."
 		}

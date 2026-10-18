@@ -409,8 +409,58 @@ func TestStartupWizard_ShowsDenylistOfferAfterSave(t *testing.T) {
 	if got := fi.Mode().Perm(); got != 0o600 {
 		t.Errorf("denylist.json mode = %o, want 600", got)
 	}
+	if m.activeModal != w {
+		t.Fatal("modal closed before confirming the denylist write")
+	}
+	m.Update(enter) // Close
 	if m.activeModal != nil {
-		t.Error("modal should close after the denylist step")
+		t.Error("modal should close after the denylist confirmation")
+	}
+}
+
+func TestConfigWizard_DenylistShowsConfirmation(t *testing.T) {
+	outPath := filepath.Join(t.TempDir(), "settings.json")
+	closed := false
+	w := NewConfigWizard(func() { closed = true }, func(string) {})
+	w.outputPath = outPath
+	w.step = wizardStepDenylistOffer
+	w.buildStep()
+
+	w.HandleInput(tea.KeyMsg{Type: tea.KeyEnter}) // yes
+	if closed {
+		t.Fatal("wizard closed without confirming the denylist write")
+	}
+	want := filepath.Join(filepath.Dir(outPath), "denylist.json")
+	joined := StripAnsi(strings.Join(w.Render(200), "\n"))
+	if !strings.Contains(joined, "step 10/10") || !strings.Contains(joined, "Wrote "+want) {
+		t.Errorf("render missing confirmation:\n%s", joined)
+	}
+	w.HandleInput(tea.KeyMsg{Type: tea.KeyEnter})
+	if !closed {
+		t.Error("Enter on the confirmation should close the wizard")
+	}
+}
+
+func TestConfigWizard_DenylistNoClosesWithoutConfirmation(t *testing.T) {
+	closed := false
+	w := NewConfigWizard(func() { closed = true }, func(string) {})
+	w.outputPath = filepath.Join(t.TempDir(), "settings.json")
+	w.step = wizardStepDenylistOffer
+	w.buildStep()
+	w.HandleInput(tea.KeyMsg{Type: tea.KeyDown})
+	w.HandleInput(tea.KeyMsg{Type: tea.KeyEnter}) // no
+	if !closed {
+		t.Error("choosing No should close the wizard")
+	}
+}
+
+func TestConfigWizard_ErrorLineWraps(t *testing.T) {
+	w := NewConfigWizard(func() {}, func(string) {})
+	w.errMsg = "Save failed: open /a/very/long/path/that/does/not/fit/in/a/narrow/terminal/settings.json: not a directory"
+	for _, line := range w.Render(30) {
+		if VisualWidth(line) > 30 {
+			t.Errorf("line wider than 30 columns: %q", line)
+		}
 	}
 }
 

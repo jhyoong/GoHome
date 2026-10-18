@@ -143,10 +143,15 @@ func (s *SessionState) SetModelSettings(ms ModelSettings) {
 }
 
 // syncSessionModel copies the active model name and config name onto the
-// current session. Callers must hold s.mu.
+// current session. A change is written to the session file, so a resumed
+// session records the model it now uses. Callers must hold s.mu.
 func (s *SessionState) syncSessionModel() {
 	if s.sess == nil {
 		return
+	}
+	changed := s.sess.Model != s.model.Name || s.sess.ModelConfig != s.model.ConfigName
+	if changed && s.writer != nil {
+		s.writer.Emit(session.ModelChange{Model: s.model.Name, ModelConfig: s.model.ConfigName})
 	}
 	s.sess.Model = s.model.Name
 	s.sess.ModelConfig = s.model.ConfigName

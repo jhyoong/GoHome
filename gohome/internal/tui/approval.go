@@ -157,7 +157,7 @@ var approvalBoxStyle = lipgloss.NewStyle().
 // summary that does not fit is shown as a window that PgUp/PgDn move.
 func renderApprovalOverlay(ap *approvalPrompt, width, maxHeight int, focusedSessionID string) string {
 	if ap.sudoStage {
-		return renderSudoDialog(ap, width, focusedSessionID)
+		return renderSudoDialog(ap, width, maxHeight, focusedSessionID)
 	}
 
 	var sb strings.Builder
@@ -224,17 +224,7 @@ func renderApprovalOverlay(ap *approvalPrompt, width, maxHeight int, focusedSess
 
 	ap.scrollMax = 0
 	if ap.expandedSummary {
-		if avail > 0 && len(wrapped) > avail {
-			// Keep one line for the position hint.
-			win := max(avail-1, 1)
-			ap.scrollMax = len(wrapped) - win
-			ap.scrollWin = win
-			ap.scroll = min(max(ap.scroll, 0), ap.scrollMax)
-			sb.WriteString(strings.Join(wrapped[ap.scroll:ap.scroll+win], "\n"))
-			fmt.Fprintf(&sb, "\n(lines %d-%d of %d, PgUp/PgDn to scroll)", ap.scroll+1, ap.scroll+win, len(wrapped))
-		} else {
-			sb.WriteString(strings.Join(wrapped, "\n"))
-		}
+		sb.WriteString(scrollWindow(ap, wrapped, avail))
 	} else {
 		const maxSummaryLines = 3
 		capped, truncated := capLines(wrapped, maxSummaryLines, contentW)
@@ -253,6 +243,22 @@ func renderApprovalOverlay(ap *approvalPrompt, width, maxHeight int, focusedSess
 	return approvalBoxStyle.Width(boxW).Render(inner)
 }
 
+// scrollWindow returns the expanded lines that fit in avail lines (0 means no
+// limit). When they do not fit, it shows a window at ap.scroll with a position
+// hint and sets ap.scrollMax and ap.scrollWin for PgUp/PgDn.
+func scrollWindow(ap *approvalPrompt, lines []string, avail int) string {
+	if avail == 0 || len(lines) <= avail {
+		return strings.Join(lines, "\n")
+	}
+	// Keep one line for the position hint.
+	win := max(avail-1, 1)
+	ap.scrollMax = len(lines) - win
+	ap.scrollWin = win
+	ap.scroll = min(max(ap.scroll, 0), ap.scrollMax)
+	return strings.Join(lines[ap.scroll:ap.scroll+win], "\n") +
+		fmt.Sprintf("\n(lines %d-%d of %d, PgUp/PgDn to scroll)", ap.scroll+1, ap.scroll+win, len(lines))
+}
+
 var (
 	sudoBoxStyle = lipgloss.NewStyle().
 			Border(lipgloss.DoubleBorder()).
@@ -261,8 +267,9 @@ var (
 	sudoHeaderStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("9"))
 )
 
-// renderSudoDialog renders the password stage of a sudo approval.
-func renderSudoDialog(ap *approvalPrompt, width int, focusedSessionID string) string {
+// renderSudoDialog renders the password stage of a sudo approval. maxHeight
+// caps the box the same way as in renderApprovalOverlay.
+func renderSudoDialog(ap *approvalPrompt, width, maxHeight int, focusedSessionID string) string {
 	boxW := width - 4
 	if boxW < 20 {
 		boxW = 20
@@ -276,7 +283,20 @@ func renderSudoDialog(ap *approvalPrompt, width int, focusedSessionID string) st
 	const maxCmdLines = 3
 	cmdLines := WrapText(ap.arg, contentW)
 	truncated := false
-	if !ap.expandedSummary {
+	ap.scrollMax = 0
+	if ap.expandedSummary {
+		// Lines left for the command: the box minus its border, the header,
+		// the blank line, the password, error and hint lines and the warning.
+		avail := 0
+		if maxHeight > 0 {
+			used := 2 + 5
+			if ap.hasControls {
+				used++
+			}
+			avail = max(maxHeight-used, 1)
+		}
+		cmdLines = []string{scrollWindow(ap, cmdLines, avail)}
+	} else {
 		cmdLines, truncated = capLines(cmdLines, maxCmdLines, contentW)
 	}
 
