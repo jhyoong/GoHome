@@ -24,7 +24,7 @@ This report replaces these earlier documents, which are archived locally in `doc
 - `docs/plans/*`
 - `docs/windows-defender.md`
 
-Section 8 records the status of their items.
+Section 10 records the status of their items.
 
 ---
 
@@ -109,6 +109,7 @@ Section 8 records the status of their items.
   3. `cmd.Wait` never returns.
 - **Effect:** neither the timeout nor Ctrl+C stops it.
 - **Evidence:** a 2 MB single-line output with `timeout_ms=1000` was still running after 20 s.
+- **Status:** Fixed (#49). The pipe is drained after a scanner error.
 
 ### H2. High - Shell timeout does not kill child processes
 - **Location:** `tools/shell.go:139` uses `exec.CommandContext`, which kills only `/bin/sh`. There is no `cmd.Cancel` for the process group and no `WaitDelay`.
@@ -116,7 +117,7 @@ Section 8 records the status of their items.
   - `sleep 4; echo done` with a 300 ms timeout took 4.03 s.
   - `sleep 30 & echo bg` blocked until the background job exited, and the job was orphaned.
 - **Fix hint:** `Setsid` is already set (`shell_unix.go:14`), so `kill(-pid)` in `cmd.Cancel` plus a `WaitDelay` is enough.
-- **Status:** Prior M3, still open.
+- **Status:** Prior M3. Fixed (#49). The process group is killed on cancel, with a `WaitDelay`, and partial output is kept.
 - **Related:** on timeout, output already captured is discarded (`shell.go:197-202`).
 
 ### H3. High - `WrapText` loops forever on width 0 or less
@@ -135,6 +136,7 @@ Section 8 records the status of their items.
 - **Adversarial input:** each nested `>` quote level costs 2 columns, so about 40 levels hang at width 80.
 - **Why offscreen entries matter:** pass 1 of `Chat.Render` renders every entry, including offscreen ones.
 - **Effect:** the event loop freezes and Ctrl+C cannot be processed.
+- **Status:** Fixed (#49).
 
 ### H4. Medium - Horizontal rule panics on negative width
 - **Location:** `tui/markdown.go:126`, `strings.Repeat("─", width)`
@@ -143,11 +145,12 @@ Section 8 records the status of their items.
   - `> > > > ---` at width 9 or less
   - deep nesting at any width
 - **Effect:** Bubble Tea catches the panic and the app exits.
+- **Status:** Fixed (#49).
 
 ### H5. Medium-High - Cancelling the setup wizard leaves a nil client
 - **Location:** `main.go:252` (`var client common.Client`). Wizard cancel only clears the modal (`tui/model.go:290`). The save-failure paths return silently.
 - **Effect:** the first message calls `Stream` on a nil interface at `agent/turn.go:37`. There is no recover there, so the process crashes.
-- **Status:** Prior M9, still open.
+- **Status:** Prior M9. Fixed (#49). A missing client is an error, and wizard failures show a notice.
 
 ---
 
@@ -554,48 +557,50 @@ Sources:
 - The 2026-08-21 goal review (archived)
 - The 2026-09-15 code review (archived)
 
+Status updated for v0.4.4-dev2 (PRs #47 to #56).
+
 | Item | Status | Notes |
 |---|---|---|
 | Mid-turn steering (GOAL 1, TODO) | Mostly fixed | `SteerCh` is polled between tools and after the turn. It is not checked before the first tool, so a steer typed during streaming lands after the first tool runs. |
 | Mouse breaks text selection (GOAL 2, TODO) | Workaround | `/mouse` toggle, idle timeout, Shift hint |
-| Render slowdown at 40k+ (GOAL 3, TODO) | Partly fixed | P1-P4 and L2 fixed in #43. P5, P6, P7 and P8 are open. |
+| Render slowdown at 40k+ (GOAL 3, TODO) | Partly fixed | P1-P4 and L2 fixed in #43. P7 and P8 fixed (R23, #54). P5 and P6 are open (R22, FOLLOWUP_TASKS). |
 | Compaction breaks the cache (GOAL 4, TODO) | Partly fixed | Stable 2-message prefix, but no `cache_control`. A resumed session has a different message shape (D6). |
-| Long approval not scrollable (GOAL 5, TODO) | Partly fixed | `v` expands, but the top is cut off when taller than the terminal (A8). |
+| Long approval not scrollable (GOAL 5, TODO) | Fixed | Height cap and PgUp/PgDn scroll (A8, #51). |
 | Queued messages fire separately (GOAL 6, TODO) | Fixed | Combined (`model_agent.go:178`). Ctrl+D and `/clear-queue` exist. New routing bugs: A4. |
-| Auto-scroll re-enable at bottom (TODO) | Partly fixed | Wheel and PgDown work. Arrow Down does not (A7). |
+| Auto-scroll re-enable at bottom (TODO) | Fixed | Wheel, PgDown and Arrow Down work (A7, #51). |
 | Windows multi-line paste (TODO) | Open | R5 |
 | Sudo password testing (TODO) | Implemented (#45, #47) | Manual test status unknown. See S4, A9. |
 | H1 steer in multi-tool turn | Fixed | Saved to JSONL since D3 |
 | H2-H6 | Fixed | |
-| M1 whitelist prefix-only | Open | S1 |
-| M2 empty Allow-always pattern | Open | S3 |
-| M3 shell timeout with grandchild | Open | H2 |
+| M1 whitelist prefix-only | Fixed | S1, #48 |
+| M2 empty Allow-always pattern | Fixed | S3, #48 |
+| M3 shell timeout with grandchild | Fixed | H2, #49 |
 | M4 sudo + whitelist | Fixed | Now leads to S4. |
 | M5 sudo detection and stdin | Mostly fixed | Password moved to fd 3. Remaining misses: A9. |
 | M6 invalid tool JSON | Fixed | D4 |
-| M7 `/model` race and defaults | Open | A5 |
-| M8 resume keeps old model | Open | A6 |
-| M9 wizard cancel, nil client | Open | H5 |
+| M7 `/model` race and defaults | Fixed | A5, #51 |
+| M8 resume keeps old model | Fixed | A6, #51 |
+| M9 wizard cancel, nil client | Fixed | H5, #49 |
 | M10 wizard overwrites settings | Fixed | L7 |
 | M11 cache tokens in compaction | Fixed | L9 |
 | M12 no HTTP timeouts | Fixed | L4 |
-| M13 headless Ctrl+C on stdin | Open | A10 |
+| M13 headless Ctrl+C on stdin | Fixed | A10, #51 |
 | M14 429/408 not retried | Fixed | L4 |
 | M15 Emit after Close | Fixed | D9 |
-| L1 tool arg keys | Open | R15 |
+| L1 tool arg keys | Fixed | R15, #54 |
 | L2 render throttle default | Fixed | |
-| L3 raw path compare | Open | T3 |
+| L3 raw path compare | Fixed | T3, #53 |
 | L4 EDITOR with arguments | Open | `model_keys.go:347`, `config_editor.go:27` |
-| L5 delete active session | Open | R19 |
-| L6 stale approval after cancel | Open, worse | A2 |
-| L7 byte-wise backspace | Open | R16 |
-| L8 Ctrl+E shadowed | Open | R18 |
+| L5 delete active session | Fixed | R19, #54 |
+| L6 stale approval after cancel | Fixed | A2, #51 |
+| L7 byte-wise backspace | Fixed | R16, #54 |
+| L8 Ctrl+E shadowed | Fixed | R18, #54 |
 | L9 redacted_thinking | Fixed | L3 |
-| L10 resume by StartedAt, full scan | Open | D1, D2 |
-| L11 headless final text | Open, worse | A10 |
-| L12 doc mismatches | Partly fixed | Section 9 |
-| L13 denylist best-effort | Open | S7 |
-| L14 minor edge cases | Open | R8, T1, T3 |
+| L10 resume by StartedAt, full scan | Partly fixed | Children are skipped and long lines load (D1, D2, #50). |
+| L11 headless final text | Fixed | A10, #51 |
+| L12 doc mismatches | Fixed | Section 9, #56 |
+| L13 denylist best-effort | Partly fixed | S7, #48. Remaining bypasses are in FOLLOWUP_TASKS. |
+| L14 minor edge cases | Fixed | R8, T1, T3 (#53, #54) |
 | Perf 5-11 (performance-findings.md) | Open | `textBuf +=` (`turn.go:65`), `Schemas()` rebuilt every turn, no file-search debounce, no bufio in the session writer |
 
 ---
