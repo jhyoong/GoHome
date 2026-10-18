@@ -84,3 +84,14 @@ func TestParseSSE_CtxCancel(t *testing.T) {
 	for range ch {
 	}
 }
+
+func TestParseSSE_CRLFAndDone(t *testing.T) {
+	input := "data: {\"choices\":[]}\r\n\r\ndata: [DONE]\r\n\r\n"
+	var frames []sseFrame
+	for f := range parseSSE(context.Background(), bytes.NewReader([]byte(input))) {
+		frames = append(frames, f)
+	}
+	if len(frames) != 2 || frames[0].data != `{"choices":[]}` || !frames[1].done {
+		t.Fatalf("unexpected frames: %+v", frames)
+	}
+}
