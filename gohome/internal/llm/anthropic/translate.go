@@ -3,7 +3,6 @@ package anthropic
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
@@ -109,7 +108,7 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 				// EOF before message_stop means the stream was cut off
 				// (unless it was cancelled).
 				if !gotStop && ctx.Err() == nil {
-					send(common.StreamEvent{Kind: common.EventError, Err: errors.New("stream ended early")})
+					send(common.StreamEvent{Kind: common.EventError, Err: common.ErrStreamEndedEarly})
 				}
 				return
 			}

@@ -3,7 +3,6 @@ package openai
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
@@ -152,7 +151,7 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 				// was cut off and any tool call arguments may be truncated.
 				if stopReason == "" {
 					if ctx.Err() == nil {
-						send(common.StreamEvent{Kind: common.EventError, Err: errors.New("stream ended early")})
+						send(common.StreamEvent{Kind: common.EventError, Err: common.ErrStreamEndedEarly})
 					}
 					return
 				}

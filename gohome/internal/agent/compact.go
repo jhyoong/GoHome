@@ -165,7 +165,7 @@ func (a *Agent) compact(ctx context.Context, sess *session.Session) error {
 		return err
 	}
 	if !turnDone {
-		return ErrStreamEndedEarly
+		return common.ErrStreamEndedEarly
 	}
 	summary := sb.String()
 

@@ -13,6 +13,10 @@ import (
 // response body sends no bytes for the idle timeout.
 var ErrStreamIdle = errors.New("stream idle timeout")
 
+// ErrStreamEndedEarly is returned when a stream closes before the response is
+// reported as complete.
+var ErrStreamEndedEarly = errors.New("stream ended early")
+
 // StreamConfig holds the shared configuration for streaming HTTP requests.
 type StreamConfig struct {
 	HTTPClient *http.Client

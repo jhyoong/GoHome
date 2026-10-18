@@ -96,7 +96,7 @@ func (a *Agent) Turn(ctx context.Context, sess *session.Session) (string, *commo
 				if ctx.Err() != nil {
 					return "", nil, ctx.Err()
 				}
-				err := ErrStreamEndedEarly
+				err := common.ErrStreamEndedEarly
 				a.emitTurnError(sess.ID, err)
 				return "", nil, err
 			}

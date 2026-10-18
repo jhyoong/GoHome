@@ -271,8 +271,8 @@ func TestCompact_StreamEndsEarlyKeepsHistory(t *testing.T) {
 	orig := make([]common.Message, len(sess.History))
 	copy(orig, sess.History)
 
-	if err := a.compact(context.Background(), sess); !errors.Is(err, ErrStreamEndedEarly) {
-		t.Fatalf("compact error = %v, want ErrStreamEndedEarly", err)
+	if err := a.compact(context.Background(), sess); !errors.Is(err, common.ErrStreamEndedEarly) {
+		t.Fatalf("compact error = %v, want common.ErrStreamEndedEarly", err)
 	}
 
 	if len(sess.History) != len(orig) {

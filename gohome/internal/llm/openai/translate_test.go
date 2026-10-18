@@ -2,6 +2,7 @@ package openai
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
@@ -454,6 +455,9 @@ func TestTranslateEvents_EOFWithoutDoneOrFinishReason(t *testing.T) {
 			t.Error("unexpected EventTurnDone for truncated stream")
 		case common.EventError:
 			gotErr = true
+			if !errors.Is(e.Err, common.ErrStreamEndedEarly) {
+				t.Errorf("error = %v, want ErrStreamEndedEarly", e.Err)
+			}
 		}
 	}
 	if !gotErr {

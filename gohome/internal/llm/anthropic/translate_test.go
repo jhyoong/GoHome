@@ -2,6 +2,7 @@ package anthropic
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
@@ -277,8 +278,8 @@ func TestTranslateEvents_EOFWithoutMessageStop(t *testing.T) {
 	if last.Kind != common.EventError {
 		t.Fatalf("last event kind: got %q, want EventError", last.Kind)
 	}
-	if last.Err == nil || last.Err.Error() != "stream ended early" {
-		t.Errorf("error: got %v, want %q", last.Err, "stream ended early")
+	if !errors.Is(last.Err, common.ErrStreamEndedEarly) {
+		t.Errorf("error: got %v, want ErrStreamEndedEarly", last.Err)
 	}
 	for _, e := range events {
 		if e.Kind == common.EventTurnDone {
