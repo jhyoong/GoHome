@@ -18,6 +18,9 @@ type SessionStart struct {
 	ModelConfig string    `json:"modelConfig"`
 	Depth       int       `json:"depth"`
 	StartedAt   time.Time `json:"startedAt"`
+
+	// ParentToolUseID is the parent's subagent tool_use ID (children only).
+	ParentToolUseID string `json:"parentToolUseId,omitempty"`
 }
 
 type UserMessage struct {

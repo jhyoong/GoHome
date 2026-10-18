@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-Fixes for follow-up items 58-62 from the 2026-10-18 live test (`docs/reviews/2026-10-18-outdated-components-live-test.md`), file path fixes for items 39, 52 and 53, terminal output fixes for items 11, 12 and 13, and whitelist and approval prompt fixes for items 5, 6, 7, 9, 10 and 14.
+Fixes for follow-up items 58-62 from the 2026-10-18 live test (`docs/reviews/2026-10-18-outdated-components-live-test.md`), file path fixes for items 39, 52 and 53, terminal output fixes for items 11, 12 and 13, and whitelist and approval prompt fixes for items 5, 6, 7, 9, 10 and 14, and subagent session fixes for items 30, 31 and 32.
 
 ### Fixed
 
@@ -23,6 +23,9 @@ Fixes for follow-up items 58-62 from the 2026-10-18 live test (`docs/reviews/202
 - **Tabs in whitelist matching** -- A tab now counts as a word boundary, so `^ls` allows `ls<TAB>-la` (9).
 - **Carriage return** -- `\r` counts as a shell operator, so a command with one is never auto-approved (10).
 - **Whitelist file mode** -- A new project `whitelist.json` is created `0600` and its folder `0700`. Existing files keep their mode (14).
+- **Subagent IDs after a crash** -- A new subagent also skips child IDs already used by subagent session files on disk. Before, a crash between the child's start and the parent's spawn marker let the next resume reuse `<parentID>-sub-N` (30).
+- **Resumed subagent links** -- A child session now records the tool_use ID of the parent's subagent call, and `/resume` links the child to that entry. Two subagents with the same task no longer swap. Task matching and newest-to-oldest linking are kept for children without a unique ID match (31).
+- **Task matching with invalid UTF-8** -- Resumed children are matched on the raw task from the history instead of the cleaned timeline text, so a task with invalid UTF-8 still finds its entry (32).
 
 ## v0.4.4-dev2
 

@@ -33,11 +33,6 @@ Minor items found while reviewing the D1-D9 fixes (plan: `docs/old/2026-10-17-da
 28. **Headless mode never checks `writer.Err()`.** Only the TUI `runLoop` shows "session not saved".
 29. **Emit after Close logs at Debug level**, so it is not visible by default.
 
-### Subagent sessions
-30. **A child ID can be reused after a crash.** If gohome dies between the child's `session_start` and the parent's `subagent_spawn` marker, the next resume reuses `<parentID>-sub-N`. Fix by also taking the highest N from `ListChildren`.
-31. **Fallback linking can still pick the wrong entry.** A resumed child whose task matches no entry is linked from newest to oldest. This can be wrong when unmatched children and unrelated unlinked entries both exist. Two subagents with the same task text can also swap.
-32. **Task matching uses the sanitized entry text.** A task with invalid UTF-8 does not match and falls back to newest-to-oldest linking.
-
 ### Streams
 33. **Tool entries stay "pending" after an early stream end.** Anthropic sends tool calls before `message_stop`, so the TUI shows them, but the turn is dropped. Mark pending entries as failed when `EventError` arrives. Cancelling mid-stream already did this before the fix.
 34. **"stream ended early" is defined three times** (`anthropic/translate.go`, `openai/translate.go`, `agent/errors.go`). Use one sentinel in `common` so `errors.Is` works across packages.

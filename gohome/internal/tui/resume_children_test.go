@@ -205,6 +205,57 @@ func TestLoadResumedSession_CompactedParent(t *testing.T) {
 	}
 }
 
+// TestLoadResumedSession_LinksByToolUseID reproduces item 31: children whose
+// session_start records the parent's tool_use ID link to that entry, even
+// when two subagents share the same task text.
+func TestLoadResumedSession_LinksByToolUseID(t *testing.T) {
+	m := New(nil, "p1")
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	h := []common.Message{
+		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "go"}}},
+	}
+	h = append(h, subagentTurn("tu1", "same", "done", false)...)
+	h = append(h, subagentTurn("tu2", "same", "done", false)...)
+	h = append(h, subagentTurn("tu3", "unrelated", "done", false)...)
+	a := resumedChild("p1-sub-1", "same")
+	a.ParentToolUseID = "tu2"
+	b := resumedChild("p1-sub-2", "same")
+	b.ParentToolUseID = "tu1"
+	c := resumedChild("p1-sub-3", "no match")
+	c.ParentToolUseID = "tu3"
+
+	m.LoadResumedSession("p1", h, []*session.Session{a, b, c})
+
+	got := subagentLinks(m, "p1")
+	want := map[string]string{"tu1": "p1-sub-2", "tu2": "p1-sub-1", "tu3": "p1-sub-3"}
+	for id, w := range want {
+		if got[id] != w {
+			t.Errorf("entry %s linked to %q, want %q (all: %v)", id, got[id], w, got)
+		}
+	}
+}
+
+// TestLoadResumedSession_MatchesRawTask reproduces item 32: a task with
+// invalid UTF-8 must still match its entry by task text. The child's task is
+// what the subagent tool decoded from the input JSON (invalid bytes become
+// U+FFFD), while the timeline entry text has them removed.
+func TestLoadResumedSession_MatchesRawTask(t *testing.T) {
+	m := New(nil, "p1")
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	h := []common.Message{
+		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "go"}}},
+	}
+	h = append(h, subagentTurn("tu1", "fix \xff file", "done", false)...)
+	h = append(h, subagentTurn("tu2", "other", "done", false)...)
+
+	m.LoadResumedSession("p1", h, []*session.Session{resumedChild("p1-sub-1", "fix � file")})
+
+	got := subagentLinks(m, "p1")
+	if got["tu1"] != "p1-sub-1" || got["tu2"] != "" {
+		t.Errorf("links = %v, want tu1 -> p1-sub-1 and tu2 unlinked", got)
+	}
+}
+
 func TestLoadResumedSession_ChildWithoutEntry(t *testing.T) {
 	m := New(nil, "p1")
 	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})

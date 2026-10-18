@@ -240,9 +240,9 @@ func (a *Agent) dispatchTool(
 		return fmt.Sprintf("unknown tool: %s", block.ToolName), true, 0, false
 	}
 
-	execCtx := tctx
+	execCtx := tools.WithToolUseID(tctx, block.ToolUseID)
 	if dec.SudoPassword != "" {
-		execCtx = tools.WithSudoPassword(tctx, dec.SudoPassword)
+		execCtx = tools.WithSudoPassword(execCtx, dec.SudoPassword)
 	}
 
 	start := time.Now()

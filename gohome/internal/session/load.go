@@ -62,12 +62,15 @@ func Load(path string) (*Session, []common.Message, error) {
 				Depth       int       `json:"depth"`
 				StartedAt   time.Time `json:"startedAt"`
 				TS          string    `json:"ts"`
+
+				ParentToolUseID string `json:"parentToolUseId"`
 			}
 			if err := json.Unmarshal([]byte(line), &ev); err != nil {
 				return
 			}
 			sess = NewSession(ev.ID, ev.CWD, ev.Model, ev.ModelConfig)
 			sess.ParentID = ev.ParentID
+			sess.ParentToolUseID = ev.ParentToolUseID
 			sess.Depth = ev.Depth
 			// Prefer explicit StartedAt field; fall back to envelope ts.
 			if !ev.StartedAt.IsZero() {

@@ -5,6 +5,7 @@ import (
 	"encoding/base32"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +32,10 @@ type Session struct {
 	ModelConfig string
 	History     []common.Message
 	StartedAt   time.Time
+
+	// ParentToolUseID is the ID of the parent's subagent tool_use block that
+	// spawned this session. Empty for top-level sessions.
+	ParentToolUseID string
 
 	cwd       string
 	mu        sync.RWMutex
@@ -100,6 +105,25 @@ func (s *Session) NextSubagentID() string {
 	defer s.mu.Unlock()
 	s.subagents++
 	return fmt.Sprintf("%s-sub-%d", s.ID, s.subagents)
+}
+
+// NoteSubagentID raises the subagent count to N when id is "<ID>-sub-N", so
+// NextSubagentID never returns an ID already used on disk. Other IDs are
+// ignored. Safe for concurrent use.
+func (s *Session) NoteSubagentID(id string) {
+	rest, ok := strings.CutPrefix(id, s.ID+"-sub-")
+	if !ok {
+		return
+	}
+	n, err := strconv.Atoi(rest)
+	if err != nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if n > s.subagents {
+		s.subagents = n
+	}
 }
 
 // CWD returns the working directory for this session.

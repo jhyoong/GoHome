@@ -8,6 +8,7 @@ import (
 
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 	"github.com/jhyoong/GoHome/gohome/internal/session"
+	"github.com/jhyoong/GoHome/gohome/internal/tools"
 )
 
 // Spawn creates an isolated child agent for task, runs it to completion, and
@@ -16,9 +17,9 @@ import (
 // It satisfies the tools.SubagentSpawner interface.
 //
 // Note: SubagentSpawn / SubagentDone events are emitted on the parent session's
-// writer (a.State.Writer()) without a ToolUseID, because the Tool.Execute
-// signature does not expose the tool_use block ID. Parent/child linkage is
-// established via the child session's ParentID and the ChildID field.
+// writer (a.State.Writer()). Parent/child linkage is established via the child
+// session's ParentID and ParentToolUseID (read from ctx, see
+// tools.ToolUseIDFrom) and the ChildID field.
 func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, bool, error) {
 	// Fetch the parent session from State.
 	parent := a.State.Session()
@@ -34,7 +35,13 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 	}
 
 	// Generate a unique child ID: "<parentID>-sub-N". Parent IDs are random,
-	// so child file names do not collide across runs.
+	// so child file names do not collide across runs. Child files already on
+	// disk also count: a crash can leave one without a spawn marker.
+	if existing, err := session.ListChildren(a.Home, parent.CWD(), parent.ID); err == nil {
+		for _, l := range existing {
+			parent.NoteSubagentID(l.ID)
+		}
+	}
 	childID := parent.NextSubagentID()
 
 	// The child uses the parent's active model settings.
@@ -42,6 +49,7 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 	child := session.NewSession(childID, parent.CWD(), ms.Name, ms.ConfigName)
 	child.Depth = 1
 	child.ParentID = parent.ID
+	child.ParentToolUseID = tools.ToolUseIDFrom(ctx)
 
 	// Seed the child's history with the task as the first user message.
 	taskMsg := common.Message{
@@ -61,13 +69,14 @@ func (a *Agent) Spawn(ctx context.Context, task, systemPrompt string) (string, b
 
 	// Write the child session start event.
 	cw.Emit(session.SessionStart{
-		ID:          childID,
-		ParentID:    parent.ID,
-		CWD:         parent.CWD(),
-		Model:       ms.Name,
-		ModelConfig: ms.ConfigName,
-		Depth:       1,
-		StartedAt:   child.StartedAt,
+		ID:              childID,
+		ParentID:        parent.ID,
+		ParentToolUseID: child.ParentToolUseID,
+		CWD:             parent.CWD(),
+		Model:           ms.Name,
+		ModelConfig:     ms.ConfigName,
+		Depth:           1,
+		StartedAt:       child.StartedAt,
 	})
 
 	// Write the task as the child's first user message event.
