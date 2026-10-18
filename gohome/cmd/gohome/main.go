@@ -778,7 +778,8 @@ Be concise and precise. Ask for clarification when requirements are ambiguous.`
 	//   2. cancel() unblocks AwaitUserInput and any in-flight a.Run call.
 	//   3. wg.Wait() ensures the agent goroutine has exited before we proceed.
 	//   4. session_end is emitted, writer is closed (flushes all queued JSONL),
-	//      then the log file is closed. Guaranteed to complete within ~1s.
+	//      then the log file is closed. How long this takes depends on how fast
+	//      in-flight tool calls stop after cancel.
 	ctx, cancel := context.WithCancel(context.Background())
 
 	sigCh := make(chan os.Signal, 1)

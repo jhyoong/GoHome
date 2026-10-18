@@ -432,7 +432,7 @@ All in `gohome/internal/tui/`.
 - R20: the config overlay is clipped to the screen and scrolls with PgUp/PgDn.
 - R21, R23: the highlight cache evicts one entry at a time and does not cache unclosed code blocks. The wheel uses one idle timer.
 - R22: not fixed (FOLLOWUP_TASKS).
-- Dead code and comments: `paste.go`, the unused theme fields, `flushCur` and the stale TUI comments are fixed. `compact.go:91-94` and the comments outside `internal/tui` are not covered.
+- Dead code and comments: `paste.go`, the unused theme fields, `flushCur` and the stale TUI comments are fixed. `compact.go:91-94` and the comments outside `internal/tui` are fixed on branch `fix/outdated-components` (most were already fixed by earlier branches; the `main.go` "~1s" claim and the `compact.go` block were the last).
 - README: Enter now collapses and expands thinking entries. They are expanded by default.
 
 ### Dead code and stale comments
@@ -469,6 +469,7 @@ All in `gohome/internal/tui/`.
   - `teatest` pseudo-version is behind
 - **Bubble Tea, Lip Gloss and Bubbles v2** exist at `charm.land/...`. Moving to them is a migration.
 - **`go mod tidy -diff`** is clean.
+- **Status:** Fixed on branch `fix/outdated-components`. Go 1.26.9 in `go.mod` and both workflows. `x/sys` v0.49.0, chroma v2.27.0, goldmark v1.8.6, `golden` v0.1.0, latest `teatest`. govulncheck reports no vulnerabilities. The Charm v2 migration is in FOLLOWUP_TASKS.
 
 ### CI and release
 - **High: the release workflow strips and cross-compiles Windows binaries.** `release.yml:28,39` runs every target on `ubuntu-latest` with `-ldflags "-s -w ..."`.
@@ -490,6 +491,7 @@ All in `gohome/internal/tui/`.
 - **Version flag:** no CI build sets `-X main.version`.
 - **Release notes:** the whole CHANGELOG is used as release notes.
 - **Size guard:** the 25 MB guard covers linux/amd64 only. `release.yml` has none.
+- **Status:** Fixed on branch `fix/outdated-components`. Release builds Windows natively on `windows-latest` without `-s -w`. Actions are on their latest majors, golangci-lint is pinned to v2.15.0, the no-op `disable` list is removed, CI builds set `main.version`, every built binary has the size guard, and release notes are the tag's CHANGELOG section. Not yet run on GitHub.
 
 ### LLM APIs
 - See L1 (thinking), L4 (retries), L8 (OpenAI `max_tokens`) and L9 (no prompt caching).

@@ -102,3 +102,13 @@ Minor items found while reviewing the D1-D9 fixes (plan: `docs/reviews/2026-10-1
 54. **Multi-line paste on Windows submits only the first line (audit R5).** Bubble Tea v1.3.10's Windows console input never sets `Paste`, so each pasted Enter submits. Fix with Bubble Tea v2 or a timing heuristic. Needs testing on Windows.
 55. **The editor works per rune, not per grapheme (audit R9).** ZWJ emoji and combining marks are split by cursor movement and Backspace. Needs a rewrite of the editor's cursor model.
 56. **Streaming re-parses the whole entry on every frame (audit R22).** The render cache is keyed on the full text, so a streaming assistant entry is parsed and wrapped again for each delta. Needs incremental markdown rendering.
+
+### Dependencies (deferred from the outdated components fixes)
+57. **Bubble Tea, Lip Gloss and Bubbles v2 are out at `charm.land/...`.** gohome is on Bubble Tea v1.3.10, Lip Gloss v1.1.0 and Bubbles v1.0.0. Moving to v2 is a migration with API changes. It may also fix item 54 (Windows paste) and allow Shift+Enter.
+
+### Compaction (found during the live test of the outdated components branch)
+58. **Compaction summaries are often not summaries.** The summary request has the instructions only in the system prompt and does not end with a user message asking for a summary. The model often continues the conversation instead, so the "summary" is a tool call written as text or a refusal. The model then loses track of its work. This existed before the branch. See `docs/reviews/2026-10-18-outdated-components-live-test.md`.
+59. **E2E `TestE2EAutoCompact` fails with "LLM returned empty summary".** Fails on the branch and on main against the local OpenAI endpoint; it passed in an earlier run, so it depends on the model output. Same root cause as item 58. Once 58 is fixed, the test should also check that the summary text is a summary, not only that `EventCompacted` was emitted.
+60. **Tabs in rendered markdown and code blocks leave stale cells on screen.** A tab-indented Go line showed as `Generafmt.Println(...)`, with `Genera` left over from the spinner. A full redraw shows it correctly. Only `tui/editor.go` expands tabs. Expand them in the markdown and code renderer too, and add a snapshot test with a tab-indented code block. Main has it too.
+61. **Shell tool error is misleading when `cwd` does not exist.** `tools/shell.go` sets `cmd.Dir` without checking it, so the error is `fork/exec /bin/sh: no such file or directory` and the model concludes `/bin/sh` is missing. Return "cwd does not exist: <path>" instead.
+62. **The spinner says "Generating..." while the approval menu is open.** Show "Waiting for approval" or hide it.
