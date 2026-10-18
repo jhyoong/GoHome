@@ -2,7 +2,11 @@
 
 ## Unreleased
 
-Fixes for follow-up items 58-62 from the 2026-10-18 live test (`docs/reviews/2026-10-18-outdated-components-live-test.md`), file path fixes for items 39, 52 and 53, terminal output fixes for items 11, 12 and 13, and whitelist and approval prompt fixes for items 5, 6, 7, 9, 10 and 14.
+Fixes for follow-up items 58-62 from the 2026-10-18 live test (`docs/reviews/2026-10-18-outdated-components-live-test.md`), file path fixes for items 39, 52 and 53, terminal output fixes for items 11, 12 and 13, whitelist and approval prompt fixes for items 5, 6, 7, 9, 10 and 14, and UX and logging fixes for items 16, 17, 18, 42, 44 and 65.
+
+### Added
+
+- **Guard debug logging** -- With `GOHOME_DEBUG=1`, every guard decision (whitelisted, denylisted, yolo, user choice) and every approval or sudo password prompt is written to the debug log with the session, tool and command. The sudo password is never logged (18).
 
 ### Fixed
 
@@ -23,6 +27,11 @@ Fixes for follow-up items 58-62 from the 2026-10-18 live test (`docs/reviews/202
 - **Tabs in whitelist matching** -- A tab now counts as a word boundary, so `^ls` allows `ls<TAB>-la` (9).
 - **Carriage return** -- `\r` counts as a shell operator, so a command with one is never auto-approved (10).
 - **Whitelist file mode** -- A new project `whitelist.json` is created `0600` and its folder `0700`. Existing files keep their mode (14).
+- **Denylist confirmation** -- After creating `denylist.json`, the setup wizard shows "Wrote <path>" as step 10/10 before it closes. Choosing No closes the wizard as before (16).
+- **Wizard text wrapping** -- The wizard prompt and error line wrap to the terminal width (17).
+- **Sudo dialog scrolling** -- The full command shown with Tab in the sudo password dialog is capped to the screen height and scrolls with PgUp/PgDn, like the approval menu (42).
+- **Model on resume** -- A resumed session that runs with a different model writes a `model_change` record, so the session file shows the model the requests use. `/model` switches are recorded the same way (44).
+- **Control characters in the editor** -- The editor, live user entries and queued messages remove control sequences and bidi controls when drawn. A file name with an escape sequence picked from the file search list, or a pasted ESC or U+202E, no longer reaches the terminal. The text sent to the model is unchanged (65).
 
 ## v0.4.4-dev2
 
