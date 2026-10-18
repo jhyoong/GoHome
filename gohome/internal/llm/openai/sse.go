@@ -3,6 +3,7 @@ package openai
 import (
 	"context"
 	"io"
+	"strings"
 
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 )
@@ -29,7 +30,7 @@ func parseSSE(ctx context.Context, r io.Reader) <-chan sseFrame {
 				out = sseFrame{err: f.Err}
 			case f.Data == "":
 				continue
-			case f.Data == "[DONE]":
+			case strings.TrimSpace(f.Data) == "[DONE]":
 				out = sseFrame{done: true}
 			default:
 				out = sseFrame{data: f.Data}

@@ -39,3 +39,10 @@ func TestParseSSE_ReadErrorFrame(t *testing.T) {
 		t.Fatalf("got %+v", got)
 	}
 }
+
+func TestParseSSE_DoneWithTrailingSpace(t *testing.T) {
+	frames := collectFrames(strings.NewReader("data: [DONE] \n\ndata: after\n\n"))
+	if len(frames) != 1 || !frames[0].done {
+		t.Fatalf("unexpected frames: %+v", frames)
+	}
+}
