@@ -25,6 +25,9 @@ func (m *Model) handleApprovalReq(msg approvalReqMsg) tea.Cmd {
 	} else {
 		m.approvalQueue = append(m.approvalQueue, ap)
 	}
+	if m.spinner.Active() {
+		m.spinner.SetMessage("Waiting for approval...")
+	}
 	// Keep wheel events as mouse events so they cannot move the menu.
 	// With capture off, many terminals send wheel scrolls as Up/Down keys.
 	if m.mouseEnabled && !m.mouseActive {

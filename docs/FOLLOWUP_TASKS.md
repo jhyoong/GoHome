@@ -49,7 +49,7 @@ Open items found while fixing and testing the 2026-10-17 audit items (PRs #48 to
 
 ## Session files and streams (from the D1-D9 data loss fixes)
 
-Minor items found while reviewing the D1-D9 fixes (plan: `docs/reviews/2026-10-17-data-loss-plan.md`). None of them lose data.
+Minor items found while reviewing the D1-D9 fixes (plan: `docs/old/2026-10-17-data-loss-plan.md`). None of them lose data.
 
 ### Session loading
 21. **Each line is copied twice.** `load.go` and `list.go` turn each line into a string and back into bytes. Pass the raw bytes to `json.Unmarshal` instead.
@@ -106,12 +106,8 @@ Minor items found while reviewing the D1-D9 fixes (plan: `docs/reviews/2026-10-1
 ### Dependencies (deferred from the outdated components fixes)
 57. **Bubble Tea, Lip Gloss and Bubbles v2 are out at `charm.land/...`.** gohome is on Bubble Tea v1.3.10, Lip Gloss v1.1.0 and Bubbles v1.0.0. Moving to v2 is a migration with API changes. It may also fix item 54 (Windows paste) and allow Shift+Enter.
 
-### Compaction (found during the live test of the outdated components branch)
-58. **Compaction summaries are often not summaries.** The summary request has the instructions only in the system prompt and does not end with a user message asking for a summary. The model often continues the conversation instead, so the "summary" is a tool call written as text or a refusal. The model then loses track of its work. This existed before the branch. See `docs/reviews/2026-10-18-outdated-components-live-test.md`.
-59. **E2E `TestE2EAutoCompact` fails with "LLM returned empty summary".** Fails on the branch and on main against the local OpenAI endpoint; it passed in an earlier run, so it depends on the model output. Same root cause as item 58. Once 58 is fixed, the test should also check that the summary text is a summary, not only that `EventCompacted` was emitted.
-60. **Tabs in rendered markdown and code blocks leave stale cells on screen.** A tab-indented Go line showed as `Generafmt.Println(...)`, with `Genera` left over from the spinner. A full redraw shows it correctly. Only `tui/editor.go` expands tabs. Expand them in the markdown and code renderer too, and add a snapshot test with a tab-indented code block. Main has it too.
-61. **Shell tool error is misleading when `cwd` does not exist.** `tools/shell.go` sets `cmd.Dir` without checking it, so the error is `fork/exec /bin/sh: no such file or directory` and the model concludes `/bin/sh` is missing. Return "cwd does not exist: <path>" instead.
-62. **The spinner says "Generating..." while the approval menu is open.** Show "Waiting for approval" or hide it.
-
 ### CI and release (found while fixing the docs and CI items)
 63. **The rewritten `release.yml` has not run.** Native Windows build, per-target size guard and CHANGELOG-section release notes are only YAML-checked. Push a test tag (for example `v0.4.4-dev2`, with a matching CHANGELOG section) and check the draft release and its four assets.
+
+### Compaction (found while fixing items 58-62)
+64. **A summary cut off by the output limit is still applied.** `compact()` ignores the stop reason. With `max_tokens` or `length`, the summary may be cut off, or empty when a reasoning model spends the whole limit on thinking (then compaction is skipped with "empty summary"). Decide whether to reject a cut-off summary, retry with a larger limit, or keep it. Found while checking item 59: with `MaxTokens` 256, 2 of 3 summaries stopped with `length` and no text.

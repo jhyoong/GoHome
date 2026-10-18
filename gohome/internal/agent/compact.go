@@ -117,7 +117,7 @@ func (a *Agent) compact(ctx context.Context, sess *session.Session) error {
 	req := common.Request{
 		Model:     ms.Name,
 		System:    prompt,
-		Messages:  stripToolBlocks(oldMessages),
+		Messages:  summaryRequestMessages(oldMessages),
 		MaxTokens: maxTokens,
 	}
 
@@ -190,6 +190,20 @@ func (a *Agent) compact(ctx context.Context, sess *session.Session) error {
 	return nil
 }
 
+// summaryRequestMessages builds the messages for the summary request: the old
+// messages without tool blocks, ending with a user message that asks for the
+// summary. If the old messages already end with a user message, the ask is
+// added to it, so roles still alternate.
+func summaryRequestMessages(old []common.Message) []common.Message {
+	msgs := stripToolBlocks(old)
+	ask := common.Block{Kind: common.BlockText, Text: compactRequestText}
+	if n := len(msgs); n > 0 && msgs[n-1].Role == common.RoleUser {
+		msgs[n-1].Content = append(msgs[n-1].Content, ask)
+		return msgs
+	}
+	return append(msgs, common.Message{Role: common.RoleUser, Content: []common.Block{ask}})
+}
+
 // stripToolBlocks converts tool_use and tool_result blocks to plain text,
 // and converts RoleTool messages to RoleUser, so the summarization request
 // can be sent without a tools definition.
@@ -232,3 +246,7 @@ Produce a concise summary that preserves:
 
 Be factual and specific. Do not add commentary or analysis.
 Write the summary as a narrative, not a bulleted list.`
+
+// compactRequestText ends the summary request, so the model summarizes the
+// conversation instead of continuing it.
+const compactRequestText = "Summarize the conversation above, following the instructions in the system prompt. Reply with the summary only. Do not call tools or continue the conversation."

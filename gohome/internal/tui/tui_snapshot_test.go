@@ -473,6 +473,16 @@ func TestSnapshots(t *testing.T) {
 		})
 		golden.RequireEqual(t, []byte(m.View()))
 	})
+
+	// Tab-indented code must render as spaces, not raw tabs.
+	t.Run("assistant_tab_indented_code", func(t *testing.T) {
+		m := newSized()
+		m.AddTimelineEntry("main", tui.TimelineEntry{
+			Kind: tui.KindAssistant,
+			Text: "```go\nfunc main() {\n\tif true {\n\t\tfmt.Println(\"hi\")\n\t}\n}\n```",
+		})
+		golden.RequireEqual(t, []byte(m.View()))
+	})
 }
 
 func TestCopyKey_SetsStatusMessage(t *testing.T) {

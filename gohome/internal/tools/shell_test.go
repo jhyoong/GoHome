@@ -452,3 +452,30 @@ func TestBash_DescriptionAndSchemaUseTimeouts(t *testing.T) {
 	check(ShellTool{DefaultTimeoutMs: 5000, MaxTimeoutMs: 9000}, 5000, 9000)
 	check(ShellTool{}, config.DefaultShellTimeoutMs, config.DefaultMaxShellTimeoutMs)
 }
+
+func TestBash_MissingCwdReportsCwd(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "nope")
+	res := execBash(t, map[string]any{"command": "echo hi", "cwd": missing})
+	if !res.IsError {
+		t.Fatalf("expected IsError, got %q", res.Content)
+	}
+	want := "shell: cwd does not exist: " + missing
+	if res.Content != want {
+		t.Errorf("content = %q, want %q", res.Content, want)
+	}
+}
+
+func TestBash_CwdIsFileReportsNotFolder(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "f.txt")
+	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res := execBash(t, map[string]any{"command": "echo hi", "cwd": file})
+	if !res.IsError {
+		t.Fatalf("expected IsError, got %q", res.Content)
+	}
+	want := "shell: cwd is not a folder: " + file
+	if res.Content != want {
+		t.Errorf("content = %q, want %q", res.Content, want)
+	}
+}

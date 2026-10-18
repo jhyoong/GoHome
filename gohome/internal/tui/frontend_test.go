@@ -85,3 +85,21 @@ func TestCancelClearsApprovals(t *testing.T) {
 		t.Errorf("queued reply: got %q, want Deny", dec.Outcome)
 	}
 }
+
+// TestSpinnerShowsWaitingForApproval verifies that the spinner says it is
+// waiting while an approval prompt is open, and moves on once it is resolved.
+func TestSpinnerShowsWaitingForApproval(t *testing.T) {
+	m := newSudoTestModel()
+	m.spinner.Start("Generating...")
+
+	reply := make(chan guard.ApprovalDecision, 1)
+	m.Update(ApprovalReqMsg{Req: guard.ApprovalRequest{SessionID: "main", Tool: "shell"}, Reply: reply})
+	if m.spinner.message != "Waiting for approval..." {
+		t.Errorf("spinner message with approval open = %q, want %q", m.spinner.message, "Waiting for approval...")
+	}
+
+	m.resolveApproval(guard.ApprovalDecision{Outcome: guard.AllowOnce})
+	if m.spinner.message != "Processing..." {
+		t.Errorf("spinner message after allow = %q, want %q", m.spinner.message, "Processing...")
+	}
+}

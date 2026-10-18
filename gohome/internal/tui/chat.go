@@ -461,7 +461,7 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 			if strings.TrimSpace(e.Text) == "" {
 				break
 			}
-			mdLines = WrapText(e.Text, maxWidth-2)
+			mdLines = WrapText(expandTabs(e.Text, 4), maxWidth-2)
 		}
 		for j, l := range mdLines {
 			if j == 0 {
@@ -478,7 +478,7 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 		}
 		if !e.Expanded {
 			// Collapsed: one dimmed summary line with the first line of text.
-			first, _, more := strings.Cut(trimmed, "\n")
+			first, _, more := strings.Cut(expandTabs(trimmed, 4), "\n")
 			hint := " (enter to expand)"
 			if more {
 				first += " …"
@@ -487,7 +487,7 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 			lines = append(lines, marker+ansiDim+ansiItalic+summary+ansiReset)
 			break
 		}
-		wrapped := WrapText(trimmed, maxWidth-2)
+		wrapped := WrapText(expandTabs(trimmed, 4), maxWidth-2)
 		for j, l := range wrapped {
 			styled := ansiDim + ansiItalic + l + ansiReset
 			if j == 0 {

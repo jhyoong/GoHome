@@ -606,3 +606,90 @@ func TestShouldCompact_CountsCacheTokens(t *testing.T) {
 		t.Error("shouldCompact ignored cache tokens")
 	}
 }
+
+func TestCompact_RequestEndsWithSummaryAsk(t *testing.T) {
+	text := func(role common.Role, s string) common.Message {
+		return common.Message{Role: role, Content: []common.Block{{Kind: common.BlockText, Text: s}}}
+	}
+	prefix := []common.Message{text(common.RoleUser, "first"), text(common.RoleAssistant, "reply")}
+	recentAfterUser := []common.Message{
+		text(common.RoleAssistant, "r1"), text(common.RoleUser, "r2"),
+		text(common.RoleAssistant, "r3"), text(common.RoleUser, "r4"),
+	}
+	recentAfterAssistant := []common.Message{
+		text(common.RoleUser, "r1"), text(common.RoleAssistant, "r2"),
+		text(common.RoleUser, "r3"), text(common.RoleAssistant, "r4"),
+	}
+
+	tests := []struct {
+		name   string
+		old    []common.Message
+		recent []common.Message
+	}{
+		{
+			name:   "old ends with assistant",
+			old:    []common.Message{text(common.RoleUser, "old user"), text(common.RoleAssistant, "old reply")},
+			recent: recentAfterAssistant,
+		},
+		{
+			name: "old ends with tool result",
+			old: []common.Message{
+				text(common.RoleUser, "run ls"),
+				{Role: common.RoleAssistant, Content: []common.Block{
+					{Kind: common.BlockToolUse, ToolUseID: "tc1", ToolName: "shell", InputJSON: `{"command":"ls"}`},
+				}},
+				{Role: common.RoleTool, Content: []common.Block{
+					{Kind: common.BlockToolResult, ToolUseID: "tc1", ResultText: "file1.go"},
+				}},
+			},
+			recent: recentAfterUser,
+		},
+		{
+			name: "old ends with user",
+			old: []common.Message{
+				text(common.RoleUser, "old user"), text(common.RoleAssistant, "old reply"),
+				text(common.RoleUser, "old question"),
+			},
+			recent: recentAfterUser,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			events := []common.StreamEvent{
+				{Kind: common.EventTextDelta, TextDelta: "summary"},
+				{Kind: common.EventTurnDone, StopReason: "end_turn"},
+			}
+			var capturedReq common.Request
+			client := &capturingClient{
+				fakeClient: &fakeClient{sequences: [][]common.StreamEvent{events}},
+				onStream:   func(req common.Request) { capturedReq = req },
+			}
+			a, sess, _ := newTestAgent(t, client, &fakeRecorder{})
+			a.State = NewSessionState(sess, a.State.Writer(), client)
+
+			sess.History = append(append(append([]common.Message{}, prefix...), tt.old...), tt.recent...)
+			if err := a.compact(context.Background(), sess); err != nil {
+				t.Fatalf("compact: %v", err)
+			}
+
+			msgs := capturedReq.Messages
+			if len(msgs) == 0 {
+				t.Fatal("summary request has no messages")
+			}
+			last := msgs[len(msgs)-1]
+			if last.Role != common.RoleUser {
+				t.Fatalf("last request message role = %q, want user", last.Role)
+			}
+			lastBlock := last.Content[len(last.Content)-1]
+			if lastBlock.Text != compactRequestText {
+				t.Errorf("last block text = %q, want %q", lastBlock.Text, compactRequestText)
+			}
+			for i := 1; i < len(msgs); i++ {
+				if msgs[i].Role == msgs[i-1].Role {
+					t.Errorf("request messages %d and %d both have role %q", i-1, i, msgs[i].Role)
+				}
+			}
+		})
+	}
+}
