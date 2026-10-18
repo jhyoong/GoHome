@@ -59,3 +59,12 @@ Likely cause: `compact()` sends `stripToolBlocks(oldMessages)` with the summary 
 Possible fix: append a final user message such as "Summarize the conversation above." to the summary request, and add a test for it. Check that the request still alternates roles correctly when the old messages end with a user message.
 
 Tracked as FOLLOWUP_TASKS item 58.
+
+## 5. Second run (gohome-full-test skill)
+
+A second run by a fresh agent using the `gohome-full-test` skill gave the same results for the binary changes, build checks, headless tests and TUI. golangci-lint v2.15.0 (the CI pin) also reports 0 issues. New findings, all also on main:
+
+- `TestE2EAutoCompact` failed 2/2 on the branch and 2/2 on main with an empty summary. Same cause as section 4 (item 59).
+- Tab-indented code lines in the TUI leave stale text from the spinner until the screen is redrawn (item 60).
+- The shell tool gives a misleading `fork/exec /bin/sh` error when `cwd` does not exist (item 61).
+- The spinner says "Generating..." while the approval menu is open (item 62).
