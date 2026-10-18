@@ -30,8 +30,9 @@ checks. Default patterns block `rm -rf /`, `mkfs`, fork bombs, and writes to
 
 **In-flight subagent steering** -- PARTIALLY DELIVERED in v0.4.2
 Mid-turn steering is implemented for the main agent session: users can inject
-messages between tool calls while the agent is in-flight. Subagent-specific
-steering (injecting into a child session independently) is not yet wired.
+messages between tool calls while the agent is in-flight. Since v0.4.4-dev2,
+subagent views are read-only and steers always go to the main session, so
+steering a child session on its own is not supported.
 
 **Cross-session search / history browsing UI**
 Search across all past JSONL sessions for a project.
@@ -96,6 +97,6 @@ existing `_test.go` files with no structural changes.
 - ~~Multiple tool calls - wrong output displayed. E.g tool call 1 shows results of tool call 2, and vice versa.~~ -- FIXED in v0.4.2 (tool results now matched by ToolUseID)
 - Drastic slowdown on rendering when large thinking or replies after 40k context? -- PARTIALLY FIXED in v0.4.3 (render caching, highlight cache, working render throttle). Per-delta cost still grows with message length; incremental rendering (P5) is not done.
 - ~~Auto-compact doesn't seem to work properly- the notice triggers, but the conversation history sent to the LLM endpoint seems to invalidate the entire cache? Is it because it's modified from the system prompt? Should it be tied to a 'user message` but sent by the system instead?~~ -- FIXED in v0.4.2 (partial compaction preserves first 2 and last 4 messages for cache stability)
-- ~~When LLM intends to run a inline python tool call - it can grow to really long tool approval prompt. Cant scroll properly to view the entire thing.~~ -- FIXED in v0.4.2 (approval prompt expand/collapse with `v` key)
+- ~~When LLM intends to run a inline python tool call - it can grow to really long tool approval prompt. Cant scroll properly to view the entire thing.~~ -- FIXED in v0.4.2 (approval prompt expand/collapse with `v` key). Since v0.4.4-dev2 the expanded prompt has a height cap and scrolls with PgUp/PgDn
 - (Windows) When pasting multiple lines ( e.g copied from notepad, multiple commands ) - it seems to send the first line only ( might be due to breaklines or something? ) instead of the whole chunk. While default terminal behaves that way, gohome is a coding assistant so pasting long chunks of text should be the norm, and send only when pressing enter is the behaviour to match.
   - ~~Related point: When multiple messages are then queued - they fire off in turns and not altogether as one message.~~ -- FIXED (queued messages are combined into one; `Ctrl+D` and `/clear-queue` remove them). The paste issue itself is still open (FOLLOWUP_TASKS item 54).

@@ -24,6 +24,8 @@ var helpLines = []string{
 	"  1-4           Pick an option",
 	"  v             Expand / collapse long command",
 	"  e             Edit suggested shell pattern",
+	"  PgUp/PgDown   Scroll expanded prompt",
+	"  Tab           Show full command (sudo password)",
 	"  Esc           Deny",
 	"",
 	"Slash commands",

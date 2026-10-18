@@ -1,6 +1,6 @@
 ## What is gohome
 
-A single-binary terminal coding agent written in Go. It targets custom LLM endpoints (Anthropic and OpenAI wire formats) and provides tool-call guardrails with human approval, plus built-in sequential subagents. The TUI is built with Bubble Tea (charmbracelet/bubbletea). Read GOAL.md.
+A single-binary terminal coding agent written in Go. It targets custom LLM endpoints (Anthropic and OpenAI wire formats) and provides tool-call guardrails with human approval, plus built-in sequential subagents. The TUI is built with Bubble Tea (charmbracelet/bubbletea). Read docs/GOAL.md.
 
 ## Build and run
 

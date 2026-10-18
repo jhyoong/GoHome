@@ -4,7 +4,7 @@
 
 ## Why am I building this
 
-For fun, mostly. Since I made a dumb choice of buying an annual subscription, I might as well use it. I mainly wanted a terminal tool for custom, local LLM endpoints — for both Anthropic and OpenAI-compatible formats. Other alternatives out there are either massive projects or not exactly what I wanted: a simple and lightweight TUI based coding agent with tool-call guardrails with human approval (plus a skip/"yolo" mode) and built-in sequential subagents you can focus into, steer, and approve independently. 
+For fun, mostly. Since I made a dumb choice of buying an annual subscription, I might as well use it. I mainly wanted a terminal tool for custom, local LLM endpoints — for both Anthropic and OpenAI-compatible formats. Other alternatives out there are either massive projects or not exactly what I wanted: a simple and lightweight TUI based coding agent with tool-call guardrails with human approval (plus a skip/"yolo" mode) and built-in sequential subagents you can focus into and approve independently. 
 
 ---
 
@@ -334,10 +334,18 @@ The password is kept in memory only. If sudo rejects a cached password ("Sorry, 
 
 The `subagent` tool spawns a fresh, isolated agent session from within the agent loop. The subagent shares the parent's guard and tool registry (but cannot itself spawn subagents), runs synchronously, and returns its final text as a tool result to the parent. The TUI shows each session in a strip at the top; `Ctrl+Right` / `Ctrl+Left` switches focus.
 
+Subagent views are read-only. Messages typed while a subagent view is focused go to the main session, and cancel always stops the main run. Resuming a session also loads its subagent sessions as read-only views.
+
 ---
 
 ## Troubleshooting
 
 ### Windows Defender False Positive
 
-Windows Defender may flag gohome as a trojan. This is a false positive caused by the binary's legitimate coding agent features (shell execution, file writes, API communication) overlapping with malware behavioral patterns. See [docs/windows-defender.md](docs/windows-defender.md) for details and workaround instructions.
+Windows Defender may flag gohome as a trojan. This is a false positive caused by the binary's legitimate coding agent features (shell execution, file writes, API communication) overlapping with malware behavioral patterns. Release binaries for Windows are built natively and not stripped, which lowers the risk.
+
+To work around it, add an exclusion for the binary. In **Windows Security**, go to **Virus & threat protection** > **Manage settings** > **Exclusions** > **Add an exclusion** > **File**, and select `gohome.exe`. Or, in an administrator PowerShell:
+
+```powershell
+Add-MpPreference -ExclusionPath "C:\path\to\gohome.exe"
+```

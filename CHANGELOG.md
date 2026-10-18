@@ -1,39 +1,98 @@
 # Changelog
 
-## Unreleased
+## v0.4.4-dev2
+
+Fixes from the 2026-10-17 codebase audit (`docs/reviews/2026-10-17-codebase-audit.md`). IDs such as S1 or D4 refer to that report.
 
 ### Added
 
-- **`thinking` model setting** -- `off`, `adaptive` or `budget` for the Anthropic wire. When unset, gohome uses `budget` if `thinkingBudget > 0`, otherwise `adaptive`. Adaptive sends `{"type":"adaptive","display":"summarized"}`. The budget must be at least 1024 and below `maxTokens`, checked at startup and on `/model` (L1).
-- **`reasoningEffort` on the Anthropic wire** -- Now sent as `output_config.effort` (L1).
-- **Retry-After and jitter** -- Retries now cover 408, 409, 429, 5xx and connection errors, honor `Retry-After` (capped at 60 s) and add jitter (L4).
-- **HTTP timeouts** -- A 5-minute response-header timeout and a 5-minute idle-read watchdog. There is no total client timeout, so long streams still work (L4).
+- **`thinking` model setting** -- `off`, `adaptive` or `budget` for the Anthropic wire. When unset, gohome uses `budget` if `thinkingBudget > 0`, otherwise `adaptive`. Adaptive sends `{"type":"adaptive","display":"summarized"}`. The budget must be at least 1024 and below `maxTokens`, checked at startup and on `/model` (L1, #52).
+- **`reasoningEffort` on the Anthropic wire** -- Now sent as `output_config.effort` (L1, #52).
+- **Retry-After and jitter** -- Retries now cover 408, 409, 429, 5xx and connection errors, honor `Retry-After` (capped at 60 s) and add jitter (L4, #52).
+- **HTTP timeouts** -- A 5-minute response-header timeout and a 5-minute idle-read watchdog. There is no total client timeout, so long streams still work (L4, #52).
+- **Prompt history** -- `Ctrl+P` / `Ctrl+N` recall earlier prompts and restore the draft (A7, #51).
+- **Scrollable approval prompt** -- The expanded approval prompt has a height cap and scrolls with PgUp/PgDn (A8, #51).
+- **Full command in the sudo password dialog** -- `Tab` shows the whole command before you enter the password (S4, #48).
+- **Control characters shown in approval prompts** -- They appear as `\xNN` with a warning line (S5, #48).
+- **Resumed subagents** -- Resuming a session loads its subagent sessions as read-only views linked to their tool entries (D2, #50).
+- **"session not saved" notice** -- Session file write errors are shown in the TUI (D8, #50).
+- **Truncation notice** -- A `max_tokens` or `length` stop reason shows a notice (D5, #50).
+- **Config overlay scrolling** -- The `/config` overlay is clipped to the screen and scrolls with PgUp/PgDn (R20, #54).
+- **Restart notice after `/config`** -- Saving the config says to restart gohome, and setup wizard failures show a notice (H5, #49).
 
 ### Changed
 
-- **Default thinking mode is now adaptive** -- A model config with no `thinkingBudget` used to send a 10240 budget. It now sends adaptive thinking. Older models or proxies without adaptive support need `"thinking": "budget"` or `"thinking": "off"` (L1).
-- **Invalid settings JSON is an error** -- gohome exits and prints the file path instead of treating the file as empty (L7).
-- **Error bodies are capped at 64 KiB** (L4).
-- **Go 1.26.9** -- `go.mod` and both workflows move from Go 1.25, which is no longer supported. This fixes 15 reachable standard library vulnerabilities reported by govulncheck.
-- **Dependencies updated** -- `golang.org/x/sys` v0.49.0 (fixes GO-2026-5024), chroma v2.27.0, goldmark v1.8.6, `x/exp/golden` v0.1.0 and a newer `teatest`.
-- **CI and release workflows** -- GitHub Actions moved to their latest major versions, golangci-lint is pinned to v2.15.0, CI builds set `main.version`, and every built binary has the 25 MB size check.
-- **Release notes** -- A release now uses only its own CHANGELOG section. The release fails if the section is missing.
+- **Default thinking mode is now adaptive** -- A model config with no `thinkingBudget` used to send a 10240 budget. It now sends adaptive thinking. Older models or proxies without adaptive support need `"thinking": "budget"` or `"thinking": "off"` (L1, #52).
+- **Invalid settings JSON is an error** -- gohome exits and prints the file path instead of treating the file as empty (L7, #52).
+- **Error bodies are capped** -- HTTP error bodies are read up to 64 KiB (L4, #52).
+- **Esc Esc cancels a run** -- One `Esc` shows "Press Esc again to cancel", and `Esc` closes the file popup first (A7, #51).
+- **External editor moved to `Ctrl+G`** -- `Ctrl+E` now moves to the end of the input line (R18, #54).
+- **Session delete in the `/resume` browser** -- Delete is `Ctrl+D` then `y` (or `Ctrl+D` twice), and `d` types into the filter (R17, #54).
+- **Default denylist rules** -- New setups get regex rules for `rm` and `mkfs` that handle flag order, quotes, `~`, `$HOME` and wrappers such as `sudo` and `env`. Spaces are squeezed before matching (S7, #48).
+- **Owner-only config files** -- New settings and denylist files are written `0600`, and new `~/.gohome` folders are created `0700` (S6, #48).
+- **Subagent views are read-only** -- Steers go to the main run, and cancel always targets the main run (A4, #51).
+- **`/new` and `/resume` are refused during a run** -- Cancel the run first (A4, #51).
+- **Resume uses the current model config** -- A resumed session no longer sends the model name stored in the session file (A6, #51).
+- **Headless output** -- `--prompt` prints only the final main-session reply (A10, #51).
+- **Sudo in yolo mode** -- Yolo opens the password dialog for sudo commands. Windows no longer shows a sudo dialog (A9, #51).
+- **Subagent session IDs** -- Child sessions are named `<parentID>-sub-N` and are hidden from resume lists (D2, #50).
+- **Shell output cap** -- Shell output keeps the first and last 32 KiB with an omitted-bytes marker (T1, #53).
+- **Read tool limits** -- Lines over 2000 characters are cut, and a read stops at 100 KiB with a note giving the offset to continue from (T1, #53).
+- **Shell timeouts** -- `timeout_ms` of 0 or less uses the default, and the tool description shows the configured timeouts (T3, #53).
+- **Thinking entries collapse** -- `Enter` collapses and expands thinking entries. They are expanded by default (#54).
+- **Go 1.26.9** -- `go.mod` and both workflows move from Go 1.25, which is no longer supported. This fixes 15 reachable standard library vulnerabilities reported by govulncheck (#55).
+- **Dependencies updated** -- `golang.org/x/sys` v0.49.0 (fixes GO-2026-5024), chroma v2.27.0, goldmark v1.8.6, `x/exp/golden` v0.1.0 and a newer `teatest` (#55).
+- **CI and release workflows** -- GitHub Actions moved to their latest major versions, golangci-lint is pinned to v2.15.0, CI builds set `main.version`, and every built binary has the 25 MB size check (#55).
+- **Release notes** -- A release uses only its own CHANGELOG section. The release fails if the section is missing (#55).
 
 ### Fixed
 
-- **Thinking blocks were merged** -- Thinking blocks now keep arrival order and their own signatures, and signature-only blocks are kept (L2).
-- **`redacted_thinking` blocks were dropped** -- They are now read, saved and sent back (L3).
-- **OpenAI error chunks ended the turn normally** -- `{"error":...}` chunks are now errors (L5).
-- **OpenAI wire details** -- `delta.reasoning` is read, a thinking-only assistant turn sends `content: ""`, and user text blocks are joined with a newline (L8).
-- **Config skeleton wrote placeholders** -- The skeleton no longer has an `example` model or `"string"` values (L6).
-- **Project files could not turn settings off** -- A project file can now set `autoCompact` and `cacheSudoPassword` to false (L7).
-- **`retryBackoffMs` had no effect** -- The clients now use it (L7).
-- **Compaction ignored cache tokens** -- Compaction now counts cache-read and cache-write tokens (L9).
-- **Windows release binaries were stripped and cross-compiled** -- The release workflow now builds Windows natively on `windows-latest` without `-s -w`, matching CI.
+- **`sudo -n` and pipes into sudo failed** -- The password is checked with `sudo -v` and passed on a separate file descriptor instead of stdin. If the check fails, the command does not run (M5, #47).
+- **Whitelisted commands could be chained** -- Commands with shell operators never auto-approve, patterns must match whole words, and alternations stay anchored (S1, #48).
+- **"Allow always" could whitelist everything** -- Empty and invalid patterns are rejected, suggestions are regex-escaped, and sudo suggestions are the full command ending in `$` (S3, #48).
+- **Terminal escape sequences reached the terminal** -- Agent text, tool output, tool names, diffs and resumed history are sanitized (S5, #48).
+- **Settings save errors were hidden** -- The setup wizard stays on the current step and shows the error (S6, #48).
+- **Shell tool hung on output lines over 1 MiB** -- The pipe is drained after a scanner error (H1, #49).
+- **Shell timeout left child processes running** -- The process group is killed, and partial output and the exit code are kept (H2, #49).
+- **TUI froze or crashed at small terminal widths** -- Wrapping and horizontal rules handle widths of 0 or less (H3, H4, #49).
+- **Cancelling the setup wizard crashed on the first message** -- A missing client is now an error (H5, #49).
+- **HTTP and stream errors were not shown in the TUI** -- They are now shown as errors (A1, #49).
+- **Sessions with a line over 64 KiB could not be loaded or listed** -- Long lines now load (D1, #50).
+- **Tool results skipped by a steer were not saved** -- They are saved, and a `tool_use` with no result is repaired on load (D3, #50).
+- **Invalid tool-call JSON broke later Anthropic requests** -- Invalid input is stored as `{}` and the call returns an error result (D4, #50).
+- **Streams that ended early were treated as complete** -- They are now errors on both wires (D5, A3, #50).
+- **Compacting a resumed session could orphan tool results** -- Replayed tool results are grouped into one message (D6, #50).
+- **Cancelling during compaction saved a cut-off summary** -- The summary is applied only after the turn completes (D7, #50).
+- **Emit after Close panicked** -- The event is dropped instead (D9, #50).
+- **Work continued after cancel** -- Remaining tool calls are skipped, and active and queued approvals are denied and cleared (A2, #51).
+- **Steer, queue and run routing** -- Only the main session's run end stops the spinner and drains the queue, and a late run end from a cancelled run is ignored (A4, #51).
+- **`/model` raced with the running turn** -- Model settings are behind a lock, and switching applies the startup defaults (A5, #51).
+- **Input handling** -- Only known commands are treated as slash commands, Arrow Down resumes auto-scroll, and `/cancel` when idle says "Nothing to cancel" (A7, #51).
+- **Sudo edge cases** -- Wrong-password detection works in non-English locales, more sudo forms are detected, and a trailing `\` no longer swallows the exit code (A9, #51).
+- **Headless mode** -- `Ctrl+C` works while reading stdin, and long stdin lines work (A10, #51).
+- **Edit tool bugs** -- An empty `old_string` is rejected, and on CRLF files an LF-only `old_string` is retried with CRLF line endings (T2, #53).
+- **Read-before-edit compared raw paths** -- Paths are compared in clean absolute form (T3, #53).
+- **Styling lost at wrap points** -- The full SGR state is kept across wraps, and words that fit on the next line are not broken (R1, R12, #54).
+- **Markdown rendering** -- Raw HTML is shown as text, code blocks and headings wrap, nested lists are indented once per level, wide tables fit, and heading style survives emphasis (R2, R3, R13, #54).
+- **Tool entries** -- Diff colors use the marker position, tabs expand by column, multi-line commands show their first line, and tool args use `path` and `task` (R6, R11, R14, R15, #54).
+- **File search** -- The list scrolls with the selection, results are scored before the cap, `fd` gets `--`, and the `find` fallback skips `.git/` (R7, R8, #54).
+- **Backspace removed one byte** -- It now removes one character (R16, #54).
+- **`/resume` could delete the active session** -- It is refused, and delete errors are shown (R19, #54).
+- **Highlight cache churn and wheel timers** -- The cache evicts one entry at a time, and the mouse wheel uses one idle timer (R21, R23, #54).
+- **Thinking blocks were merged** -- Thinking blocks keep arrival order and their own signatures, and signature-only blocks are kept (L2, #52).
+- **`redacted_thinking` blocks were dropped** -- They are read, saved and sent back (L3, #52).
+- **OpenAI error chunks ended the turn normally** -- `{"error":...}` chunks are now errors (L5, #52).
+- **OpenAI wire details** -- `delta.reasoning` is read, a thinking-only assistant turn sends `content: ""`, and user text blocks are joined with a newline (L8, #52).
+- **Config skeleton wrote placeholders** -- The skeleton no longer has an `example` model or `"string"` values (L6, #52).
+- **Project files could not turn settings off** -- A project file can set `autoCompact` and `cacheSudoPassword` to false (L7, #52).
+- **`retryBackoffMs` had no effect** -- The clients now use it (L7, #52).
+- **Compaction ignored cache tokens** -- Compaction counts cache-read and cache-write tokens (L9, #52).
+- **Windows release binaries were stripped and cross-compiled** -- The release workflow builds Windows natively on `windows-latest` without `-s -w`, matching CI (#55).
+- **Docs and in-app help were out of date** -- README, help overlay, AGENTS.md and FUTURE.md now match the code (#56).
 
 ### Removed
 
-- **`autoCompactTargetPct`** -- It was never read (L7).
+- **`autoCompactTargetPct`** -- It was never read (L7, #52).
 
 ## v0.4.4-dev1
 

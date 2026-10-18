@@ -1,6 +1,6 @@
 # Follow-up Tasks
 
-Open items found while fixing and testing the 2026-10-17 audit items. The first sections come from the security fixes (PR #48); the last section comes from the D1-D9 data loss fixes. None of these are regressions.
+Open items found while fixing and testing the 2026-10-17 audit items (PRs #48 to #56). Each section names the fixes it came from. None of these are regressions.
 
 ## Denylist
 
