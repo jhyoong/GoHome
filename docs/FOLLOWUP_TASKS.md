@@ -45,3 +45,6 @@ Minor items found while reviewing the D1-D9 fixes (plan: `docs/old/2026-10-17-da
 ### CI and release (found while fixing the docs and CI items)
 63. **The rewritten `release.yml` has not run.** Native Windows build, per-target size guard and CHANGELOG-section release notes are only YAML-checked. Push a test tag (for example `v0.4.4-dev2`, with a matching CHANGELOG section) and check the draft release and its four assets.
 
+
+### Setup wizard (found in the fix/followup-tasks-batch live test)
+67. **Wizard option descriptions and notices are cut off at narrow widths.** At 50 columns, "read from an env var at r" and "write /tmp/.../setti" are cut instead of wrapped. The "Could not resolve API key" notice behind the wizard is cut too. `main` does the same. Found in `docs/reviews/2026-10-18-fix-followup-tasks-batch-live-test.md`.
