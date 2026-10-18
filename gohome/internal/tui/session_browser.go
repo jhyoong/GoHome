@@ -18,6 +18,9 @@ func listingToItem(l session.Listing) SelectItem {
 	if label == "" {
 		label = l.ID
 	}
+	// The title comes from the first user message, so control sequences are
+	// removed before display.
+	label = sanitizeText(label)
 	if VisualWidth(label) > 40 {
 		label = TruncateText(label, 40)
 	}

@@ -452,3 +452,71 @@ func TestShowNoticeAddsNoticeToFocusedSession(t *testing.T) {
 		t.Errorf("unexpected entry: %+v", last)
 	}
 }
+
+// bidiCmd looks like "ls # txt.exe" in a terminal that applies the bidi
+// override, but the shell runs "ls # exe.txt".
+const bidiCmd = "ls # \u202etxt.exe"
+
+func TestSanitizeText_RemovesBidi(t *testing.T) {
+	in := bidiCmd + "\u061c\u200e\u200f\u202a\u202b\u202c\u202d\u2066\u2067\u2068\u2069"
+	if got := sanitizeText(in); got != "ls # txt.exe" {
+		t.Errorf("sanitizeText(%q) = %q, want %q", in, got, "ls # txt.exe")
+	}
+}
+
+func TestShowControls_Bidi(t *testing.T) {
+	got, found := showControls(bidiCmd + "\u2069")
+	want := `ls # \u202etxt.exe\u2069`
+	if got != want || !found {
+		t.Errorf("showControls(%q) = %q, %v; want %q, true", bidiCmd, got, found, want)
+	}
+}
+
+func TestView_ApprovalPromptShowsBidi(t *testing.T) {
+	input, _ := json.Marshal(map[string]string{"command": bidiCmd})
+	m := newSanitizeModel()
+	m.Update(ApprovalReqMsg{
+		Req:   guard.ApprovalRequest{SessionID: "s1", Tool: "shell", Input: input},
+		Reply: make(chan guard.ApprovalDecision, 1),
+	})
+	view := m.View()
+	if strings.Contains(view, "\u202e") {
+		t.Errorf("view contains raw U+202E: %q", view)
+	}
+	if !strings.Contains(view, `ls # \u202etxt.exe`) {
+		t.Errorf("view missing escaped command: %q", view)
+	}
+	if !strings.Contains(view, controlCharWarning) {
+		t.Errorf("view missing warning: %q", view)
+	}
+}
+
+// unknownToolInput is the input of a tool with no known display field. An
+// OSC sequence starts at column 55, close to the 60-column summary cut.
+var unknownToolInput = `{"a":"` + strings.Repeat("x", 48) + "\x1b]0;t\x07abcdefghij" + `"}`
+
+// The summary of an unknown tool is cut after control characters are
+// removed, so the cut is measured on the text that is shown.
+func TestExtractToolArg_UnknownToolCutAfterSanitize(t *testing.T) {
+	want := `{"a":"` + strings.Repeat("x", 48) + "abc..."
+	if got := extractToolArg("mystery", unknownToolInput); got != want {
+		t.Errorf("extractToolArg = %q, want %q", got, want)
+	}
+}
+
+// The approval prompt cuts an unknown tool's input after the control
+// characters are written out as text.
+func TestApproval_UnknownToolCutAfterShowControls(t *testing.T) {
+	ap := newApprovalPrompt(guard.ApprovalRequest{
+		SessionID: "s1",
+		Tool:      "mystery",
+		Input:     json.RawMessage(unknownToolInput),
+	}, make(chan guard.ApprovalDecision, 1))
+	want := `{"a":"` + strings.Repeat("x", 48) + `\x1...`
+	if ap.arg != want {
+		t.Errorf("arg = %q, want %q", ap.arg, want)
+	}
+	if !ap.hasControls {
+		t.Error("hasControls is false, want true")
+	}
+}

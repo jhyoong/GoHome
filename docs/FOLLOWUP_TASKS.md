@@ -11,12 +11,6 @@ Open items found while fixing and testing the 2026-10-17 audit items (PRs #48 to
 9. **A tab is not a word boundary** in whitelist matching, so `ls<TAB>-la` prompts. Fails closed.
 10. **`\r` is not treated as a shell operator** in `hasShellOperator`. Only matters for hand-written patterns, since commands with control characters get no suggestion.
 
-## Terminal output
-
-11. **Unicode bidi characters are not flagged.** Characters such as U+202E can visually reorder text in the approval prompt. Neither the sanitizer nor the control-character warning handles them.
-12. **Unknown-tool summaries are cut to length before control characters are escaped,** so the cut point is computed on the raw text.
-13. **Filenames in the file search list, session browser and `/resume` picker are not sanitized.**
-
 ## File permissions
 
 14. **`whitelist.json` is created `0644`.**
@@ -97,3 +91,6 @@ Minor items found while reviewing the D1-D9 fixes (plan: `docs/old/2026-10-17-da
 
 ### Compaction (found while fixing items 58-62)
 64. **A summary cut off by the output limit is still applied.** `compact()` ignores the stop reason. With `max_tokens` or `length`, the summary may be cut off, or empty when a reasoning model spends the whole limit on thinking (then compaction is skipped with "empty summary"). Decide whether to reject a cut-off summary, retry with a larger limit, or keep it. Found while checking item 59: with `MaxTokens` 256, 2 of 3 summaries stopped with `length` and no text.
+
+### Terminal output (found while fixing items 11-13)
+65. **The editor and live user entries show raw control characters.** Picking a file whose name holds an escape sequence from the file search list inserts the real path into the editor, and the editor prints it raw (an SGR color applied in the live test). Text typed or pasted into the editor, and the user timeline entry made from it, are also not sanitized, so a pasted U+202E or ESC reaches the terminal. Resumed sessions are not affected (`historyToTimeline` sanitizes). This code is unchanged from `main` (not re-run there).
