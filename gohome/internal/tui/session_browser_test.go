@@ -159,3 +159,22 @@ func TestListingToItem_SanitizesTitle(t *testing.T) {
 		t.Errorf("Value = %q, want %q", item.Value, "abc123")
 	}
 }
+
+func TestSessionBrowserKeepsFullAgeAtNarrowWidth(t *testing.T) {
+	listings := []session.Listing{{
+		ID:         "long01",
+		Title:      strings.Repeat("a", 40),
+		LastActive: time.Now(),
+	}}
+	sb := NewSessionBrowser(listings)
+	lines := sb.Render(50)
+	joined := StripAnsi(strings.Join(lines, "\n"))
+	if !strings.Contains(joined, "just now") {
+		t.Errorf("age should show in full, got:\n%s", joined)
+	}
+	for _, line := range lines {
+		if w := VisualWidth(line); w > 50 {
+			t.Errorf("line is %d columns wide, want <= 50: %q", w, StripAnsi(line))
+		}
+	}
+}

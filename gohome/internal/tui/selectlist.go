@@ -34,6 +34,10 @@ type SelectListComponent struct {
 	// WrapDescriptions wraps long descriptions onto extra lines instead of
 	// truncating them. Off by default because windowing counts items, not lines.
 	WrapDescriptions bool
+
+	// FitLabel cuts the label instead of the description when both do not
+	// fit, so short descriptions such as ages always show in full.
+	FitLabel bool
 }
 
 func initSelectItems(items []SelectItem) []SelectItem {
@@ -92,6 +96,12 @@ func (sl *SelectListComponent) Render(width int) []string {
 		}
 
 		label := item.Label
+		if sl.FitLabel && showDesc && item.Description != "" {
+			labelMaxW := width - VisualWidth(prefix) - 2 - VisualWidth(item.Description)
+			if labelMaxW > 0 && VisualWidth(label) > labelMaxW {
+				label = TruncateText(label, labelMaxW)
+			}
+		}
 		line := prefix + label
 		var extra []string
 
