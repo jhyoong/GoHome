@@ -921,6 +921,96 @@ func TestRun_SteerSkipPersistsToolResult(t *testing.T) {
 	}
 }
 
+// A failed run adds an assistant marker after the unanswered message, keeps
+// it in history and persists it, so resume shows it and roles still alternate.
+func TestRun_FailedRunMarksHistory(t *testing.T) {
+	streamErr := errors.New("HTTP 500: server error")
+	tests := []struct {
+		name   string
+		turns  [][]common.StreamEvent
+		before common.Role // role of the message the marker follows
+	}{
+		{
+			name:   "first turn fails",
+			turns:  [][]common.StreamEvent{{{Kind: common.EventError, Err: streamErr}}},
+			before: common.RoleUser,
+		},
+		{
+			name: "turn after tool call fails",
+			turns: [][]common.StreamEvent{
+				{
+					{Kind: common.EventToolCallDone, ToolCallID: "tc1", ToolName: "fake", InputJSON: `{}`},
+					{Kind: common.EventTurnDone, StopReason: "tool_use"},
+				},
+				{{Kind: common.EventError, Err: streamErr}},
+			},
+			before: common.RoleTool,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &fakeClient{sequences: tt.turns}
+			reg := tools.NewRegistry()
+			reg.Register(&fakeTool{name: "fake", content: "ok"})
+			a, sess := newTestAgentWithGuard(t, client, &fakeRecorder{}, compileYoloGuard(t), reg)
+			sess.History = []common.Message{
+				{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "hello"}}},
+			}
+			a.State.Writer().Emit(session.SessionStart{ID: sess.ID, StartedAt: sess.StartedAt})
+			a.State.Writer().Emit(session.UserMessage{Content: sess.History[0].Content})
+
+			if err := a.Run(context.Background(), sess); !errors.Is(err, streamErr) {
+				t.Fatalf("Run err = %v, want %v", err, streamErr)
+			}
+
+			check := func(where string, h []common.Message) {
+				t.Helper()
+				if len(h) < 2 {
+					t.Fatalf("%s: history len = %d, want >= 2", where, len(h))
+				}
+				last := h[len(h)-1]
+				if last.Role != common.RoleAssistant {
+					t.Fatalf("%s: last role = %q, want assistant", where, last.Role)
+				}
+				if h[len(h)-2].Role != tt.before {
+					t.Errorf("%s: role before marker = %q, want %q", where, h[len(h)-2].Role, tt.before)
+				}
+				if len(last.Content) != 1 || !strings.Contains(last.Content[0].Text, "Run failed") ||
+					!strings.Contains(last.Content[0].Text, "HTTP 500") {
+					t.Errorf("%s: marker = %+v", where, last.Content)
+				}
+			}
+			check("memory", sess.History)
+
+			if err := a.State.Writer().Close(); err != nil {
+				t.Fatalf("Close: %v", err)
+			}
+			_, loaded, err := session.Load(filepath.Join(sess.CWD(), "session.jsonl"))
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			check("loaded", loaded)
+		})
+	}
+}
+
+// A cancelled run is not a failure: no marker is added.
+func TestRun_CancelledRunNoMarker(t *testing.T) {
+	client := &fakeClient{sequences: [][]common.StreamEvent{{{Kind: common.EventTextDelta, TextDelta: "x"}}}}
+	a, sess := newTestAgentWithGuard(t, client, &fakeRecorder{}, compileYoloGuard(t), tools.NewRegistry())
+	sess.History = []common.Message{
+		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "hello"}}},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := a.Run(ctx, sess); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run err = %v, want context.Canceled", err)
+	}
+	if len(sess.History) != 1 {
+		t.Errorf("history len = %d, want 1", len(sess.History))
+	}
+}
+
 // countToolResultLines counts tool_result JSONL lines for the given tool use ID.
 func countToolResultLines(t *testing.T, raw, id string) int {
 	t.Helper()

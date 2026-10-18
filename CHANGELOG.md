@@ -2,9 +2,7 @@
 
 ## Unreleased
 
-Fixes for follow-up items 58-62 from the 2026-10-18 live test (`docs/reviews/2026-10-18-outdated-components-live-test.md`), file path fixes for items 39, 52 and 53, terminal output fixes for items 11, 12 and 13, whitelist and approval prompt fixes for items 5, 6, 7, 9, 10 and 14, and session loading and writer fixes for items 21-29.
-Fixes for follow-up items 58-62 from the 2026-10-18 live test (`docs/reviews/2026-10-18-outdated-components-live-test.md`), file path fixes for items 39, 52 and 53, terminal output fixes for items 11, 12 and 13, and whitelist and approval prompt fixes for items 5, 6, 7, 9, 10 and 14, and subagent session fixes for items 30, 31 and 32.
-Fixes for follow-up items 58-62 from the 2026-10-18 live test (`docs/reviews/2026-10-18-outdated-components-live-test.md`), file path fixes for items 39, 52 and 53, terminal output fixes for items 11, 12 and 13, whitelist and approval prompt fixes for items 5, 6, 7, 9, 10 and 14, and UX and logging fixes for items 16, 17, 18, 42, 44 and 65.
+Fixes for follow-up items 58-62 from the 2026-10-18 live test (`docs/reviews/2026-10-18-outdated-components-live-test.md`), file path fixes for items 39, 52 and 53, terminal output fixes for items 11, 12 and 13, whitelist and approval prompt fixes for items 5, 6, 7, 9, 10 and 14, setup wizard, logging and TUI fixes for items 16, 17, 18, 42, 44 and 65, session loading and writer fixes for items 21-29, subagent session fixes for items 30, 31 and 32, and compaction and failed run fixes for items 40, 64 and 66.
 
 ### Added
 
@@ -42,6 +40,9 @@ Fixes for follow-up items 58-62 from the 2026-10-18 live test (`docs/reviews/202
 - **Sudo dialog scrolling** -- The full command shown with Tab in the sudo password dialog is capped to the screen height and scrolls with PgUp/PgDn, like the approval menu (42).
 - **Model on resume** -- A resumed session that runs with a different model writes a `model_change` record, so the session file shows the model the requests use. `/model` switches are recorded the same way (44).
 - **Control characters in the editor** -- The editor, live user entries and queued messages remove control sequences and bidi controls when drawn. A file name with an escape sequence picked from the file search list, or a pasted ESC or U+202E, no longer reaches the terminal. The text sent to the model is unchanged (65).
+- **Rejected compaction summaries** -- A summary is not applied when it stopped at the output token limit (`max_tokens` or `length`), is empty, or is not shorter than the messages it replaces. The full history is kept and a notice says why (64, 66).
+- **Fewer repeated compactions** -- After a rejected summary, compaction waits until the messages it kept as recent are part of what gets summarized, instead of asking again on every turn (66).
+- **Failed runs are marked** -- When a run fails (not cancelled), an assistant message "[Run failed] <error>" is added after the unanswered message and saved in the session file. It shows on resume, the model sees it on the next turn, and roles still alternate (40).
 
 ## v0.4.4-dev2
 

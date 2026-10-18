@@ -11,7 +11,6 @@ Open items found while fixing and testing the 2026-10-17 audit items (PRs #48 to
 
 Minor items found while reviewing the D1-D9 fixes (plan: `docs/old/2026-10-17-data-loss-plan.md`). None of them lose data.
 
-
 ### Streams
 33. **Tool entries stay "pending" after an early stream end.** Anthropic sends tool calls before `message_stop`, so the TUI shows them, but the turn is dropped. Mark pending entries as failed when `EventError` arrives. Cancelling mid-stream already did this before the fix.
 34. **"stream ended early" is defined three times** (`anthropic/translate.go`, `openai/translate.go`, `agent/errors.go`). Use one sentinel in `common` so `errors.Is` works across packages.
@@ -22,7 +21,6 @@ Minor items found while reviewing the D1-D9 fixes (plan: `docs/old/2026-10-17-da
 38. **`TestPickResume_SkipsChildAndLoadsChildren` has no recorded failing run.** `TestListExcludesChildren` covers the same case and did fail first.
 
 ### Agent loop and TUI (found while fixing A1-A10)
-40. **A failed run leaves the user message unanswered.** The message stays in history with no reply (A1 leftover). Decide whether to drop it or mark it.
 41. **Sudo detection matches inside quoted strings.** `echo 'a; sudo b'` is treated as sudo. `VAR=/path/sudo cmd` (for example `SUDO=/usr/bin/sudo make install`) is also detected as sudo. The worst case is an extra password prompt. Fixing this needs a shell parser (`guard/sudo.go`).
 
 ### LLM wire and config (found while fixing L1-L9)
@@ -47,8 +45,3 @@ Minor items found while reviewing the D1-D9 fixes (plan: `docs/old/2026-10-17-da
 ### CI and release (found while fixing the docs and CI items)
 63. **The rewritten `release.yml` has not run.** Native Windows build, per-target size guard and CHANGELOG-section release notes are only YAML-checked. Push a test tag (for example `v0.4.4-dev2`, with a matching CHANGELOG section) and check the draft release and its four assets.
 
-### Compaction (found while fixing items 58-62)
-64. **A summary cut off by the output limit is still applied.** `compact()` ignores the stop reason. With `max_tokens` or `length`, the summary may be cut off, or empty when a reasoning model spends the whole limit on thinking (then compaction is skipped with "empty summary"). Decide whether to reject a cut-off summary, retry with a larger limit, or keep it. Found while checking item 59: with `MaxTokens` 256, 2 of 3 summaries stopped with `length` and no text.
-
-### Compaction (found in the fix/approval-whitelist live test)
-66. **Compaction can run with little or no gain.** On `local-direct-anthropic`, one compaction went from 114 to 125 tokens, and others saved only a few tokens (94 to 88, 146 to 136 on `main`). One run compacted 9 times in 5 turns. Consider skipping compaction when the history is already small, or rejecting a summary that is not shorter than what it replaces. Found in `docs/reviews/2026-10-18-fix-approval-whitelist-live-test.md`; also on `main`.

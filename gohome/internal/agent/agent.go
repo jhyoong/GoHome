@@ -16,6 +16,9 @@ type Agent struct {
 	CompactCfg    CompactConfig
 	CompactPrompt string
 
+	// compactWait holds back compaction after a rejected summary.
+	compactWait compactWait
+
 	// Home is the gohome home directory used to compute subagent JSONL paths.
 	Home string
 }
