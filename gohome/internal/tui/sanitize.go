@@ -24,6 +24,8 @@ import (
 //     of turning it into '\n') never adds lines, which keeps diff line numbers
 //     aligned and progress-bar output on one line.
 //   - Invalid UTF-8 bytes.
+//   - Bidi controls (see isBidi). They can reorder text on screen so that it
+//     reads differently from what it is ("Trojan Source").
 //
 // An unterminated sequence at the end of the text is dropped. The existing
 // StripAnsi helper is not used here because it misses several of these forms.
@@ -37,9 +39,10 @@ func sanitizeText(s string) string {
 
 // showControls returns s with every control character written as visible
 // text instead of removed: C0 controls, DEL, C1 controls and invalid UTF-8
-// bytes become "\xNN" (ESC is "\x1b"). '\n' and '\t' are kept. found
-// reports whether anything was rewritten. The approval prompt uses it so
-// that nothing the shell will run is hidden from the user.
+// bytes become "\xNN" (ESC is "\x1b"), and bidi controls become "\uNNNN".
+// '\n' and '\t' are kept. found reports whether anything was rewritten. The
+// approval prompt uses it so that nothing the shell will run is hidden from
+// the user.
 func showControls(s string) (out string, found bool) {
 	var b strings.Builder
 	b.Grow(len(s))
@@ -54,12 +57,22 @@ func showControls(s string) (out string, found bool) {
 		case r < 0x20 || (r >= 0x7f && r <= 0x9f):
 			fmt.Fprintf(&b, "\\x%02x", r)
 			found = true
+		case isBidi(r):
+			fmt.Fprintf(&b, "\\u%04x", r)
+			found = true
 		default:
 			b.WriteString(s[i : i+size])
 		}
 		i += size
 	}
 	return b.String(), found
+}
+
+// isBidi reports whether r is a bidi control: U+061C, U+200E, U+200F,
+// U+202A-U+202E or U+2066-U+2069. guard.hasControlChar keeps the same list.
+func isBidi(r rune) bool {
+	return r == 0x061c || r == 0x200e || r == 0x200f ||
+		(r >= 0x202a && r <= 0x202e) || (r >= 0x2066 && r <= 0x2069)
 }
 
 // sanitizeStream sanitizes one chunk of streamed text. An incomplete
@@ -97,7 +110,7 @@ func sanitize(s string, final bool) (clean, rest string) {
 				return b.String(), s[i:]
 			}
 			i += n
-		case r < 0x20 || r == 0x7f:
+		case r < 0x20 || r == 0x7f || isBidi(r):
 			i += size
 		default:
 			b.WriteString(s[i : i+size])

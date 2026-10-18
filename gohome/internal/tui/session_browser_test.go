@@ -147,3 +147,15 @@ func TestSessionBrowserDeleteRemovesItemOnSuccess(t *testing.T) {
 		}
 	}
 }
+
+// A session title comes from the first user message and can hold an escape
+// sequence. The /resume picker shows it without the sequence.
+func TestListingToItem_SanitizesTitle(t *testing.T) {
+	item := listingToItem(session.Listing{ID: "abc123", Title: "fix\x1b]52;c;aGk=\x07 \x1b[2Jbug"})
+	if item.Label != "fix bug" {
+		t.Errorf("Label = %q, want %q", item.Label, "fix bug")
+	}
+	if item.Value != "abc123" {
+		t.Errorf("Value = %q, want %q", item.Value, "abc123")
+	}
+}

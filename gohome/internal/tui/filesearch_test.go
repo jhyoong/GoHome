@@ -254,3 +254,24 @@ func TestFileSearchArgs(t *testing.T) {
 		t.Errorf("find args must exclude .git: %v", args)
 	}
 }
+
+// A file name can hold an escape sequence (for example in a cloned repo).
+// The list shows it without the sequence; the selected value stays the real
+// path.
+func TestFileSearchPopup_Render_SanitizesPath(t *testing.T) {
+	path := "src/evil\x1b]52;c;aGk=\x07\x1b[2J.go"
+	p := NewFileSearchPopup()
+	p.results = []ScoredResult{{Path: "a.go"}, {Path: path}}
+	p.visible = true
+	joined := strings.Join(p.Render(80), "\n")
+	if strings.Contains(joined, "]52") || strings.Contains(joined, "[2J") || strings.ContainsRune(joined, '\x07') {
+		t.Errorf("render has a raw escape sequence: %q", joined)
+	}
+	if !strings.Contains(joined, "src/evil.go") {
+		t.Errorf("render missing cleaned path: %q", joined)
+	}
+	p.selected = 1
+	if got := p.SelectedPath(); got != path {
+		t.Errorf("SelectedPath = %q, want %q", got, path)
+	}
+}

@@ -760,15 +760,23 @@ func formatTurnStats(s *TurnStatsData) string {
 func extractToolArg(toolName, inputJSON string) string {
 	// JSON escapes such as \u001b decode to real control characters, so the
 	// decoded value is sanitized.
-	return sanitizeText(rawToolArg(toolName, inputJSON))
+	arg, fallback := rawToolArg(toolName, inputJSON)
+	arg = sanitizeText(arg)
+	if fallback {
+		// Cut after sanitizing so the cut is measured on the shown text.
+		arg = shortSummary(arg)
+	}
+	return arg
 }
 
-// rawToolArg is extractToolArg without sanitizing. Callers must make the
-// result safe before display.
-func rawToolArg(toolName, inputJSON string) string {
+// rawToolArg is extractToolArg without sanitizing or cutting. Callers must
+// make the result safe before display. fallback is true when the whole input
+// is returned (parse failure or unknown tool); callers then shorten it with
+// shortSummary after making it safe.
+func rawToolArg(toolName, inputJSON string) (arg string, fallback bool) {
 	inputJSON = strings.TrimSpace(inputJSON)
 	if inputJSON == "" {
-		return ""
+		return "", false
 	}
 
 	var key string
@@ -787,14 +795,14 @@ func rawToolArg(toolName, inputJSON string) string {
 			if raw, ok := m[key]; ok {
 				var val string
 				if err2 := json.Unmarshal(raw, &val); err2 == nil {
-					return val
+					return val, false
 				}
 			}
 		}
 	}
 
 	// Fallback for unknown tools or parse failures.
-	return shortSummary(inputJSON)
+	return inputJSON, true
 }
 
 // renderToolSummary builds the collapsed single-line representation of a tool entry

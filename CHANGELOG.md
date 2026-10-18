@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-Fixes for follow-up items 58-62 from the 2026-10-18 live test (`docs/reviews/2026-10-18-outdated-components-live-test.md`), and file path fixes for items 39, 52 and 53.
+Fixes for follow-up items 58-62 from the 2026-10-18 live test (`docs/reviews/2026-10-18-outdated-components-live-test.md`), file path fixes for items 39, 52 and 53, and terminal output fixes for items 11, 12 and 13.
 
 ### Fixed
 
@@ -14,6 +14,9 @@ Fixes for follow-up items 58-62 from the 2026-10-18 live test (`docs/reviews/202
 - **Edit after write** -- A file created or overwritten with `write` counts as read, so `edit` no longer needs a `read` first (52).
 - **Read-before-edit follows symlinks** -- Reading a file through a symlink and editing it through its real path (or the other way round) now works. On macOS, `/tmp/x/a.txt` and `/private/tmp/x/a.txt` match (53).
 - **One session folder per directory** -- Symlinks in the working directory are resolved before the session folder name is built, so `/resume` from `/tmp/x` and from `/private/tmp/x` finds the same sessions. Sessions saved earlier from a path that contains a symlink were stored under the unresolved path and no longer show in `/resume`. Paths without symlinks are not affected (39).
+- **Bidi characters** -- Bidi controls (U+061C, U+200E, U+200F, U+202A-U+202E, U+2066-U+2069) can make a command look different from what runs. The approval prompt now shows them as `\uNNNN` with the control-character warning, timeline text drops them, and a command with one gets no suggested whitelist pattern (11).
+- **Unknown-tool summaries** -- The 60-column cut is now made after control characters are removed (timeline) or written out (approval prompt), so it can no longer split an escape sequence (12).
+- **File names and session titles** -- Control sequences are removed from file names in the file search list and from session titles in the `/resume` picker. The selected file path is unchanged (13).
 
 ## v0.4.4-dev2
 

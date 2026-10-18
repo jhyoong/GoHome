@@ -121,7 +121,9 @@ func (p *FileSearchPopup) Render(width int) []string {
 		if i == p.selected {
 			prefix = "> "
 		}
-		line := prefix + r.Path
+		// File names are untrusted (a cloned repo can hold any name), so
+		// control sequences are removed for display only.
+		line := prefix + sanitizeText(r.Path)
 		if VisualWidth(line) > width {
 			line = TruncateText(line, width)
 		}

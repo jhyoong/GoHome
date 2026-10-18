@@ -58,10 +58,14 @@ func Suggest(tool string, inputJSON []byte) string {
 }
 
 // hasControlChar reports whether s contains a C0 control other than tab,
-// DEL, or a C1 control.
+// DEL, a C1 control, or a bidi control (U+061C, U+200E, U+200F,
+// U+202A-U+202E, U+2066-U+2069). Bidi controls can make a command look
+// different from what runs. The list matches isBidi in the tui package.
 func hasControlChar(s string) bool {
 	for _, r := range s {
-		if (r < 0x20 && r != '\t') || (r >= 0x7f && r <= 0x9f) {
+		if (r < 0x20 && r != '\t') || (r >= 0x7f && r <= 0x9f) ||
+			r == 0x061c || r == 0x200e || r == 0x200f ||
+			(r >= 0x202a && r <= 0x202e) || (r >= 0x2066 && r <= 0x2069) {
 			return true
 		}
 	}

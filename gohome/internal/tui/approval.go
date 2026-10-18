@@ -79,7 +79,11 @@ func newApprovalPrompt(req guard.ApprovalRequest, reply chan guard.ApprovalDecis
 		pattern = ""
 	}
 	toolLabel, toolCtl := showControls(req.Tool)
-	arg, argCtl := showControls(rawToolArg(req.Tool, string(req.Input)))
+	rawArg, fallback := rawToolArg(req.Tool, string(req.Input))
+	arg, argCtl := showControls(rawArg)
+	if fallback {
+		arg = shortSummary(arg)
+	}
 
 	pi := textinput.New()
 	pi.Placeholder = "pattern"

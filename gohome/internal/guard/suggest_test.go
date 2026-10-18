@@ -167,3 +167,13 @@ func TestSuggest_ControlCharsGiveNoSuggestion(t *testing.T) {
 		t.Errorf("tab command: got %q, want %q", got, "^ls")
 	}
 }
+
+// Bidi characters can make a command look different from what runs, so a
+// command with one gets no suggested pattern.
+func TestSuggest_BidiGivesNoSuggestion(t *testing.T) {
+	for _, cmd := range []string{"ls # \u202etxt.exe", "ls \u2066x", "ls \u200f", "ls \u061c"} {
+		if got := Suggest("shell", bashInput(cmd)); got != "" {
+			t.Errorf("%q: got %q, want no suggestion", cmd, got)
+		}
+	}
+}

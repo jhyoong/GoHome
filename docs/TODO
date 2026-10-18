@@ -1,17 +1,25 @@
 # What to focus on
 
-## Next PR: file paths (FOLLOWUP_TASKS 39, 52, 53)
+## Next PR: terminal output safety (FOLLOWUP_TASKS 11, 12, 13)
 
-Branch: `fix/file-paths`. All three come from symlinks and read tracking, and 52 shows up in every live test.
+Branch: `fix/terminal-output`. The approval prompt is gohome's main guardrail. These three items are the remaining ways untrusted text (model output, file names, session titles) can show on screen differently from what it is.
 
-1. **52 `write` does not mark the file as read.** `tools/write.go` calls `SessionFrom(ctx).MarkRead(inp.Path)` after a successful write, the same way `tools/read.go` does. The model wrote the content, so it knows the file. Test: write then edit in one session succeeds with no read.
-2. **53 Read-before-edit does not follow symlinks.** `session.normalizeReadPath` (`session/session.go`) resolves symlinks with `filepath.EvalSymlinks` after `filepath.Abs`. If that fails (for example the file does not exist yet), resolve the parent folder and join the base name; if that also fails, keep the clean absolute path. Test: read `<tmp>/link/a.txt`, then `HasRead` on the real path is true, and the other way round.
-3. **39 A symlinked cwd makes two session folders.** `/var/...` and `/private/var/...` map to two slugs, so `/resume` from one path misses sessions from the other. Resolve the cwd with `filepath.EvalSymlinks` in `session.ProjectSlug` (`session/paths.go`), falling back to the given path on error. Keep the displayed cwd unchanged. Test: `ProjectSlug` of a symlink and of its target are equal.
-   - Note: sessions already saved under an unresolved symlinked path get a new slug and no longer show in `/resume`. Paths without symlinks keep the same slug. Mention this in the CHANGELOG.
+1. **11 Bidi characters are not flagged.** U+202E and similar characters can reorder text in the approval prompt, so a command can look different from what runs ("Trojan Source").
+   - Characters: U+061C, U+200E, U+200F, U+202A-U+202E, U+2066-U+2069.
+   - `showControls` (`tui/sanitize.go`) writes them as `\u202e` and sets `found`, so the existing warning line shows.
+   - `sanitizeText` removes them from timeline text.
+   - `hasControlChar` (`guard/suggest.go`) treats them as control characters, so no whitelist pattern is suggested.
+   - Tests: each function with a command that contains U+202E.
+2. **12 Unknown-tool summaries are cut before control characters are escaped.** `rawToolArg` (`tui/chat.go`) falls back to `shortSummary` on the raw JSON, so the 60-column cut is measured on raw text and can split an escape sequence. Move the `shortSummary` call out of `rawToolArg` and into its callers, after `sanitizeText` (timeline) or `showControls` (approval prompt).
+   - Test: an unknown tool whose input has an escape sequence near column 57. The summary is cut on the cleaned text.
+3. **13 File names and session titles are not sanitized.** A cloned repo can contain a file name with an escape sequence, and it is printed raw in the file search list.
+   - Apply `sanitizeText` to `r.Path` in `filesearch.go` (display only; the selected value stays the real path).
+   - Apply it to the title in `listingToItem` (`session_browser.go`). Check whether the `/resume` picker uses the same function, and sanitize it there too if not.
+   - Tests: a file search result and a session listing that contain ESC.
 
 Then:
-- Remove items 39, 52 and 53 from `docs/FOLLOWUP_TASKS.md`. Add a CHANGELOG Unreleased entry.
-- Each fix gets a failing test first. Run `go vet`, `go test`, `golangci-lint`.
-- Live test with the gohome-full-test skill. The headless T1 test should no longer show `edit: file must be read first`. Also check `--resume` from `/tmp/<dir>` and from `/private/tmp/<dir>` finds the same session.
+- Remove items 11, 12 and 13 from `docs/FOLLOWUP_TASKS.md`. Add a CHANGELOG Unreleased entry.
+- Each fix gets a failing test first. Run `go vet`, `go test`, `golangci-lint`. Update snapshots only if output changes on purpose.
+- Live test with the gohome-full-test skill. In the TUI scratch dir, create a file whose name contains an escape sequence, open file search, and check with `capture-pane` that it shows no raw escape. Try an approval prompt with a command that contains U+202E. If the model removes the character (as it did with ESC for item 19), note it as tested by unit tests only.
 
-Out of scope: item 51 (shell `cwd` against the session folder) and other FOLLOWUP_TASKS items.
+Out of scope: other FOLLOWUP_TASKS items.
