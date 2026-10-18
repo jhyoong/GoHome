@@ -73,7 +73,7 @@ type toolState struct {
 // Tool call accumulation:
 //
 //	delta.tool_calls elements are keyed by index; arguments strings are
-//	concatenated. When [DONE] is received (or finish_reason=="tool_calls"),
+//	concatenated. A different non-empty id at a used index starts a new call. When [DONE] is received (or finish_reason=="tool_calls"),
 //	one EventToolCallDone is emitted per accumulated tool call.
 //
 // Usage + turn done:
@@ -90,8 +90,9 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 
 		// keyed by tool_call index
 		tools := map[int]*toolState{}
-		// tool call order (for deterministic emission)
-		var toolOrder []int
+		// every tool call in start order (for deterministic emission); a new
+		// id at a used index adds a second entry for that index
+		var toolOrder []*toolState
 
 		var stopReason string
 		var usage *common.Usage
@@ -120,11 +121,7 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 			if !finishReasoning() {
 				return false
 			}
-			for _, idx := range toolOrder {
-				ts := tools[idx]
-				if ts == nil {
-					continue
-				}
+			for _, ts := range toolOrder {
 				if !send(common.StreamEvent{
 					Kind:       common.EventToolCallDone,
 					ToolCallID: ts.id,
@@ -272,10 +269,11 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 				// Tool call deltas: accumulate by index.
 				for _, tc := range delta.ToolCalls {
 					ts, exists := tools[tc.Index]
-					if !exists {
+					// A different non-empty id at a used index is a new call.
+					if !exists || (tc.ID != "" && ts.id != "" && tc.ID != ts.id) {
 						ts = &toolState{}
 						tools[tc.Index] = ts
-						toolOrder = append(toolOrder, tc.Index)
+						toolOrder = append(toolOrder, ts)
 					}
 					if tc.ID != "" {
 						ts.id = tc.ID
