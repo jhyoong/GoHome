@@ -3,7 +3,7 @@ Session:  main done
 │ shell: sudo apt install vim                                                │
 │                                                                            │
 │ > [1] Allow once                                                           │
-│   [2] Allow always  ^sudo  (e edit)                                        │
+│   [2] Allow always  ^sudo                                                  │
 │   [3] Deny                                                                 │
 │   [4] Deny + steer                                                         │
 │ Esc: deny | arrows to navigate                                             │

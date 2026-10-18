@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 )
@@ -277,6 +279,28 @@ func TestAlternationStaysAnchored(t *testing.T) {
 	for _, cmd := range []string{"ls -la", "rm -rf x", "git diff", "git status"} {
 		if !wl.Allows("shell", bashInput(cmd)) {
 			t.Errorf("%q should be allowed", cmd)
+		}
+	}
+}
+
+// A new project whitelist file and its folder are private to the user.
+func TestAddProject_NewFileIsPrivate(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("file modes are not enforced on Windows")
+	}
+	dir := filepath.Join(t.TempDir(), ".gohome")
+	projPath := filepath.Join(dir, "whitelist.json")
+	wl, _ := Compile(WhitelistFile{}, WhitelistFile{}, projPath)
+	if err := wl.AddProject("shell", "^ls"); err != nil {
+		t.Fatalf("AddProject: %v", err)
+	}
+	for path, want := range map[string]os.FileMode{projPath: 0o600, dir: 0o700} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("Stat %s: %v", path, err)
+		}
+		if got := info.Mode().Perm(); got != want {
+			t.Errorf("%s mode = %o, want %o", path, got, want)
 		}
 	}
 }

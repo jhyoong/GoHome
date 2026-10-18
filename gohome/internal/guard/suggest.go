@@ -23,6 +23,9 @@ import (
 //     take first 2 tokens.
 //  6. Otherwise: take first 1 token only.
 //
+// Commands with a shell operator (see hasShellOperator) get no suggestion:
+// Allows never approves them, so the rule would never match.
+//
 // Sudo commands (any position) suggest the full command instead, ending
 // with "$" so extra arguments are not covered.
 //
@@ -43,7 +46,7 @@ func Suggest(tool string, inputJSON []byte) string {
 	}
 
 	tokens := strings.Fields(args.Command)
-	if len(tokens) == 0 || hasControlChar(args.Command) {
+	if len(tokens) == 0 || hasControlChar(args.Command) || hasShellOperator(args.Command) {
 		return ""
 	}
 

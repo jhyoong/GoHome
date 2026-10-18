@@ -177,3 +177,13 @@ func TestSuggest_BidiGivesNoSuggestion(t *testing.T) {
 		}
 	}
 }
+
+// Chained commands are never auto-approved, so a suggested pattern for one
+// would never match. They get no suggestion, sudo included.
+func TestSuggest_ShellOperatorGivesNoSuggestion(t *testing.T) {
+	for _, cmd := range []string{"git status; echo x", "ls | wc", "echo $(id)", "ls > out", "sudo ls; id", "sudo ls && id"} {
+		if got := Suggest("shell", bashInput(cmd)); got != "" {
+			t.Errorf("%q: got %q, want no suggestion", cmd, got)
+		}
+	}
+}

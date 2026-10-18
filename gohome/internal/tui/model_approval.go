@@ -107,10 +107,12 @@ func (m *Model) handleApprovalKey(msg tea.KeyMsg) tea.Cmd {
 	// --- top-level approval menu ---
 	switch {
 	case msg.Type == tea.KeyUp:
+		ap.patternErr = ""
 		if ap.selected > 0 {
 			ap.selected--
 		}
 	case msg.Type == tea.KeyDown:
+		ap.patternErr = ""
 		if ap.selected < 3 {
 			ap.selected++
 		}
@@ -194,6 +196,10 @@ func (m *Model) scrollApprovalPage(msg tea.KeyMsg) bool {
 func (m *Model) allowApproval(outcome guard.ApprovalOutcome) tea.Cmd {
 	ap := m.activeApproval
 	if outcome == guard.AllowAlways && ap.req.Tool == "shell" {
+		if ap.needsSudo && ap.pattern == "" {
+			ap.patternErr = "Allow always is " + allowAlwaysUnavailable
+			return nil
+		}
 		if _, err := guard.NormalizePattern(ap.pattern); err != nil {
 			ap.patternErr = err.Error()
 			return nil

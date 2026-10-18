@@ -1,25 +1,30 @@
 # What to focus on
 
-## Next PR: terminal output safety (FOLLOWUP_TASKS 11, 12, 13)
+## Next PR: whitelist and approval prompt fixes (FOLLOWUP_TASKS 5, 6, 7, 9, 10, 14)
 
-Branch: `fix/terminal-output`. The approval prompt is gohome's main guardrail. These three items are the remaining ways untrusted text (model output, file names, session titles) can show on screen differently from what it is.
+Branch: `fix/approval-whitelist`. Small fixes to the "Allow always" flow and whitelist matching. All fail closed today; none are security holes.
 
-1. **11 Bidi characters are not flagged.** U+202E and similar characters can reorder text in the approval prompt, so a command can look different from what runs ("Trojan Source").
-   - Characters: U+061C, U+200E, U+200F, U+202A-U+202E, U+2066-U+2069.
-   - `showControls` (`tui/sanitize.go`) writes them as `\u202e` and sets `found`, so the existing warning line shows.
-   - `sanitizeText` removes them from timeline text.
-   - `hasControlChar` (`guard/suggest.go`) treats them as control characters, so no whitelist pattern is suggested.
-   - Tests: each function with a command that contains U+202E.
-2. **12 Unknown-tool summaries are cut before control characters are escaped.** `rawToolArg` (`tui/chat.go`) falls back to `shortSummary` on the raw JSON, so the 60-column cut is measured on raw text and can split an escape sequence. Move the `shortSummary` call out of `rawToolArg` and into its callers, after `sanitizeText` (timeline) or `showControls` (approval prompt).
-   - Test: an unknown tool whose input has an escape sequence near column 57. The summary is cut on the cleaned text.
-3. **13 File names and session titles are not sanitized.** A cloned repo can contain a file name with an escape sequence, and it is printed raw in the file search list.
-   - Apply `sanitizeText` to `r.Path` in `filesearch.go` (display only; the selected value stays the real path).
-   - Apply it to the title in `listingToItem` (`session_browser.go`). Check whether the `/resume` picker uses the same function, and sanitize it there too if not.
-   - Tests: a file search result and a session listing that contain ESC.
+1. **5 No suggestion for chained commands.** `Allows` never approves a command with a shell operator, so a suggestion such as `^git status;` is useless.
+   - In `Suggest` (`guard/suggest.go`), return "" when `hasShellOperator(command)` is true. Do this before the sudo branch, so chained sudo commands also get no suggestion.
+   - Test: `git status; echo x`, `ls | wc`, `echo $(id)`, `sudo ls; id` give "".
+2. **6 Sudo commands with no suggestion.** Editing is disabled for sudo, so "Allow always" can only fail with "pattern is empty".
+   - Keep editing disabled for sudo (a hand-written `^sudo` rule would allow every sudo command).
+   - When the prompt needs sudo and the pattern is empty, show `[2] Allow always  (not available for this command)`. Pressing 2 (or Enter on it) shows `Error: Allow always is not available for this command` and keeps the prompt open.
+   - Test: sudo request with an empty pattern renders the label; pressing 2 sends no reply and shows the error.
+3. **7 Empty-pattern hint and stale error line.**
+   - With an empty pattern and no sudo, show `[2] Allow always  (e edit)`.
+   - Clear `patternErr` on Up and Down in the menu.
+   - Tests: render of a non-sudo request with an empty pattern; error cleared after pressing Down.
+4. **9 Tab is a word boundary** in `matchesWholeWord` (`guard/compile.go`): a tab after the match, or a match ending in a tab, counts like a space.
+   - Test: `^ls` allows `ls\t-la`; `^ls` still does not allow `lsof`.
+5. **10 `\r` is a shell operator** in `hasShellOperator`.
+   - Test: `^ls` does not allow `ls\rrm x`.
+6. **14 `whitelist.json` is created `0644`.** In `persistToFile` (`guard/persist.go`), create the file `0o600` and the folder `0o700`, matching the settings and session files. Existing files keep their mode.
+   - Test (skip on Windows): a new whitelist file has mode `0600`.
 
 Then:
-- Remove items 11, 12 and 13 from `docs/FOLLOWUP_TASKS.md`. Add a CHANGELOG Unreleased entry.
+- Remove items 5, 6, 7, 9, 10 and 14 from `docs/FOLLOWUP_TASKS.md`. Add a CHANGELOG Unreleased entry.
 - Each fix gets a failing test first. Run `go vet`, `go test`, `golangci-lint`. Update snapshots only if output changes on purpose.
-- Live test with the gohome-full-test skill. In the TUI scratch dir, create a file whose name contains an escape sequence, open file search, and check with `capture-pane` that it shows no raw escape. Try an approval prompt with a command that contains U+202E. If the model removes the character (as it did with ESC for item 19), note it as tested by unit tests only.
+- Live test with the gohome-full-test skill: a chained command shows no pattern and the `(e edit)` hint; a sudo command with a shell operator shows "not available"; a new project `whitelist.json` is `0600`.
 
-Out of scope: other FOLLOWUP_TASKS items.
+Out of scope: other FOLLOWUP_TASKS items. Item 8 (old `^sudo` entries) was dropped: older versions are not supported.

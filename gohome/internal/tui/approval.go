@@ -192,10 +192,16 @@ func renderApprovalOverlay(ap *approvalPrompt, width, maxHeight int, focusedSess
 			return "  "
 		}
 		fmt.Fprintf(&tail, "\n%s[1] Allow once\n", marker(0))
-		if ap.pattern != "" {
+		// Editing is disabled for sudo, so sudo prompts get no edit hint.
+		switch {
+		case ap.needsSudo && ap.pattern == "":
+			fmt.Fprintf(&tail, "%s[2] Allow always  (%s)\n", marker(1), allowAlwaysUnavailable)
+		case ap.needsSudo:
+			fmt.Fprintf(&tail, "%s[2] Allow always  %s\n", marker(1), ap.pattern)
+		case ap.pattern == "":
+			fmt.Fprintf(&tail, "%s[2] Allow always  (e edit)\n", marker(1))
+		default:
 			fmt.Fprintf(&tail, "%s[2] Allow always  %s  (e edit)\n", marker(1), ap.pattern)
-		} else {
-			fmt.Fprintf(&tail, "%s[2] Allow always\n", marker(1))
 		}
 		fmt.Fprintf(&tail, "%s[3] Deny\n", marker(2))
 		fmt.Fprintf(&tail, "%s[4] Deny + steer\n", marker(3))
@@ -309,3 +315,7 @@ func renderSudoDialog(ap *approvalPrompt, width int, focusedSessionID string) st
 // controlCharWarning is shown in the approval prompt and sudo dialog when the
 // tool call holds control characters.
 const controlCharWarning = "Warning: command contains control characters"
+
+// allowAlwaysUnavailable labels Allow always on a sudo prompt with no
+// suggested pattern. Editing is disabled for sudo, so no rule can be saved.
+const allowAlwaysUnavailable = "not available for this command"
