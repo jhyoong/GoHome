@@ -68,7 +68,7 @@ go build -ldflags "-X main.version=v0.4.3" -o bin/gohome ./gohome/cmd/gohome
 | `--model <name>` | Select a configured model config by name |
 | `--yolo` | Start with all approval prompts disabled |
 | `--resume` | Resume the most recent session for the current working directory |
-| `--prompt <text>` | Run a single prompt headlessly and exit (requires `--yolo`). Use `--prompt -` for interactive JSONL-over-stdin/stdout mode (requires `--verbose`) |
+| `--prompt <text>` | Run a single prompt headlessly and exit (requires `--yolo`). Use `--prompt -` for interactive JSONL-over-stdin/stdout mode (requires `--yolo` and `--verbose`) |
 | `--verbose` | Emit all agent events as JSON lines to stdout (for programmatic use with `--prompt -`) |
 | `--config` | Print merged configuration and exit |
 | `--version` | Print version and exit |
@@ -80,7 +80,7 @@ Auto-compaction automatically summarizes your conversation history when the cont
 **How it works:**
 - The agent monitors token usage during its run loop
 - When usage exceeds a configured threshold, it sends the full conversation history to the LLM for summarization
-- The history is replaced with a concise summary (prefixed with `COMPACT:`) that preserves:
+- The history is replaced with a concise summary (prefixed with `[Auto-compact summary]`) that preserves:
   - Your current goal and sub-tasks
   - Key decisions and reasoning
   - File paths and code changes
@@ -177,7 +177,7 @@ Both `"anthropic"` and `"openai"` wires are supported. Set `apiKey` for a litera
 | `apiKey` | — | Literal API key (use `apiKeyEnv` instead to avoid storing secrets) |
 | `apiKeyEnv` | — | Environment variable name whose value is used as the API key |
 | `modelName` | — | Model name sent to the LLM provider |
-| `contextWindow` | — | Context window size in tokens (used for usage display) |
+| `contextWindow` | `128000` | Context window size in tokens. Used for the usage display and to decide when auto-compaction runs |
 | `maxTokens` | `16384` | Max output tokens per LLM turn |
 | `thinking` | — | Thinking mode (Anthropic wire only): `"off"` sends no thinking parameter, `"adaptive"` sends `{"type":"adaptive","display":"summarized"}`, `"budget"` sends `{"type":"enabled","budget_tokens":N}`. When unset: `"budget"` if `thinkingBudget > 0`, otherwise `"adaptive"` |
 | `thinkingBudget` | `10240` | Thinking token budget, used only in `"budget"` mode. Must be at least 1024 and below `maxTokens`; gohome refuses the config at startup or on `/model` otherwise |
@@ -217,7 +217,7 @@ If `contextWarnPct` >= `contextCritPct`, or either value is outside the (0, 1] r
 |---|---|
 | `Enter` | Submit input (or toggle expand/collapse on the selected entry when input is empty) |
 | `Up` / `Down` | Move the cursor through timeline entries when input is empty |
-| `Shift+Enter` | Insert newline |
+| `Alt+Enter` | Insert newline |
 | `Esc` `Esc` | Cancel the current run (a single `Esc` shows "Press Esc again to cancel") |
 | `Ctrl+C` (once) | Cancel current LLM turn or close approval prompt |
 | `Ctrl+C` (twice) | Quit |
@@ -252,12 +252,13 @@ When the input editor is empty, `Up` and `Down` arrow keys move a `>` cursor thr
 | `/tokens` | Opens token usage detail overlay |
 | `/quit` | Exits the process |
 | `/cancel` | Cancels the current LLM turn, clears pending message queue |
-| `/new` | Starts a new session (requires backend callback via `SetSlashCallbacks`; shows "not configured" until wired) |
-| `/resume [filter]` | Opens a session browser to resume a previous session (requires backend callback; shows "not configured" until wired). The argument pre-fills the filter. Type to filter, `Enter` resumes, `Ctrl+D` then `y` (or `Ctrl+D` again) deletes the selected session. The active session cannot be deleted |
+| `/new` | Starts a new session. Refused while a run is active |
+| `/resume [filter]` | Opens a session browser to resume a previous session. Refused while a run is active. The argument pre-fills the filter. Type to filter, `Enter` resumes, `Ctrl+D` then `y` (or `Ctrl+D` again) deletes the selected session. The active session cannot be deleted |
 | `/model <name>` | Switches the active model config (rebuilds the LLM client). Without arguments, opens a selector listing all configured model configs |
 | `/mouse` | Toggles mouse tracking on/off |
 | `/clear-queue` | Clears all pending queued messages |
-| `/config` | Opens the config overlay showing all settings with source annotations. Press `e` to edit in an external editor |
+| `/config` | Opens the config overlay showing all settings with source annotations. Pick an action from the list: edit the global config, edit the project config (both open in the external editor), or run the setup wizard |
+| `/help` | Opens the help overlay (same as `Ctrl+H`) |
 
 ---
 
@@ -267,11 +268,13 @@ When the input editor is empty, `Up` and `Down` arrow keys move a `>` cursor thr
 ~/.gohome/
   settings.json          # global model config
   whitelist.json         # global auto-approve rules
+  denylist.json          # global shell denylist (optional)
   sessions/              # JSONL session transcripts, grouped by project
   logs/                  # structured log files (one per day)
 ./.gohome/               # project-level overrides (in the working directory)
   settings.json          # project model config overrides
   whitelist.json         # project whitelist; "Allow always" entries land here
+  denylist.json          # project shell denylist (optional)
 ```
 
 ---
@@ -282,14 +285,30 @@ Before every tool call, `gohome` checks the whitelist. If no rule covers the cal
 
 - **Allow once** — permit this call only.
 - **Allow always** — write an auto-approve rule to `./.gohome/whitelist.json`.
-- **Deny** — block the call and return an error to the agent.
+- **Deny** — block the call and end the run. The model sees the denial with your next message.
 - **Deny + steer** — block the call and inject a message into the agent's context.
 
 `/yolo` skips all approval prompts without writing whitelist entries. For `sudo` commands, yolo still opens the password dialog (password only, no approval menu).
 
+### Whitelist file format
+
+`whitelist.json` has two lists. The global and project files are merged.
+
+```json
+{
+  "tools": ["read"],
+  "shell": ["^git status$", "^ls"]
+}
+```
+
+- `tools` lists tool names that are always allowed (`read`, `write`, `edit`, `subagent`). The shell tool is checked through `shell` instead.
+- `shell` lists regexes matched against the shell command. A leading `^` is added when missing. A match must be followed by a space or the end of the command, so `^ls` allows `ls -la` but not `lsof`. Commands that contain `;`, `&`, `|`, `<`, `>`, a backtick, `$(` or a newline are never auto-approved. Invalid regexes are skipped with a log warning.
+
 ### Denylist
 
 The shell denylist blocks dangerous commands (for example `rm -rf /` and `mkfs`) even in yolo mode. It is a safety net, not a sandbox: it catches common mistakes, not every way to write a harmful command. It only checks the shell tool. Runs of spaces and tabs are squeezed to one space before matching. Entries are plain substrings, or regexes with a `regex:` prefix. Existing `denylist.json` files keep working as written; only new setups get the current built-in patterns.
+
+The denylist lives in `~/.gohome/denylist.json` and `./.gohome/denylist.json`, with the format `{"shell": ["rm -rf /", "regex:^mkfs"]}`. If neither file exists, the built-in patterns are used. If either file exists, its entries replace the built-in patterns, and the two files are merged.
 
 ### Sudo commands
 

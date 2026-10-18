@@ -112,3 +112,6 @@ Minor items found while reviewing the D1-D9 fixes (plan: `docs/reviews/2026-10-1
 60. **Tabs in rendered markdown and code blocks leave stale cells on screen.** A tab-indented Go line showed as `Generafmt.Println(...)`, with `Genera` left over from the spinner. A full redraw shows it correctly. Only `tui/editor.go` expands tabs. Expand them in the markdown and code renderer too, and add a snapshot test with a tab-indented code block. Main has it too.
 61. **Shell tool error is misleading when `cwd` does not exist.** `tools/shell.go` sets `cmd.Dir` without checking it, so the error is `fork/exec /bin/sh: no such file or directory` and the model concludes `/bin/sh` is missing. Return "cwd does not exist: <path>" instead.
 62. **The spinner says "Generating..." while the approval menu is open.** Show "Waiting for approval" or hide it.
+
+### CI and release (found while fixing the docs and CI items)
+63. **The rewritten `release.yml` has not run.** Native Windows build, per-target size guard and CHANGELOG-section release notes are only YAML-checked. Push a test tag (for example `v0.4.4-dev2`, with a matching CHANGELOG section) and check the draft release and its four assets.

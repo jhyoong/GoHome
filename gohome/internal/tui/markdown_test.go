@@ -6,6 +6,14 @@ import (
 	"unicode/utf8"
 )
 
+// resetHighlightCache empties the highlight cache.
+func resetHighlightCache() {
+	highlightMu.Lock()
+	clear(highlightCache)
+	highlightKeys = nil
+	highlightMu.Unlock()
+}
+
 func TestRenderMarkdownHeadings(t *testing.T) {
 	md := "# Heading 1\n\n## Heading 2\n\n### Heading 3"
 	lines := RenderMarkdown(md, 80)

@@ -451,6 +451,7 @@ All in `gohome/internal/tui/`.
   - `main.go:740` says shutdown takes "~1s", which is not guaranteed.
   - `list.go:23` says "resumable" but includes subagent sessions.
 - **README mismatch:** the README says Enter expands thinking entries. `chat.go:472-485` never reads `Expanded` for them.
+- **Status:** All fixed. A `deadcode` scan on branch `fix/ci-and-outdated-docs` found one more test-only helper, `resetHighlightCache`, which moved to `markdown_test.go` (plan: `docs/reviews/2026-10-18-docs-ci-plan.md`).
 
 ---
 
@@ -491,7 +492,7 @@ All in `gohome/internal/tui/`.
 - **Version flag:** no CI build sets `-X main.version`.
 - **Release notes:** the whole CHANGELOG is used as release notes.
 - **Size guard:** the 25 MB guard covers linux/amd64 only. `release.yml` has none.
-- **Status:** Fixed on branch `fix/outdated-components`. Release builds Windows natively on `windows-latest` without `-s -w`. Actions are on their latest majors, golangci-lint is pinned to v2.15.0, the no-op `disable` list is removed, CI builds set `main.version`, every built binary has the size guard, and release notes are the tag's CHANGELOG section. Not yet run on GitHub.
+- **Status:** Fixed on branch `fix/outdated-components`. Release builds Windows natively on `windows-latest` without `-s -w`. Actions are on their latest majors, golangci-lint is pinned to v2.15.0, the no-op `disable` list is removed, CI builds set `main.version`, every built binary has the size guard, and release notes are the tag's CHANGELOG section. CI passes on GitHub (#55). The release workflow has not run yet and needs a test tag (FOLLOWUP_TASKS).
 
 ### LLM APIs
 - See L1 (thinking), L4 (retries), L8 (OpenAI `max_tokens`) and L9 (no prompt caching).
@@ -535,6 +536,13 @@ All in `gohome/internal/tui/`.
 - "Out of v0.2 scope" is an outdated framing.
 - Mouse support is half shipped: wheel scrolling yes, click-to-focus no.
 - The queued-messages item is fixed.
+
+### Status
+Fixed on branch `fix/ci-and-outdated-docs` (plan: `docs/reviews/2026-10-18-docs-ci-plan.md`). Several README and CHANGELOG items had already been fixed by earlier branches (Esc Esc, Ctrl+G, Ctrl+Y, Ctrl+D delete, sudo in yolo, the Unreleased section).
+- README: Alt+Enter, `/new` and `/resume` wording, `/config` select list, `/help`, the compaction prefix, the `contextWindow` default, Deny ends the run, `--prompt -` needs `--yolo`, the whitelist file format, and the denylist file locations and merge rules.
+- `help.go`: Ctrl+Y for copy, `/endpoint` and `--endpoint` removed, and the missing keys, commands and flags added.
+- AGENTS.md (the audit's "CLAUDE.md"): the tools list and `SteerCh()`. The strip-flag note was fixed by `fix/outdated-components`.
+- FUTURE.md: the scope framing, the mouse entry and the queued-messages note. The SSE fuzzing seam description was also corrected.
 
 ---
 
