@@ -146,6 +146,7 @@ Auto-compaction automatically summarizes your conversation history when the cont
       "modelName": "gpt-4o",
       "contextWindow": 128000,
       "maxTokens": 16384,
+      "maxTokensField": "max_completion_tokens",
       "reasoningEffort": "high"
     }
   },
@@ -179,6 +180,7 @@ Both `"anthropic"` and `"openai"` wires are supported. Set `apiKey` for a litera
 | `modelName` | — | Model name sent to the LLM provider |
 | `contextWindow` | `128000` | Context window size in tokens. Used for the usage display and to decide when auto-compaction runs |
 | `maxTokens` | `16384` | Max output tokens per LLM turn |
+| `maxTokensField` | `"max_tokens"` | OpenAI wire only: the request field that carries the output limit, `"max_tokens"` or `"max_completion_tokens"` (needed by newer OpenAI models). Any other value is a config error. Ignored on the Anthropic wire |
 | `thinking` | — | Thinking mode (Anthropic wire only): `"off"` sends no thinking parameter, `"adaptive"` sends `{"type":"adaptive","display":"summarized"}`, `"budget"` sends `{"type":"enabled","budget_tokens":N}`. When unset: `"budget"` if `thinkingBudget > 0`, otherwise `"adaptive"` |
 | `thinkingBudget` | `10240` | Thinking token budget, used only in `"budget"` mode. Must be at least 1024 and below `maxTokens`; gohome refuses the config at startup or on `/model` otherwise |
 | `reasoningEffort` | — | Reasoning effort level, passed through as-is: `reasoning_effort` on the OpenAI wire, `output_config.effort` on the Anthropic wire (e.g. `"low"`, `"medium"`, `"high"`). Omitted when unset |

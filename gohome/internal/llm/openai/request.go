@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/jhyoong/GoHome/gohome/internal/config"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 )
 
@@ -71,14 +72,16 @@ type openaiBody struct {
 	Model           string              `json:"model"`
 	Messages        []any               `json:"messages"`
 	Tools           []openaiTool        `json:"tools,omitempty"`
-	MaxTokens       int                 `json:"max_tokens"`
+	MaxTokens       int                 `json:"max_tokens,omitempty"`
+	MaxCompletion   int                 `json:"max_completion_tokens,omitempty"`
 	Stream          bool                `json:"stream"`
 	StreamOptions   openaiStreamOptions `json:"stream_options"`
 	ReasoningEffort string              `json:"reasoning_effort,omitempty"`
 }
 
 // buildOpenAIBody translates a common.Request to OpenAI chat completions wire-format JSON.
-func buildOpenAIBody(req common.Request) ([]byte, error) {
+// maxTokensField names the request field for the output limit; empty means max_tokens.
+func buildOpenAIBody(req common.Request, maxTokensField string) ([]byte, error) {
 	if req.MaxTokens <= 0 {
 		return nil, fmt.Errorf("openai: max_tokens must be > 0")
 	}
@@ -113,12 +116,16 @@ func buildOpenAIBody(req common.Request) ([]byte, error) {
 	body := openaiBody{
 		Model:           req.Model,
 		Messages:        msgs,
-		MaxTokens:       req.MaxTokens,
 		Stream:          true,
 		ReasoningEffort: req.ReasoningEffort,
 		StreamOptions: openaiStreamOptions{
 			IncludeUsage: true,
 		},
+	}
+	if maxTokensField == config.MaxTokensFieldMaxCompletionTokens {
+		body.MaxCompletion = req.MaxTokens
+	} else {
+		body.MaxTokens = req.MaxTokens
 	}
 	if len(tools) > 0 {
 		body.Tools = tools

@@ -232,6 +232,9 @@ func applyModelConfig(state *agent.SessionState, name string, cfg config.ModelCo
 	if err != nil {
 		return 0, err
 	}
+	if err := config.ValidateMaxTokensField(name, cfg); err != nil {
+		return 0, err
+	}
 	maxTokens := cfg.MaxTokens
 	if maxTokens <= 0 {
 		maxTokens = config.DefaultMaxTokens
@@ -347,6 +350,10 @@ func main() {
 
 	if !needsWizard {
 		if _, _, err := config.ResolveThinking(cfgName, mc); err != nil {
+			fmt.Fprintf(os.Stderr, "gohome: %v\n", err)
+			os.Exit(1)
+		}
+		if err := config.ValidateMaxTokensField(cfgName, mc); err != nil {
 			fmt.Fprintf(os.Stderr, "gohome: %v\n", err)
 			os.Exit(1)
 		}

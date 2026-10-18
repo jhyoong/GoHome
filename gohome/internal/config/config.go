@@ -28,10 +28,29 @@ type ModelConfig struct {
 	ModelName       string            `json:"modelName"`
 	ContextWindow   int               `json:"contextWindow,omitempty"`
 	MaxTokens       int               `json:"maxTokens,omitempty"`
+	MaxTokensField  string            `json:"maxTokensField,omitempty"`
 	Thinking        string            `json:"thinking,omitempty"`
 	ThinkingBudget  int               `json:"thinkingBudget,omitempty"`
 	ReasoningEffort string            `json:"reasoningEffort,omitempty"`
 	Headers         map[string]string `json:"headers,omitempty"`
+}
+
+// Names for the maxTokensField setting: the request field that carries the
+// output limit on the OpenAI wire.
+const (
+	MaxTokensFieldMaxTokens           = "max_tokens"
+	MaxTokensFieldMaxCompletionTokens = "max_completion_tokens"
+)
+
+// ValidateMaxTokensField checks the maxTokensField setting of model config cfg
+// (named name). Empty means the default, max_tokens.
+func ValidateMaxTokensField(name string, cfg ModelConfig) error {
+	switch cfg.MaxTokensField {
+	case "", MaxTokensFieldMaxTokens, MaxTokensFieldMaxCompletionTokens:
+		return nil
+	}
+	return fmt.Errorf("model config %q: unknown maxTokensField %q (use %q or %q)",
+		name, cfg.MaxTokensField, MaxTokensFieldMaxTokens, MaxTokensFieldMaxCompletionTokens)
 }
 
 // Settings is the top-level configuration structure.

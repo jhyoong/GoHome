@@ -20,6 +20,8 @@ type Client struct {
 	headers map[string]string
 	hc      *http.Client
 	backoff []time.Duration
+	// maxTokensField is the request field for the output limit; empty means max_tokens.
+	maxTokensField string
 }
 
 // New creates a Client from a ModelConfig and resolved API key.
@@ -31,6 +33,8 @@ func New(e config.ModelConfig, apiKey string, backoff []time.Duration) *Client {
 		headers: e.Headers,
 		hc:      common.NewHTTPClient(common.DefaultResponseHeaderTimeout),
 		backoff: backoff,
+
+		maxTokensField: e.MaxTokensField,
 	}
 }
 
@@ -42,7 +46,7 @@ func (c *Client) Stream(ctx context.Context, req common.Request) (<-chan common.
 		req.Model = c.model
 	}
 
-	body, err := buildOpenAIBody(req)
+	body, err := buildOpenAIBody(req, c.maxTokensField)
 	if err != nil {
 		return nil, fmt.Errorf("openai: build body: %w", err)
 	}
