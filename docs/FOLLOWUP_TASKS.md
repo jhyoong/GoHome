@@ -2,10 +2,6 @@
 
 Open items found while fixing and testing the 2026-10-17 audit items (PRs #48 to #56). Each section names the fixes it came from. None of these are regressions.
 
-## File permissions
-
-15. **Existing `~/.gohome` folders created `0755` by older versions keep that mode.** Consider a one-time warning.
-
 ## Setup wizard
 
 16. **No confirmation after the denylist step.** The wizard shows "step 9/10" and closes without saying that `denylist.json` was written.

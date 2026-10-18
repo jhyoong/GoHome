@@ -27,4 +27,4 @@ Then:
 - Each fix gets a failing test first. Run `go vet`, `go test`, `golangci-lint`. Update snapshots only if output changes on purpose.
 - Live test with the gohome-full-test skill: a chained command shows no pattern and the `(e edit)` hint; a sudo command with a shell operator shows "not available"; a new project `whitelist.json` is `0600`.
 
-Out of scope: other FOLLOWUP_TASKS items. Item 8 (old `^sudo` entries) was dropped: older versions are not supported.
+Out of scope: other FOLLOWUP_TASKS items. Items 8 (old `^sudo` entries) and 15 (old `0755` `~/.gohome` folders) were dropped: older versions are not supported.
