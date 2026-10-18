@@ -11,9 +11,6 @@ Open items found while fixing and testing the 2026-10-17 audit items (PRs #48 to
 
 Minor items found while reviewing the D1-D9 fixes (plan: `docs/old/2026-10-17-data-loss-plan.md`). None of them lose data.
 
-### Testing gaps
-38. **`TestPickResume_SkipsChildAndLoadsChildren` has no recorded failing run.** `TestListExcludesChildren` covers the same case and did fail first.
-
 ### Agent loop and TUI (found while fixing A1-A10)
 41. **Sudo detection matches inside quoted strings.** `echo 'a; sudo b'` is treated as sudo. `VAR=/path/sudo cmd` (for example `SUDO=/usr/bin/sudo make install`) is also detected as sudo. The worst case is an extra password prompt. Fixing this needs a shell parser (`guard/sudo.go`).
 
@@ -25,5 +22,5 @@ Minor items found while reviewing the D1-D9 fixes (plan: `docs/old/2026-10-17-da
 ### Dependencies (deferred from the outdated components fixes)
 57. **Bubble Tea, Lip Gloss and Bubbles v2 are out at `charm.land/...`.** gohome is on Bubble Tea v1.3.10, Lip Gloss v1.1.0 and Bubbles v1.0.0. Moving to v2 is a migration with API changes. It may also fix item 54 (Windows paste) and allow Shift+Enter.
 
-### LLM wire (found in the fix/llm-wire-streams-caching live test)
-69. **The `/resume` list clips the age column at 50 columns.** A long title pushes the age out ("just now" shows as "just"). Also present on main. Minor.
+### TUI (found in the resume age column live test)
+70. **The `/resume` delete confirm line is not cut to the screen width.** With a 40-column title the line is 62 columns wide (65 on main), so it is wider than a 50-column screen. Minor.

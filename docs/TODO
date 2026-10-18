@@ -1,33 +1,7 @@
 # What to focus on
 
-## Next PR: `/resume` age column and the resume test record
+No PR is planned yet. Pick the next items from docs/FOLLOWUP_TASKS.md.
 
-Branch: `fix/resume-age-column`. FOLLOWUP_TASKS items 69 and 38.
+The last plan (`/resume` age column, item 69, and the resume test record, item 38) is done on the branch `docs/close-llm-wire-todo`. Live test: `docs/reviews/2026-10-18-fix-resume-age-column-live-test.md`.
 
-The last plan (stream end, LLM wire, prompt caching and wizard wrapping) shipped in #63. It is kept in `docs/old/2026-10-18-llm-wire-streams-caching-TODO.md`.
-
-Work in this order. Each step is one commit.
-
-### 1. Keep the full age in `/resume` (69)
-
-The session browser cuts titles at a fixed 40 columns (`tui/session_browser.go:24`). At 50 columns this leaves 5 columns for the age, so the select list cuts it ("just now" shows as "just").
-
-- Add an opt-in `FitLabel bool` to `SelectListComponent` (`tui/selectlist.go`), next to `WrapDescriptions`. When set and the description does not fit, cut the label so the full description fits.
-- The session browser turns it on. Other lists keep their current behavior, since lists with long descriptions (such as slash commands) should keep their labels.
-- Test (failing first): in `session_browser_test.go`, a 40-character title with `LastActive` now, rendered at width 50. The line contains "just now" and is no wider than 50 columns.
-
-### 2. Record a failing run for `TestPickResume_SkipsChildAndLoadsChildren` (38)
-
-No code change.
-
-- Remove the `l.Depth == 0` filter in `session.List` (`session/list.go:36`) for a moment, run the test and check that it fails.
-- Put the filter back and check that it passes.
-- Record the failing output in this PR's live-test doc in `docs/reviews/`.
-
-### Then
-
-- Remove items 69 and 38 from `docs/FOLLOWUP_TASKS.md`. Add a CHANGELOG Unreleased entry for 69.
-- Run `go vet`, `go test`, `golangci-lint`. Update snapshots only if output changes on purpose.
-- Live test the `/resume` list at 50 columns with the gohome-full-test skill.
-
-Out of scope: 19, 20, 41, 54-57.
+Still open: 19, 20, 41, 54-57, 70.
