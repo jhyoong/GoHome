@@ -78,3 +78,20 @@ func TestResolveThinking_Errors(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateMaxTokensField(t *testing.T) {
+	for _, v := range []string{"", "max_tokens", "max_completion_tokens"} {
+		if err := ValidateMaxTokensField("m1", ModelConfig{MaxTokensField: v}); err != nil {
+			t.Errorf("%q: unexpected error %v", v, err)
+		}
+	}
+	err := ValidateMaxTokensField("m1", ModelConfig{MaxTokensField: "max_output_tokens"})
+	if err == nil {
+		t.Fatal("expected error for unknown value")
+	}
+	for _, sub := range []string{`"m1"`, "max_output_tokens", "max_tokens", "max_completion_tokens"} {
+		if !strings.Contains(err.Error(), sub) {
+			t.Errorf("error %q does not contain %q", err.Error(), sub)
+		}
+	}
+}

@@ -596,8 +596,17 @@ func (c *ChatComponent) renderEntry(e *TimelineEntry, maxWidth int, marker strin
 		}
 
 	case KindNotice:
-		line := noticeStyle.Render(fmt.Sprintf("[notice] %s", e.Text))
-		lines = append(lines, marker+line)
+		noticeLines := []string{"[notice] " + e.Text}
+		if maxWidth-2 >= 10 {
+			noticeLines = WrapText("[notice] "+e.Text, maxWidth-2)
+		}
+		for j, l := range noticeLines {
+			if j == 0 {
+				lines = append(lines, marker+noticeStyle.Render(l))
+			} else {
+				lines = append(lines, "  "+noticeStyle.Render(l))
+			}
+		}
 
 	case KindStats:
 		if e.TurnStats != nil {

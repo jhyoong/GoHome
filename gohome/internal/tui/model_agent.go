@@ -250,6 +250,13 @@ func (m *Model) handleAgentEvent(msg agentEventMsg) tea.Cmd {
 			Kind: KindNotice,
 			Text: errText,
 		})
+		// Tool calls that never got a result will not get one now.
+		for i := range sv.Timeline {
+			e := &sv.Timeline[i]
+			if e.Kind == KindTool && !e.Shadow && e.Status == "pending" {
+				e.Status = "error"
+			}
+		}
 		// The main run's RunDone is still coming while mainRuns > 0.
 		sv.InFlight = sv.Depth == 0 && m.mainRuns > 0
 	}

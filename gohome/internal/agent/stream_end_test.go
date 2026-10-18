@@ -24,8 +24,8 @@ func TestTurn_ChannelClosedWithoutTurnDone(t *testing.T) {
 	a, sess, _ := newTestAgent(t, client, fe)
 
 	_, _, err := a.Turn(context.Background(), sess)
-	if err == nil {
-		t.Fatal("expected error from Turn, got nil")
+	if !errors.Is(err, common.ErrStreamEndedEarly) {
+		t.Fatalf("Turn error = %v, want common.ErrStreamEndedEarly", err)
 	}
 	if len(sess.History) != 0 {
 		t.Errorf("sess.History length: got %d, want 0", len(sess.History))
@@ -271,8 +271,8 @@ func TestCompact_StreamEndsEarlyKeepsHistory(t *testing.T) {
 	orig := make([]common.Message, len(sess.History))
 	copy(orig, sess.History)
 
-	if err := a.compact(context.Background(), sess); !errors.Is(err, ErrStreamEndedEarly) {
-		t.Fatalf("compact error = %v, want ErrStreamEndedEarly", err)
+	if err := a.compact(context.Background(), sess); !errors.Is(err, common.ErrStreamEndedEarly) {
+		t.Fatalf("compact error = %v, want common.ErrStreamEndedEarly", err)
 	}
 
 	if len(sess.History) != len(orig) {

@@ -14,26 +14,36 @@ type anthropicTool struct {
 	InputSchema json.RawMessage `json:"input_schema"`
 }
 
+// anthropicCacheControl is the Anthropic wire shape for a prompt cache breakpoint.
+type anthropicCacheControl struct {
+	Type string `json:"type"`
+}
+
+func ephemeral() *anthropicCacheControl { return &anthropicCacheControl{Type: "ephemeral"} }
+
 // anthropicTextBlock is the Anthropic wire shape for a text content block.
 type anthropicTextBlock struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
+	Type         string                 `json:"type"`
+	Text         string                 `json:"text"`
+	CacheControl *anthropicCacheControl `json:"cache_control,omitempty"`
 }
 
 // anthropicToolUseBlock is the Anthropic wire shape for a tool_use content block.
 type anthropicToolUseBlock struct {
-	Type  string          `json:"type"`
-	ID    string          `json:"id"`
-	Name  string          `json:"name"`
-	Input json.RawMessage `json:"input"`
+	Type         string                 `json:"type"`
+	ID           string                 `json:"id"`
+	Name         string                 `json:"name"`
+	Input        json.RawMessage        `json:"input"`
+	CacheControl *anthropicCacheControl `json:"cache_control,omitempty"`
 }
 
 // anthropicToolResultBlock is the Anthropic wire shape for a tool_result content block.
 type anthropicToolResultBlock struct {
-	Type      string `json:"type"`
-	ToolUseID string `json:"tool_use_id"`
-	Content   string `json:"content"`
-	IsError   bool   `json:"is_error,omitempty"`
+	Type         string                 `json:"type"`
+	ToolUseID    string                 `json:"tool_use_id"`
+	Content      string                 `json:"content"`
+	IsError      bool                   `json:"is_error,omitempty"`
+	CacheControl *anthropicCacheControl `json:"cache_control,omitempty"`
 }
 
 // anthropicMessage is the Anthropic wire shape for a single message.
@@ -72,7 +82,7 @@ type anthropicRedactedThinkingBlock struct {
 // anthropicBody is the Anthropic wire shape for a messages request body.
 type anthropicBody struct {
 	Model     string             `json:"model"`
-	System    string             `json:"system,omitempty"`
+	System    any                `json:"system,omitempty"`
 	Messages  []anthropicMessage `json:"messages"`
 	Tools     []anthropicTool    `json:"tools,omitempty"`
 	MaxTokens int                `json:"max_tokens"`
@@ -83,7 +93,7 @@ type anthropicBody struct {
 }
 
 // buildAnthropicBody translates a common.Request to Anthropic wire-format JSON.
-func buildAnthropicBody(req common.Request) ([]byte, error) {
+func buildAnthropicBody(req common.Request, promptCache bool) ([]byte, error) {
 	if req.MaxTokens <= 0 {
 		return nil, fmt.Errorf("anthropic: max_tokens must be > 0")
 	}
@@ -104,10 +114,19 @@ func buildAnthropicBody(req common.Request) ([]byte, error) {
 
 	body := anthropicBody{
 		Model:     req.Model,
-		System:    req.System,
 		Messages:  msgs,
 		MaxTokens: req.MaxTokens,
 		Stream:    true,
+	}
+	if promptCache {
+		markLastBlock(msgs)
+	}
+	if req.System != "" {
+		if promptCache {
+			body.System = []anthropicTextBlock{{Type: "text", Text: req.System, CacheControl: ephemeral()}}
+		} else {
+			body.System = req.System
+		}
 	}
 	if len(tools) > 0 {
 		body.Tools = tools
@@ -212,4 +231,30 @@ func translateToolMessage(m common.Message) (anthropicMessage, error) {
 		})
 	}
 	return anthropicMessage{Role: "user", Content: content}, nil
+}
+
+// markLastBlock puts a cache breakpoint on the last content block of the last
+// message. Thinking blocks cannot carry cache_control, so it walks back to the
+// nearest block that can.
+func markLastBlock(msgs []anthropicMessage) {
+	if len(msgs) == 0 {
+		return
+	}
+	content := msgs[len(msgs)-1].Content
+	for i := len(content) - 1; i >= 0; i-- {
+		switch b := content[i].(type) {
+		case anthropicTextBlock:
+			b.CacheControl = ephemeral()
+			content[i] = b
+			return
+		case anthropicToolUseBlock:
+			b.CacheControl = ephemeral()
+			content[i] = b
+			return
+		case anthropicToolResultBlock:
+			b.CacheControl = ephemeral()
+			content[i] = b
+			return
+		}
+	}
 }

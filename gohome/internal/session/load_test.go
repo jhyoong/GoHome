@@ -509,3 +509,33 @@ func TestLoad_ThinkingAndRedactedRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+// TestLoadKeepsAssistantStopReason verifies that the stop reason saved with an
+// assistant message is restored on the loaded history.
+func TestLoadKeepsAssistantStopReason(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "stop.jsonl")
+	w, err := OpenWriter(path)
+	if err != nil {
+		t.Fatalf("OpenWriter: %v", err)
+	}
+	w.Emit(SessionStart{ID: "sess-stop", CWD: "/tmp", Model: "m"})
+	w.Emit(UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}})
+	w.Emit(AssistantMessage{
+		Content:    []common.Block{{Kind: common.BlockText, Text: "cut"}},
+		StopReason: "max_tokens",
+	})
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	_, history, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("len(history) = %d, want 2", len(history))
+	}
+	if got := history[1].StopReason; got != "max_tokens" {
+		t.Errorf("StopReason = %q, want max_tokens", got)
+	}
+}

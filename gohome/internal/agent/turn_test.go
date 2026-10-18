@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 	"github.com/jhyoong/GoHome/gohome/internal/session"
@@ -556,5 +558,83 @@ func TestTurn_EmptyThinkingWithoutSignatureSkipped(t *testing.T) {
 	got := sess.History[0].Content
 	if len(got) != 1 || got[0].Kind != common.BlockText {
 		t.Fatalf("blocks = %+v, want only the text block", got)
+	}
+}
+
+func TestTurn_OverloadedBeforeContentRetries(t *testing.T) {
+	overloaded := fmt.Errorf("%w: busy", common.ErrOverloaded)
+	client := &fakeClient{sequences: [][]common.StreamEvent{
+		{{Kind: common.EventError, Err: overloaded}},
+		{
+			{Kind: common.EventTextDelta, TextDelta: "ok"},
+			{Kind: common.EventTurnDone, StopReason: "end_turn"},
+		},
+	}}
+	fe := &fakeRecorder{}
+	a, sess, _ := newTestAgent(t, client, fe)
+	a.RetryBackoff = []time.Duration{time.Millisecond}
+
+	stop, _, err := a.Turn(context.Background(), sess)
+	if err != nil {
+		t.Fatalf("Turn: %v", err)
+	}
+	if stop != "end_turn" || client.callCount != 2 {
+		t.Errorf("stop=%q calls=%d, want end_turn and 2", stop, client.callCount)
+	}
+	if n, _ := countErrorEvents(fe); n != 0 {
+		t.Errorf("retried error was shown to the frontend %d times", n)
+	}
+}
+
+func TestTurn_OverloadedAfterContentFails(t *testing.T) {
+	overloaded := fmt.Errorf("%w: busy", common.ErrOverloaded)
+	client := &fakeClient{sequences: [][]common.StreamEvent{
+		{
+			{Kind: common.EventTextDelta, TextDelta: "partial"},
+			{Kind: common.EventError, Err: overloaded},
+		},
+		{{Kind: common.EventTurnDone, StopReason: "end_turn"}},
+	}}
+	fe := &fakeRecorder{}
+	a, sess, _ := newTestAgent(t, client, fe)
+	a.RetryBackoff = []time.Duration{time.Millisecond}
+
+	_, _, err := a.Turn(context.Background(), sess)
+	if !errors.Is(err, common.ErrOverloaded) {
+		t.Fatalf("err = %v, want ErrOverloaded", err)
+	}
+	if client.callCount != 1 {
+		t.Errorf("calls = %d, want 1 (no retry after content)", client.callCount)
+	}
+}
+
+func TestTurn_OverloadedRetriesExhausted(t *testing.T) {
+	overloaded := fmt.Errorf("%w: busy", common.ErrOverloaded)
+	client := &fakeClient{sequences: [][]common.StreamEvent{
+		{{Kind: common.EventError, Err: overloaded}},
+		{{Kind: common.EventError, Err: overloaded}},
+	}}
+	a, sess, _ := newTestAgent(t, client, &fakeRecorder{})
+	a.RetryBackoff = []time.Duration{time.Millisecond}
+
+	_, _, err := a.Turn(context.Background(), sess)
+	if !errors.Is(err, common.ErrOverloaded) || client.callCount != 2 {
+		t.Fatalf("err=%v calls=%d, want ErrOverloaded after 2 calls", err, client.callCount)
+	}
+}
+
+func TestTurn_OverloadedRetryStopsOnCancel(t *testing.T) {
+	overloaded := fmt.Errorf("%w: busy", common.ErrOverloaded)
+	client := &fakeClient{sequences: [][]common.StreamEvent{
+		{{Kind: common.EventError, Err: overloaded}},
+	}}
+	a, sess, _ := newTestAgent(t, client, &fakeRecorder{})
+	a.RetryBackoff = []time.Duration{time.Hour}
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(20*time.Millisecond, cancel)
+
+	_, _, err := a.Turn(ctx, sess)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
 	}
 }

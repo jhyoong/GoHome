@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -238,5 +239,53 @@ func TestSelectListSetQueryFilters(t *testing.T) {
 	}
 	if strings.Contains(joined, "gamma") {
 		t.Error("filtered list should not contain 'gamma'")
+	}
+}
+
+func TestSelectList_WrapsLongDescriptionAtNarrowWidth(t *testing.T) {
+	sl := NewSelectList([]SelectItem{
+		{Value: "env", Label: "Environment variable", Description: "read from an env var at runtime"},
+	}, nil)
+	sl.WrapDescriptions = true
+	lines := sl.Render(50)
+	// Query line plus the item over two lines.
+	if len(lines) != 3 {
+		t.Fatalf("want 3 lines, got %d: %q", len(lines), lines)
+	}
+	var descParts []string
+	for _, l := range lines[1:] {
+		plain := StripAnsi(l)
+		if VisualWidth(plain) > 50 {
+			t.Errorf("line wider than 50: %q", plain)
+		}
+		descParts = append(descParts, strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(plain), "->")))
+	}
+	joined := strings.Join(descParts, " ")
+	if !strings.Contains(joined, "read from an env var at runtime") {
+		t.Errorf("full description missing: %q", joined)
+	}
+	// Continuation line is indented under the description column.
+	first := StripAnsi(lines[1])
+	col := strings.Index(first, "read")
+	cont := StripAnsi(lines[2])
+	if col < 0 || !strings.HasPrefix(cont, strings.Repeat(" ", col)) || strings.TrimSpace(cont) == "" {
+		t.Errorf("continuation not aligned to description column %d: %q", col, cont)
+	}
+}
+
+func TestSelectList_NoWrapByDefault(t *testing.T) {
+	var items []SelectItem
+	for i := 0; i < 12; i++ {
+		items = append(items, SelectItem{
+			Value:       fmt.Sprintf("v%d", i),
+			Label:       strings.Repeat("l", 40),
+			Description: "a fairly long description that would wrap at narrow widths",
+		})
+	}
+	sl := NewSelectList(items, nil)
+	wide := len(sl.Render(80))
+	narrow := len(sl.Render(50))
+	if narrow != wide {
+		t.Errorf("lines at width 50 = %d, at width 80 = %d; want equal (no wrapping)", narrow, wide)
 	}
 }

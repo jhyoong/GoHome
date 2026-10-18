@@ -43,6 +43,18 @@ type Block struct {
 type Message struct {
 	Role    Role    `json:"role"`
 	Content []Block `json:"content"`
+	// StopReason is why an assistant message ended. It is kept for display
+	// only and is not sent to the model.
+	StopReason string `json:"stopReason,omitempty"`
+}
+
+// TokenLimitNotice returns the notice shown when a response was cut off by the
+// output token limit, or "" for any other stop reason.
+func TokenLimitNotice(stopReason string) string {
+	if stopReason == "max_tokens" || stopReason == "length" {
+		return "Response cut off: the model reached its output token limit (" + stopReason + ")."
+	}
+	return ""
 }
 
 type EventKind string

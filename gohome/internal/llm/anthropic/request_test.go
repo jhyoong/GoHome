@@ -2,6 +2,7 @@ package anthropic
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
@@ -51,7 +52,7 @@ func TestBuildAnthropicBody(t *testing.T) {
 		MaxTokens: 1024,
 	}
 
-	data, err := buildAnthropicBody(req)
+	data, err := buildAnthropicBody(req, false)
 	if err != nil {
 		t.Fatalf("buildAnthropicBody error: %v", err)
 	}
@@ -219,7 +220,7 @@ func TestBuildAnthropicBody_Thinking(t *testing.T) {
 		ThinkingBudget: 10240,
 	}
 
-	data, err := buildAnthropicBody(req)
+	data, err := buildAnthropicBody(req, false)
 	if err != nil {
 		t.Fatalf("buildAnthropicBody error: %v", err)
 	}
@@ -257,7 +258,7 @@ func TestBuildAnthropicBody_NoThinkingWhenOff(t *testing.T) {
 		ThinkingBudget: 2048,
 	}
 
-	data, err := buildAnthropicBody(req)
+	data, err := buildAnthropicBody(req, false)
 	if err != nil {
 		t.Fatalf("buildAnthropicBody error: %v", err)
 	}
@@ -296,7 +297,7 @@ func TestTranslateAssistantMessage_ThinkingBlock(t *testing.T) {
 		MaxTokens: 1024,
 	}
 
-	data, err := buildAnthropicBody(req)
+	data, err := buildAnthropicBody(req, false)
 	if err != nil {
 		t.Fatalf("buildAnthropicBody error: %v", err)
 	}
@@ -370,7 +371,7 @@ func TestBuildAnthropicBody_MaxTokensZero(t *testing.T) {
 		Messages:  []common.Message{{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}}},
 		MaxTokens: 0,
 	}
-	_, err := buildAnthropicBody(req)
+	_, err := buildAnthropicBody(req, false)
 	if err == nil {
 		t.Fatal("expected error for MaxTokens=0")
 	}
@@ -382,7 +383,7 @@ func TestBuildAnthropicBody_MaxTokensNegative(t *testing.T) {
 		Messages:  []common.Message{{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}}},
 		MaxTokens: -1,
 	}
-	_, err := buildAnthropicBody(req)
+	_, err := buildAnthropicBody(req, false)
 	if err == nil {
 		t.Fatal("expected error for MaxTokens=-1")
 	}
@@ -412,7 +413,7 @@ func TestBuildAnthropicBody_InvalidToolInput(t *testing.T) {
 		MaxTokens: 1024,
 	}
 
-	data, err := buildAnthropicBody(req)
+	data, err := buildAnthropicBody(req, false)
 	if err != nil {
 		t.Fatalf("buildAnthropicBody error: %v", err)
 	}
@@ -442,7 +443,7 @@ func TestBuildAnthropicBody_AdaptiveThinking(t *testing.T) {
 		ThinkingBudget: 10240,
 	}
 
-	data, err := buildAnthropicBody(req)
+	data, err := buildAnthropicBody(req, false)
 	if err != nil {
 		t.Fatalf("buildAnthropicBody error: %v", err)
 	}
@@ -476,7 +477,7 @@ func TestBuildAnthropicBody_OutputConfigEffort(t *testing.T) {
 
 	withEffort := base
 	withEffort.ReasoningEffort = "xhigh"
-	data, err := buildAnthropicBody(withEffort)
+	data, err := buildAnthropicBody(withEffort, false)
 	if err != nil {
 		t.Fatalf("buildAnthropicBody error: %v", err)
 	}
@@ -496,7 +497,7 @@ func TestBuildAnthropicBody_OutputConfigEffort(t *testing.T) {
 		t.Errorf("output_config = %v, want {effort: xhigh}", oc)
 	}
 
-	data, err = buildAnthropicBody(base)
+	data, err = buildAnthropicBody(base, false)
 	if err != nil {
 		t.Fatalf("buildAnthropicBody error: %v", err)
 	}
@@ -522,7 +523,7 @@ func TestTranslateAssistantMessage_RedactedThinking(t *testing.T) {
 		},
 		MaxTokens: 1024,
 	}
-	data, err := buildAnthropicBody(req)
+	data, err := buildAnthropicBody(req, false)
 	if err != nil {
 		t.Fatalf("buildAnthropicBody: %v", err)
 	}
@@ -543,5 +544,156 @@ func TestTranslateAssistantMessage_RedactedThinking(t *testing.T) {
 	}
 	if got := string(content[1]); got != `{"type":"thinking","thinking":"","signature":"sig-1"}` {
 		t.Errorf("thinking block = %s", got)
+	}
+}
+
+func promptCacheReq(msgs ...common.Message) common.Request {
+	return common.Request{
+		Model:     "claude-sonnet-4-20250514",
+		System:    "sys prompt",
+		Messages:  msgs,
+		MaxTokens: 1024,
+	}
+}
+
+func userMsg(text string) common.Message {
+	return common.Message{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: text}}}
+}
+
+func TestBuildAnthropicBody_PromptCacheOff(t *testing.T) {
+	data, err := buildAnthropicBody(promptCacheReq(userMsg("hi")), false)
+	if err != nil {
+		t.Fatalf("buildAnthropicBody error: %v", err)
+	}
+	if strings.Contains(string(data), "cache_control") {
+		t.Errorf("cache_control should be absent: %s", data)
+	}
+	var body struct {
+		System string `json:"system"`
+	}
+	if err := json.Unmarshal(data, &body); err != nil {
+		t.Fatalf("system should stay a string: %v", err)
+	}
+	if body.System != "sys prompt" {
+		t.Errorf("system: got %q", body.System)
+	}
+}
+
+func TestBuildAnthropicBody_PromptCacheOn(t *testing.T) {
+	data, err := buildAnthropicBody(promptCacheReq(userMsg("hi")), true)
+	if err != nil {
+		t.Fatalf("buildAnthropicBody error: %v", err)
+	}
+	var body struct {
+		System []struct {
+			Type         string            `json:"type"`
+			Text         string            `json:"text"`
+			CacheControl map[string]string `json:"cache_control"`
+		} `json:"system"`
+		Messages []struct {
+			Content []struct {
+				CacheControl map[string]string `json:"cache_control"`
+			} `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(data, &body); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if len(body.System) != 1 || body.System[0].Type != "text" || body.System[0].Text != "sys prompt" ||
+		body.System[0].CacheControl["type"] != "ephemeral" {
+		t.Errorf("system block: %+v", body.System)
+	}
+	if got := body.Messages[0].Content[0].CacheControl["type"]; got != "ephemeral" {
+		t.Errorf("last block cache_control: got %q", got)
+	}
+	if n := strings.Count(string(data), "cache_control"); n != 2 {
+		t.Errorf("cache_control count: got %d, want 2", n)
+	}
+}
+
+func TestBuildAnthropicBody_PromptCacheEmptySystem(t *testing.T) {
+	req := promptCacheReq(userMsg("hi"))
+	req.System = ""
+	data, err := buildAnthropicBody(req, true)
+	if err != nil {
+		t.Fatalf("buildAnthropicBody error: %v", err)
+	}
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(data, &body); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if _, ok := body["system"]; ok {
+		t.Error("system should be omitted when empty")
+	}
+	if n := strings.Count(string(data), "cache_control"); n != 1 {
+		t.Errorf("cache_control count: got %d, want 1", n)
+	}
+}
+
+func TestBuildAnthropicBody_PromptCacheToolResult(t *testing.T) {
+	req := promptCacheReq(
+		userMsg("list"),
+		common.Message{Role: common.RoleAssistant, Content: []common.Block{
+			{Kind: common.BlockToolUse, ToolUseID: "t1", ToolName: "a", InputJSON: `{}`},
+			{Kind: common.BlockToolUse, ToolUseID: "t2", ToolName: "b", InputJSON: `{}`},
+		}},
+		common.Message{Role: common.RoleTool, Content: []common.Block{
+			{Kind: common.BlockToolResult, ToolUseID: "t1", ResultText: "r1"},
+			{Kind: common.BlockToolResult, ToolUseID: "t2", ResultText: "r2"},
+		}},
+	)
+	data, err := buildAnthropicBody(req, true)
+	if err != nil {
+		t.Fatalf("buildAnthropicBody error: %v", err)
+	}
+	var body struct {
+		Messages []struct {
+			Content []map[string]any `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(data, &body); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	last := body.Messages[2].Content
+	if _, ok := last[0]["cache_control"]; ok {
+		t.Error("first tool_result should not be marked")
+	}
+	if last[1]["type"] != "tool_result" || last[1]["cache_control"] == nil {
+		t.Errorf("last tool_result should be marked: %v", last[1])
+	}
+	if n := strings.Count(string(data), "cache_control"); n != 2 {
+		t.Errorf("cache_control count: got %d, want 2", n)
+	}
+}
+
+func TestBuildAnthropicBody_PromptCacheSkipsThinking(t *testing.T) {
+	req := promptCacheReq(
+		userMsg("hi"),
+		common.Message{Role: common.RoleAssistant, Content: []common.Block{
+			{Kind: common.BlockText, Text: "answer"},
+			{Kind: common.BlockThinking, Text: "hmm", Signature: "sig"},
+			{Kind: common.BlockRedactedThinking, Data: "xyz"},
+		}},
+	)
+	data, err := buildAnthropicBody(req, true)
+	if err != nil {
+		t.Fatalf("buildAnthropicBody error: %v", err)
+	}
+	var body struct {
+		Messages []struct {
+			Content []map[string]any `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(data, &body); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	last := body.Messages[1].Content
+	if last[0]["cache_control"] == nil {
+		t.Errorf("text block should be marked: %v", last[0])
+	}
+	for _, b := range last[1:] {
+		if b["cache_control"] != nil {
+			t.Errorf("%v block must not be marked", b["type"])
+		}
 	}
 }

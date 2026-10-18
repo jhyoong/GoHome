@@ -322,3 +322,62 @@ func TestStreamRequest_NoGoroutineLeak(t *testing.T) {
 		t.Errorf("goroutines: before %d, after %d\n%s", before, n, buf[:runtime.Stack(buf, true)])
 	}
 }
+
+// TestStreamRequest_SlowConsumerNotIdle checks that time spent blocked on a
+// slow consumer does not count as server silence.
+func TestStreamRequest_SlowConsumerNotIdle(t *testing.T) {
+	const n = 40
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(strings.Repeat("x", n)))
+	}))
+	defer srv.Close()
+
+	// bytePump emits one event per byte, so the forwarder fills its output
+	// buffer and blocks while the consumer sleeps.
+	bytePump := func(_ context.Context, body io.Reader) <-chan StreamEvent {
+		ch := make(chan StreamEvent)
+		go func() {
+			defer close(ch)
+			buf := make([]byte, 1)
+			for {
+				k, err := body.Read(buf)
+				if k > 0 {
+					ch <- StreamEvent{Kind: EventTextDelta, TextDelta: string(buf[:k])}
+				}
+				if err != nil {
+					if !errors.Is(err, io.EOF) {
+						ch <- StreamEvent{Kind: EventError, Err: err}
+					}
+					return
+				}
+			}
+		}()
+		return ch
+	}
+
+	ch, err := StreamRequest(context.Background(), StreamConfig{
+		HTTPClient:  &http.Client{},
+		Backoff:     []time.Duration{0},
+		Prefix:      "test",
+		IdleTimeout: 100 * time.Millisecond,
+	}, func() (*http.Request, error) {
+		return http.NewRequest(http.MethodPost, srv.URL, nil)
+	}, bytePump)
+	if err != nil {
+		t.Fatalf("StreamRequest error: %v", err)
+	}
+
+	time.Sleep(400 * time.Millisecond) // consumer is slower than the idle timeout
+	var got []StreamEvent
+	for e := range ch {
+		got = append(got, e)
+	}
+	if len(got) != n {
+		t.Fatalf("got %d events, want %d; last: %+v", len(got), n, got[len(got)-1])
+	}
+	for _, e := range got {
+		if e.Kind != EventTextDelta {
+			t.Fatalf("unexpected event: %+v", e)
+		}
+	}
+}

@@ -2,6 +2,7 @@ package anthropic
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
@@ -277,8 +278,8 @@ func TestTranslateEvents_EOFWithoutMessageStop(t *testing.T) {
 	if last.Kind != common.EventError {
 		t.Fatalf("last event kind: got %q, want EventError", last.Kind)
 	}
-	if last.Err == nil || last.Err.Error() != "stream ended early" {
-		t.Errorf("error: got %v, want %q", last.Err, "stream ended early")
+	if !errors.Is(last.Err, common.ErrStreamEndedEarly) {
+		t.Errorf("error: got %v, want ErrStreamEndedEarly", last.Err)
 	}
 	for _, e := range events {
 		if e.Kind == common.EventTurnDone {
@@ -310,5 +311,65 @@ func TestTranslateEvents_RedactedThinking(t *testing.T) {
 	}
 	if events[2].Kind != common.EventTurnDone {
 		t.Errorf("event 2 kind = %q, want EventTurnDone", events[2].Kind)
+	}
+}
+
+func TestTranslateEvents_OverloadedError(t *testing.T) {
+	frames := []sseFrame{
+		{event: "error", data: `{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}`},
+	}
+	events := collectEvents(translateEvents(context.Background(), makeFrames(frames)))
+	if len(events) != 1 || events[0].Kind != common.EventError {
+		t.Fatalf("expected one error event, got %v", events)
+	}
+	if !errors.Is(events[0].Err, common.ErrOverloaded) {
+		t.Errorf("error %v does not wrap ErrOverloaded", events[0].Err)
+	}
+}
+
+func TestTranslateEvents_OtherErrorNotOverloaded(t *testing.T) {
+	frames := []sseFrame{
+		{event: "error", data: `{"type":"error","error":{"type":"api_error","message":"boom"}}`},
+	}
+	events := collectEvents(translateEvents(context.Background(), makeFrames(frames)))
+	if len(events) != 1 || events[0].Kind != common.EventError {
+		t.Fatalf("expected one error event, got %v", events)
+	}
+	if errors.Is(events[0].Err, common.ErrOverloaded) {
+		t.Errorf("api_error must not wrap ErrOverloaded")
+	}
+}
+
+func usageFromFrames(t *testing.T, start, delta string) *common.Usage {
+	t.Helper()
+	frames := []sseFrame{
+		{event: "message_start", data: `{"type":"message_start","message":{"id":"msg_01","role":"assistant","content":[],"usage":` + start + `}}`},
+		{event: "message_delta", data: `{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":` + delta + `}`},
+		{event: "message_stop", data: `{"type":"message_stop"}`},
+	}
+	events := collectEvents(translateEvents(context.Background(), makeFrames(frames)))
+	if len(events) != 1 || events[0].Usage == nil {
+		t.Fatalf("expected 1 event with usage, got %+v", events)
+	}
+	return events[0].Usage
+}
+
+// Local endpoints send zero input in message_start and the counts in message_delta.
+func TestTranslateEvents_UsageCountsInMessageDelta(t *testing.T) {
+	u := usageFromFrames(t,
+		`{"input_tokens":0,"output_tokens":1}`,
+		`{"input_tokens":100,"cache_creation_input_tokens":30,"cache_read_input_tokens":20,"output_tokens":15}`)
+	if u.InputTokens != 100 || u.CacheWriteTokens != 30 || u.CacheReadTokens != 20 || u.OutputTokens != 15 {
+		t.Errorf("got %+v, want input 100, write 30, read 20, output 15", *u)
+	}
+}
+
+// The real API may repeat cumulative counts in message_delta; they must not be added.
+func TestTranslateEvents_UsageRepeatedInMessageDeltaNotDoubled(t *testing.T) {
+	u := usageFromFrames(t,
+		`{"input_tokens":10,"output_tokens":1,"cache_read_input_tokens":2,"cache_creation_input_tokens":3}`,
+		`{"input_tokens":10,"cache_read_input_tokens":2,"cache_creation_input_tokens":3,"output_tokens":15}`)
+	if u.InputTokens != 10 || u.CacheWriteTokens != 3 || u.CacheReadTokens != 2 || u.OutputTokens != 15 {
+		t.Errorf("got %+v, want input 10, write 3, read 2, output 15", *u)
 	}
 }

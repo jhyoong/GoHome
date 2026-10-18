@@ -30,6 +30,10 @@ type SelectListComponent struct {
 	onSelect      func(SelectItem)
 	onCancel      func()
 	onDelete      func(SelectItem)
+
+	// WrapDescriptions wraps long descriptions onto extra lines instead of
+	// truncating them. Off by default because windowing counts items, not lines.
+	WrapDescriptions bool
 }
 
 func initSelectItems(items []SelectItem) []SelectItem {
@@ -89,29 +93,45 @@ func (sl *SelectListComponent) Render(width int) []string {
 
 		label := item.Label
 		line := prefix + label
+		var extra []string
 
 		if showDesc && item.Description != "" {
 			descMaxW := width - VisualWidth(line) - 2
 			if descMaxW > 0 {
 				desc := item.Description
-				if VisualWidth(desc) > descMaxW {
-					desc = TruncateText(desc, descMaxW)
+				if VisualWidth(desc) <= descMaxW || !sl.WrapDescriptions {
+					if VisualWidth(desc) > descMaxW {
+						desc = TruncateText(desc, descMaxW)
+					}
+					padding := width - VisualWidth(line) - VisualWidth(desc)
+					if padding < 1 {
+						padding = 1
+					}
+					line = line + strings.Repeat(" ", padding) + desc
+				} else {
+					// Wrap under the description column.
+					col := VisualWidth(line) + 2
+					wrapped := WrapText(item.Description, descMaxW)
+					line = line + "  " + wrapped[0]
+					for _, w := range wrapped[1:] {
+						extra = append(extra, strings.Repeat(" ", col)+w)
+					}
 				}
-				padding := width - VisualWidth(line) - VisualWidth(desc)
-				if padding < 1 {
-					padding = 1
-				}
-				line = line + strings.Repeat(" ", padding) + desc
 			}
 		}
 
 		if sl.confirmDelete == i {
 			line = selectDeleteStyle.Render(prefix + label + "  delete? y to confirm")
+			extra = nil
 		} else if i == sl.selected {
 			line = selectHighlight.Render(line)
+			for k := range extra {
+				extra[k] = selectHighlight.Render(extra[k])
+			}
 		}
 
 		lines = append(lines, line)
+		lines = append(lines, extra...)
 	}
 
 	if total > vis {

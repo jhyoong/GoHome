@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
@@ -238,5 +239,31 @@ func TestHistoryToTimeline_RedactedThinkingSkipped(t *testing.T) {
 	got := historyToTimeline(msgs)
 	if len(got) != 1 || got[0].Kind != KindAssistant {
 		t.Fatalf("got %+v, want only the assistant entry", got)
+	}
+}
+
+func TestHistoryToTimeline_TokenLimitNotice(t *testing.T) {
+	for _, reason := range []string{"max_tokens", "length"} {
+		msgs := []common.Message{
+			{Role: common.RoleAssistant, StopReason: reason, Content: []common.Block{
+				{Kind: common.BlockText, Text: "cut off"},
+			}},
+			{Role: common.RoleAssistant, StopReason: "end_turn", Content: []common.Block{
+				{Kind: common.BlockText, Text: "fine"},
+			}},
+		}
+		got := historyToTimeline(msgs)
+		if len(got) != 3 {
+			t.Fatalf("%s: len = %d, want 3: %+v", reason, len(got), got)
+		}
+		if got[1].Kind != KindNotice || got[1].Text != common.TokenLimitNotice(reason) {
+			t.Errorf("%s: entry 1 = %+v, want token limit notice", reason, got[1])
+		}
+		if !strings.HasPrefix(got[1].Text, "Response cut off:") {
+			t.Errorf("%s: notice text = %q", reason, got[1].Text)
+		}
+		if got[2].Kind != KindAssistant {
+			t.Errorf("%s: entry 2 kind = %v, want assistant", reason, got[2].Kind)
+		}
 	}
 }

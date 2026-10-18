@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"time"
+
 	"github.com/jhyoong/GoHome/gohome/internal/guard"
 	"github.com/jhyoong/GoHome/gohome/internal/tools"
 )
@@ -15,6 +17,10 @@ type Agent struct {
 	System        string
 	CompactCfg    CompactConfig
 	CompactPrompt string
+
+	// RetryBackoff is the wait schedule for retrying a turn that fails with
+	// an overloaded error before any content. Nil means config.DefaultRetryBackoff.
+	RetryBackoff []time.Duration
 
 	// compactWait holds back compaction after a rejected summary.
 	compactWait compactWait

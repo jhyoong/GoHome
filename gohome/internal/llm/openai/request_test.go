@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/jhyoong/GoHome/gohome/internal/config"
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
 )
 
@@ -50,7 +51,7 @@ func TestBuildOpenAIBody(t *testing.T) {
 		MaxTokens: 1024,
 	}
 
-	data, err := buildOpenAIBody(req)
+	data, err := buildOpenAIBody(req, "")
 	if err != nil {
 		t.Fatalf("buildOpenAIBody error: %v", err)
 	}
@@ -249,7 +250,7 @@ func TestTranslateAssistantMessage_ThinkingBlockDropped(t *testing.T) {
 		MaxTokens: 1024,
 	}
 
-	data, err := buildOpenAIBody(req)
+	data, err := buildOpenAIBody(req, "")
 	if err != nil {
 		t.Fatalf("buildOpenAIBody error: %v", err)
 	}
@@ -294,7 +295,7 @@ func TestBuildOpenAIBody_MaxTokensZero(t *testing.T) {
 		Messages:  []common.Message{{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}}},
 		MaxTokens: 0,
 	}
-	_, err := buildOpenAIBody(req)
+	_, err := buildOpenAIBody(req, "")
 	if err == nil {
 		t.Fatal("expected error for MaxTokens=0")
 	}
@@ -306,7 +307,7 @@ func TestBuildOpenAIBody_MaxTokensNegative(t *testing.T) {
 		Messages:  []common.Message{{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}}},
 		MaxTokens: -1,
 	}
-	_, err := buildOpenAIBody(req)
+	_, err := buildOpenAIBody(req, "")
 	if err == nil {
 		t.Fatal("expected error for MaxTokens=-1")
 	}
@@ -318,7 +319,7 @@ func TestBuildOpenAIBody_NoTools(t *testing.T) {
 		Messages:  []common.Message{{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}}},
 		MaxTokens: 100,
 	}
-	data, err := buildOpenAIBody(req)
+	data, err := buildOpenAIBody(req, "")
 	if err != nil {
 		t.Fatalf("buildOpenAIBody error: %v", err)
 	}
@@ -388,7 +389,7 @@ func TestTranslateToolMessage_MultipleResults(t *testing.T) {
 		MaxTokens: 1024,
 	}
 
-	data, err := buildOpenAIBody(req)
+	data, err := buildOpenAIBody(req, "")
 	if err != nil {
 		t.Fatalf("buildOpenAIBody error: %v", err)
 	}
@@ -453,7 +454,7 @@ func TestBuildOpenAIBody_NoSystem(t *testing.T) {
 		Messages:  []common.Message{{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}}},
 		MaxTokens: 100,
 	}
-	data, err := buildOpenAIBody(req)
+	data, err := buildOpenAIBody(req, "")
 	if err != nil {
 		t.Fatalf("buildOpenAIBody error: %v", err)
 	}
@@ -483,7 +484,7 @@ func TestTranslateAssistantMessage_RedactedThinkingDropped(t *testing.T) {
 		},
 		MaxTokens: 1024,
 	}
-	data, err := buildOpenAIBody(req)
+	data, err := buildOpenAIBody(req, "")
 	if err != nil {
 		t.Fatalf("buildOpenAIBody: %v", err)
 	}
@@ -505,7 +506,7 @@ func TestBuildOpenAIBody_ThinkingOnlyAssistantSendsEmptyContent(t *testing.T) {
 		{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "a"}, {Kind: common.BlockText, Text: "b"}}},
 		{Role: common.RoleAssistant, Content: []common.Block{{Kind: common.BlockThinking, Text: "hmm"}}},
 	}}
-	data, err := buildOpenAIBody(req)
+	data, err := buildOpenAIBody(req, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -522,5 +523,40 @@ func TestBuildOpenAIBody_ThinkingOnlyAssistantSendsEmptyContent(t *testing.T) {
 	}
 	if body.Messages[1].Content == nil || *body.Messages[1].Content != "" {
 		t.Errorf("assistant content should be empty string: %s", data)
+	}
+}
+
+func TestBuildOpenAIBody_MaxTokensField(t *testing.T) {
+	req := common.Request{
+		Model:     "gpt-5",
+		Messages:  []common.Message{{Role: common.RoleUser, Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}}},
+		MaxTokens: 1234,
+	}
+	tests := []struct {
+		field    string
+		wantKey  string
+		wantNone string
+	}{
+		{"", "max_tokens", "max_completion_tokens"},
+		{config.MaxTokensFieldMaxTokens, "max_tokens", "max_completion_tokens"},
+		{config.MaxTokensFieldMaxCompletionTokens, "max_completion_tokens", "max_tokens"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.field, func(t *testing.T) {
+			data, err := buildOpenAIBody(req, tt.field)
+			if err != nil {
+				t.Fatalf("buildOpenAIBody: %v", err)
+			}
+			var m map[string]any
+			if err := json.Unmarshal(data, &m); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			if got, _ := m[tt.wantKey].(float64); got != 1234 {
+				t.Errorf("%s: got %v, want 1234", tt.wantKey, m[tt.wantKey])
+			}
+			if _, present := m[tt.wantNone]; present {
+				t.Errorf("%s must not be set", tt.wantNone)
+			}
+		})
 	}
 }

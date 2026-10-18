@@ -3,7 +3,6 @@ package anthropic
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
@@ -31,7 +30,10 @@ type msgDeltaData struct {
 		StopReason string `json:"stop_reason"`
 	} `json:"delta"`
 	Usage struct {
-		OutputTokens int `json:"output_tokens"`
+		InputTokens              int `json:"input_tokens"`
+		OutputTokens             int `json:"output_tokens"`
+		CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+		CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 	} `json:"usage"`
 }
 
@@ -109,14 +111,14 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 				// EOF before message_stop means the stream was cut off
 				// (unless it was cancelled).
 				if !gotStop && ctx.Err() == nil {
-					send(common.StreamEvent{Kind: common.EventError, Err: errors.New("stream ended early")})
+					send(common.StreamEvent{Kind: common.EventError, Err: common.ErrStreamEndedEarly})
 				}
 				return
 			}
 
 			switch frame.event {
 			case "error":
-				send(common.StreamEvent{Kind: common.EventError, Err: fmt.Errorf("%s", frame.data)})
+				send(common.StreamEvent{Kind: common.EventError, Err: streamError(frame.data)})
 				return
 
 			case "message_start":
@@ -223,6 +225,18 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 				}
 				stopReason = d.Delta.StopReason
 				usage.OutputTokens = d.Usage.OutputTokens
+				// Some endpoints send zero input counts in message_start and the
+				// real counts here. Override (never add) when non-zero, because
+				// the real API may repeat the same cumulative counts.
+				if d.Usage.InputTokens != 0 {
+					usage.InputTokens = d.Usage.InputTokens
+				}
+				if d.Usage.CacheReadInputTokens != 0 {
+					usage.CacheReadTokens = d.Usage.CacheReadInputTokens
+				}
+				if d.Usage.CacheCreationInputTokens != 0 {
+					usage.CacheWriteTokens = d.Usage.CacheCreationInputTokens
+				}
 
 			case "message_stop":
 				gotStop = true
@@ -240,4 +254,18 @@ func translateEvents(ctx context.Context, frames <-chan sseFrame) <-chan common.
 	}()
 
 	return ch
+}
+
+// streamError builds the error for an SSE "error" frame. An overloaded_error
+// wraps common.ErrOverloaded so callers can retry it.
+func streamError(data string) error {
+	var d struct {
+		Error struct {
+			Type string `json:"type"`
+		} `json:"error"`
+	}
+	if json.Unmarshal([]byte(data), &d) == nil && d.Error.Type == "overloaded_error" {
+		return fmt.Errorf("%w: %s", common.ErrOverloaded, data)
+	}
+	return fmt.Errorf("%s", data)
 }

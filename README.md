@@ -146,6 +146,7 @@ Auto-compaction automatically summarizes your conversation history when the cont
       "modelName": "gpt-4o",
       "contextWindow": 128000,
       "maxTokens": 16384,
+      "maxTokensField": "max_completion_tokens",
       "reasoningEffort": "high"
     }
   },
@@ -179,6 +180,8 @@ Both `"anthropic"` and `"openai"` wires are supported. Set `apiKey` for a litera
 | `modelName` | — | Model name sent to the LLM provider |
 | `contextWindow` | `128000` | Context window size in tokens. Used for the usage display and to decide when auto-compaction runs |
 | `maxTokens` | `16384` | Max output tokens per LLM turn |
+| `maxTokensField` | `"max_tokens"` | OpenAI wire only: the request field that carries the output limit, `"max_tokens"` or `"max_completion_tokens"` (needed by newer OpenAI models). Any other value is a config error. Ignored on the Anthropic wire |
+| `promptCache` | `false` | Anthropic wire only: turn on prompt caching. gohome marks the system prompt (which also caches the tools) and the last message with `cache_control`, so each turn reads the previous turn's prefix at a lower cost. Prompts shorter than the model's minimum cacheable length (512 to 4096 tokens, depending on the model) are not cached. Cache reads and writes show in the turn stats and in `/tokens`. Ignored on the OpenAI wire |
 | `thinking` | — | Thinking mode (Anthropic wire only): `"off"` sends no thinking parameter, `"adaptive"` sends `{"type":"adaptive","display":"summarized"}`, `"budget"` sends `{"type":"enabled","budget_tokens":N}`. When unset: `"budget"` if `thinkingBudget > 0`, otherwise `"adaptive"` |
 | `thinkingBudget` | `10240` | Thinking token budget, used only in `"budget"` mode. Must be at least 1024 and below `maxTokens`; gohome refuses the config at startup or on `/model` otherwise |
 | `reasoningEffort` | — | Reasoning effort level, passed through as-is: `reasoning_effort` on the OpenAI wire, `output_config.effort` on the Anthropic wire (e.g. `"low"`, `"medium"`, `"high"`). Omitted when unset |
@@ -195,7 +198,7 @@ Both `"anthropic"` and `"openai"` wires are supported. Set `apiKey` for a litera
 | `contextWarnPct` | `0.80` | Context window usage ratio at which a warning is shown (must be < `contextCritPct`) |
 | `contextCritPct` | `0.95` | Context window usage ratio at which a critical warning is shown (must be > `contextWarnPct` and <= 1.0) |
 | `renderThrottleMs` | `16` | Minimum interval in milliseconds between TUI redraws during token streaming. `0` uses the default (16 ms); a negative value redraws on every token. Higher values reduce CPU use and terminal flicker |
-| `retryBackoffMs` | `[250, 1000, 2000]` | Retry backoff schedule in milliseconds. The list length sets the number of retries (attempts = length + 1). A `Retry-After` header (capped at 60 s) replaces the listed delay |
+| `retryBackoffMs` | `[250, 1000, 2000]` | Retry backoff schedule in milliseconds. The list length sets the number of retries (attempts = length + 1). A `Retry-After` header (capped at 60 s) replaces the listed delay. The same schedule also retries an overloaded error that arrives mid-stream before any content is received |
 | `cacheSudoPassword` | `false` | Keep the sudo password in memory after the first entry and reuse it until `gohome` exits. See [Sudo commands](#sudo-commands) |
 
 ### 2. Run

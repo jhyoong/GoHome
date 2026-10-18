@@ -2,6 +2,7 @@ package openai
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
@@ -454,6 +455,9 @@ func TestTranslateEvents_EOFWithoutDoneOrFinishReason(t *testing.T) {
 			t.Error("unexpected EventTurnDone for truncated stream")
 		case common.EventError:
 			gotErr = true
+			if !errors.Is(e.Err, common.ErrStreamEndedEarly) {
+				t.Errorf("error = %v, want ErrStreamEndedEarly", e.Err)
+			}
 		}
 	}
 	if !gotErr {
@@ -530,5 +534,33 @@ func TestTranslateEvents_DeltaReasoning(t *testing.T) {
 	}
 	if got != "thinkA" {
 		t.Fatalf("thinking = %q, want thinkA", got)
+	}
+}
+
+func TestTranslateEvents_NewIDAtUsedIndex(t *testing.T) {
+	frames := []sseFrame{
+		{data: `{"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_A","type":"function","function":{"name":"tool_a","arguments":"{\"x\":"}}]},"finish_reason":null}]}`},
+		{data: `{"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"1}"}}]},"finish_reason":null}]}`},
+		{data: `{"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_B","type":"function","function":{"name":"tool_b","arguments":"{\"y\":2}"}}]},"finish_reason":null}]}`},
+		{data: `{"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`},
+		{done: true},
+	}
+
+	events := collectEvents(translateEvents(context.Background(), makeFrames(frames)))
+
+	var calls []common.StreamEvent
+	for _, e := range events {
+		if e.Kind == common.EventToolCallDone {
+			calls = append(calls, e)
+		}
+	}
+	if len(calls) != 2 {
+		t.Fatalf("expected 2 tool calls, got %d", len(calls))
+	}
+	if calls[0].ToolCallID != "call_A" || calls[0].ToolName != "tool_a" || calls[0].InputJSON != `{"x":1}` {
+		t.Errorf("call 0: %+v", calls[0])
+	}
+	if calls[1].ToolCallID != "call_B" || calls[1].ToolName != "tool_b" || calls[1].InputJSON != `{"y":2}` {
+		t.Errorf("call 1: %+v", calls[1])
 	}
 }
