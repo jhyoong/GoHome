@@ -786,3 +786,12 @@ func TestChat_NoticeWrapsAtNarrowWidth(t *testing.T) {
 		t.Errorf("text lost.\n got %q\nwant %q", joined, want)
 	}
 }
+
+func TestChat_NoticeTinyWidthDoesNotSplitPerGrapheme(t *testing.T) {
+	tl := []TimelineEntry{{Kind: KindNotice, Text: "short notice"}}
+	c := &ChatComponent{timeline: &tl, autoScroll: true, maxHeight: 100, cursor: -1}
+	lines := c.Render(5)
+	if len(lines) != 1 {
+		t.Fatalf("want 1 unwrapped line at tiny width, got %d: %q", len(lines), lines)
+	}
+}
