@@ -100,14 +100,16 @@ func Load(path string) (*Session, []common.Message, error) {
 
 		case "assistant_message":
 			var ev struct {
-				Content []common.Block `json:"content"`
+				Content    []common.Block `json:"content"`
+				StopReason string         `json:"stopReason"`
 			}
 			if err := json.Unmarshal(raw, &ev); err != nil {
 				return
 			}
 			history = append(history, common.Message{
-				Role:    common.RoleAssistant,
-				Content: ev.Content,
+				Role:       common.RoleAssistant,
+				Content:    ev.Content,
+				StopReason: ev.StopReason,
 			})
 
 		case "tool_result":

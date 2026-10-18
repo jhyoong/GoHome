@@ -50,6 +50,9 @@ func historyToTimeline(msgs []common.Message) []TimelineEntry {
 					})
 				}
 			}
+			if notice := common.TokenLimitNotice(msg.StopReason); notice != "" {
+				entries = append(entries, TimelineEntry{Kind: KindNotice, Text: notice})
+			}
 
 		case common.RoleTool:
 			for _, b := range msg.Content {

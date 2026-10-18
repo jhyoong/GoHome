@@ -191,8 +191,9 @@ done:
 	// message from reaching wire adapters (which require at least one block).
 	if len(blocks) > 0 {
 		assistantMsg := common.Message{
-			Role:    common.RoleAssistant,
-			Content: blocks,
+			Role:       common.RoleAssistant,
+			Content:    blocks,
+			StopReason: stopReason,
 		}
 		sess.History = append(sess.History, assistantMsg)
 
@@ -227,11 +228,11 @@ done:
 			Usage:     usage,
 		})
 	}
-	if stopReason == "max_tokens" || stopReason == "length" {
+	if notice := common.TokenLimitNotice(stopReason); notice != "" {
 		a.Frontend.Emit(sess.ID, Event{
 			Kind:      EventNotice,
 			SessionID: sess.ID,
-			Notice:    "Response cut off: the model reached its output token limit (" + stopReason + ").",
+			Notice:    notice,
 		})
 	}
 	a.Frontend.Emit(sess.ID, Event{
