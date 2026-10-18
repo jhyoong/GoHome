@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -245,6 +246,7 @@ func TestSelectList_WrapsLongDescriptionAtNarrowWidth(t *testing.T) {
 	sl := NewSelectList([]SelectItem{
 		{Value: "env", Label: "Environment variable", Description: "read from an env var at runtime"},
 	}, nil)
+	sl.WrapDescriptions = true
 	lines := sl.Render(50)
 	// Query line plus the item over two lines.
 	if len(lines) != 3 {
@@ -268,5 +270,22 @@ func TestSelectList_WrapsLongDescriptionAtNarrowWidth(t *testing.T) {
 	cont := StripAnsi(lines[2])
 	if col < 0 || !strings.HasPrefix(cont, strings.Repeat(" ", col)) || strings.TrimSpace(cont) == "" {
 		t.Errorf("continuation not aligned to description column %d: %q", col, cont)
+	}
+}
+
+func TestSelectList_NoWrapByDefault(t *testing.T) {
+	var items []SelectItem
+	for i := 0; i < 12; i++ {
+		items = append(items, SelectItem{
+			Value:       fmt.Sprintf("v%d", i),
+			Label:       strings.Repeat("l", 40),
+			Description: "a fairly long description that would wrap at narrow widths",
+		})
+	}
+	sl := NewSelectList(items, nil)
+	wide := len(sl.Render(80))
+	narrow := len(sl.Render(50))
+	if narrow != wide {
+		t.Errorf("lines at width 50 = %d, at width 80 = %d; want equal (no wrapping)", narrow, wide)
 	}
 }

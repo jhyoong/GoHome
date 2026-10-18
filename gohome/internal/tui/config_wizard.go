@@ -76,7 +76,7 @@ func (w *ConfigWizard) buildStep() {
 			{Value: "anthropic", Label: "anthropic", Description: "Anthropic API format"},
 			{Value: "openai", Label: "openai", Description: "OpenAI-compatible format"},
 		}
-		w.selectList = NewSelectList(items, func(item SelectItem) {
+		w.selectList = newWizardSelectList(items, func(item SelectItem) {
 			w.wire = item.Value
 			w.step++
 			w.buildStep()
@@ -92,7 +92,7 @@ func (w *ConfigWizard) buildStep() {
 			{Value: "env", Label: "Environment variable", Description: "read from an env var at runtime"},
 			{Value: "literal", Label: "Literal value", Description: "store the key directly in config"},
 		}
-		w.selectList = NewSelectList(items, func(item SelectItem) {
+		w.selectList = newWizardSelectList(items, func(item SelectItem) {
 			w.keySource = item.Value
 			w.step++
 			w.buildStep()
@@ -121,7 +121,7 @@ func (w *ConfigWizard) buildStep() {
 			{Value: "no", Label: "No", Description: "ask for the password on every sudo command"},
 			{Value: "yes", Label: "Yes", Description: "ask once, reuse until gohome exits"},
 		}
-		w.selectList = NewSelectList(items, func(item SelectItem) {
+		w.selectList = newWizardSelectList(items, func(item SelectItem) {
 			w.sudoCache = item.Value == "yes"
 			w.step++
 			w.buildStep()
@@ -140,7 +140,7 @@ func (w *ConfigWizard) buildStep() {
 			{Value: "yes", Label: "Yes", Description: "create ~/.gohome/denylist.json with default patterns"},
 			{Value: "no", Label: "No", Description: "skip denylist setup"},
 		}
-		w.selectList = NewSelectList(items, func(item SelectItem) {
+		w.selectList = newWizardSelectList(items, func(item SelectItem) {
 			if item.Value == "yes" {
 				if err := w.scaffoldDenylist(); err != nil {
 					w.errMsg = "Denylist setup failed: " + err.Error()
@@ -156,7 +156,7 @@ func (w *ConfigWizard) buildStep() {
 
 	case wizardStepDenylistDone:
 		w.prompt = "Wrote " + w.denylistPath()
-		w.selectList = NewSelectList([]SelectItem{{Value: "close", Label: "Close"}}, func(SelectItem) {
+		w.selectList = newWizardSelectList([]SelectItem{{Value: "close", Label: "Close"}}, func(SelectItem) {
 			w.onCancel()
 		})
 		w.selectList.onCancel = w.onCancel
@@ -169,7 +169,7 @@ func (w *ConfigWizard) rebuildConfirmStep() {
 		{Value: "save", Label: "Save", Description: "write " + w.outputPath},
 		{Value: "cancel", Label: "Cancel", Description: "discard and go back"},
 	}
-	w.selectList = NewSelectList(items, func(item SelectItem) {
+	w.selectList = newWizardSelectList(items, func(item SelectItem) {
 		if item.Value == "save" {
 			if err := w.save(); err != nil {
 				w.errMsg = "Save failed: " + err.Error()
@@ -330,4 +330,11 @@ func (w *ConfigWizard) HandleInput(msg tea.KeyMsg) tea.Cmd {
 		}
 	}
 	return nil
+}
+
+// newWizardSelectList builds a select list that wraps long descriptions.
+func newWizardSelectList(items []SelectItem, onSelect func(SelectItem)) *SelectListComponent {
+	sl := NewSelectList(items, onSelect)
+	sl.WrapDescriptions = true
+	return sl
 }
