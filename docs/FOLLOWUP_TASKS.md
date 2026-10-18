@@ -11,25 +11,11 @@ Open items found while fixing and testing the 2026-10-17 audit items (PRs #48 to
 
 Minor items found while reviewing the D1-D9 fixes (plan: `docs/old/2026-10-17-data-loss-plan.md`). None of them lose data.
 
-### Streams
-33. **Tool entries stay "pending" after an early stream end.** Anthropic sends tool calls before `message_stop`, so the TUI shows them, but the turn is dropped. Mark pending entries as failed when `EventError` arrives. Cancelling mid-stream already did this before the fix.
-34. **"stream ended early" is defined three times** (`anthropic/translate.go`, `openai/translate.go`, `agent/errors.go`). Use one sentinel in `common` so `errors.Is` works across packages.
-35. **The `max_tokens`/`length` notice is not saved.** It is gone after a resume. `StopReason` is saved, so `historyToTimeline` could rebuild it.
-
 ### Testing gaps
-37. **Weak assertions.** `stream_end_test.go` checks `err != nil` instead of the specific error.
 38. **`TestPickResume_SkipsChildAndLoadsChildren` has no recorded failing run.** `TestListExcludesChildren` covers the same case and did fail first.
 
 ### Agent loop and TUI (found while fixing A1-A10)
 41. **Sudo detection matches inside quoted strings.** `echo 'a; sudo b'` is treated as sudo. `VAR=/path/sudo cmd` (for example `SUDO=/usr/bin/sudo make install`) is also detected as sudo. The worst case is an extra password prompt. Fixing this needs a shell parser (`guard/sudo.go`).
-
-### LLM wire and config (found while fixing L1-L9)
-45. **No prompt caching.** No `cache_control` is sent, and the Anthropic system prompt is a plain string.
-46. **Mid-stream `overloaded_error` is not retried.** Only errors before the stream starts are retried.
-47. **OpenAI reasoning models expect `max_completion_tokens`.** gohome always sends `max_tokens`. This is from training knowledge, not checked against live docs.
-48. **A new tool-call id at an index already in use concatenates arguments.** Seen only from servers that do not follow the spec (`openai/translate.go`).
-49. **SSE parsing does not handle bare-CR line endings or multi-line OpenAI `data:` payloads.** Both are rare.
-50. **The idle-read watchdog can fire if the stream consumer stalls.** If the TUI or headless stdout is blocked for longer than the idle timeout, the stream is cut even though the server is still sending.
 
 ### Tools (found while fixing T1-T3)
 51. **The shell `cwd` is resolved against the process folder, not the session folder.** This has no effect today: the session folder is always `os.Getwd()` and nothing calls `Chdir`. It matters only if sessions ever run in a different folder (audit T3).
@@ -44,7 +30,3 @@ Minor items found while reviewing the D1-D9 fixes (plan: `docs/old/2026-10-17-da
 
 ### CI and release (found while fixing the docs and CI items)
 63. **The rewritten `release.yml` has not run.** Native Windows build, per-target size guard and CHANGELOG-section release notes are only YAML-checked. Push a test tag (for example `v0.4.4-dev2`, with a matching CHANGELOG section) and check the draft release and its four assets.
-
-
-### Setup wizard (found in the fix/followup-tasks-batch live test)
-67. **Wizard option descriptions and notices are cut off at narrow widths.** At 50 columns, "read from an env var at r" and "write /tmp/.../setti" are cut instead of wrapped. The "Could not resolve API key" notice behind the wizard is cut too. `main` does the same. Found in the fix/followup-tasks-batch live test report (`docs/old/`).
