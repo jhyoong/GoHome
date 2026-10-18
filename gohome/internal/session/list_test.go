@@ -1,10 +1,13 @@
 package session
 
 import (
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
@@ -355,5 +358,21 @@ func TestLoadChildren(t *testing.T) {
 	}
 	if len(children[0].History) != 1 || children[0].History[0].Content[0].Text != "first" {
 		t.Errorf("child history = %+v, want the task message", children[0].History)
+	}
+}
+
+// TestBlankReader_StopsAtFirstUserMessage checks that blankReader does not
+// read past the first user_message: the reader fails after that line.
+func TestBlankReader_StopsAtFirstUserMessage(t *testing.T) {
+	r := io.MultiReader(
+		strings.NewReader(`{"type":"session_start","id":"s"}`+"\n"+`{"type":"user_message","content":[]}`+"\n"),
+		iotest.ErrReader(errors.New("read past first user_message")),
+	)
+	blank, err := blankReader(r)
+	if err != nil {
+		t.Fatalf("blankReader: %v", err)
+	}
+	if blank {
+		t.Error("blank = true, want false")
 	}
 }

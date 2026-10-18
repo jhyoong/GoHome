@@ -269,12 +269,14 @@ func (m *Model) slashPalette() string {
 
 // LoadResumedSession shows a resumed session in the focused view and adds a
 // view for each of its subagent children, the same way live subagents
-// appear. Each child is linked to the parent's subagent tool entry whose task
-// equals the child's first user message (newest first, so a repeated task
-// links newest child to newest entry). Children with no task match take the
-// remaining unlinked entries from the end of the timeline backward, as live
-// linking does. Entries with no match stay unlinked; unlinked children still
-// get a view. All children are marked completed, so they are read-only.
+// appear. A child is first linked to the subagent tool entry whose tool_use
+// ID the child recorded, when exactly one unlinked entry has that ID. Other
+// children are linked to the entry whose raw task equals the child's first
+// user message (newest first, so a repeated task links newest child to newest
+// entry). Children with no match take the remaining unlinked entries from the
+// end of the timeline backward, as live linking does. Entries with no match
+// stay unlinked; unlinked children still get a view. All children are marked
+// completed, so they are read-only.
 func (m *Model) LoadResumedSession(id string, history []common.Message, children []*session.Session) {
 	sv := m.getOrCreateSession(id, 0)
 	sv.Timeline = historyToTimeline(history)
@@ -288,6 +290,23 @@ func (m *Model) LoadResumedSession(id string, history []common.Message, children
 		return e.Kind == KindTool && e.ToolName == "subagent" && e.ChildSessionID == ""
 	}
 
+	// Timeline text is sanitized, so read each task from the raw history.
+	rawTask := map[string]string{}
+	for _, msg := range history {
+		for _, b := range msg.Content {
+			if b.Kind == common.BlockToolUse && b.ToolUseID != "" {
+				rawTask[b.ToolUseID] = subagentTask(b.InputJSON)
+			}
+		}
+	}
+	entryTask := func(i int) string {
+		e := &sv.Timeline[i]
+		if e.ToolUseID != "" {
+			return rawTask[e.ToolUseID]
+		}
+		return subagentTask(e.Text)
+	}
+
 	for _, child := range children {
 		childSV := m.getOrCreateSession(child.ID, 1)
 		childSV.Timeline = historyToTimeline(child.History)
@@ -295,13 +314,29 @@ func (m *Model) LoadResumedSession(id string, history []common.Message, children
 		childSV.Completed = true
 	}
 
+	var byTask []*session.Session
+	for _, child := range children {
+		found, hits := -1, 0
+		for i := range sv.Timeline {
+			if child.ParentToolUseID != "" && unlinkedSubagent(i) && sv.Timeline[i].ToolUseID == child.ParentToolUseID {
+				found = i
+				hits++
+			}
+		}
+		if hits == 1 {
+			link(found, child.ID)
+		} else {
+			byTask = append(byTask, child)
+		}
+	}
+
 	var unmatched []*session.Session
-	for c := len(children) - 1; c >= 0; c-- {
-		child := children[c]
+	for c := len(byTask) - 1; c >= 0; c-- {
+		child := byTask[c]
 		task := firstUserText(child.History)
 		matched := false
 		for i := len(sv.Timeline) - 1; task != "" && i >= 0; i-- {
-			if unlinkedSubagent(i) && subagentTask(sv.Timeline[i].Text) == task {
+			if unlinkedSubagent(i) && entryTask(i) == task {
 				link(i, child.ID)
 				matched = true
 				break

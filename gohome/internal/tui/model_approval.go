@@ -246,7 +246,7 @@ func sudoRejected(output string) bool {
 // toggles the full command, since 'v' would be typed into the password.
 func (m *Model) handleSudoPasswordKey(msg tea.KeyMsg) tea.Cmd {
 	ap := m.activeApproval
-	if m.scrollApprovalPage(msg) {
+	if m.scrollApprovalSummary(msg) || m.scrollApprovalPage(msg) {
 		return nil
 	}
 	switch msg.Type {

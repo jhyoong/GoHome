@@ -2,10 +2,15 @@ package session
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/jhyoong/GoHome/gohome/internal/llm/common"
@@ -131,6 +136,19 @@ func TestOpenWriter_OwnerOnlyPerms(t *testing.T) {
 	}
 }
 
+// failWriter fails every write and records what it was given.
+type failWriter struct {
+	mu    sync.Mutex
+	calls [][]byte
+}
+
+func (f *failWriter) Write(p []byte) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, append([]byte(nil), p...))
+	return 0, errors.New("disk full")
+}
+
 func TestWriterErrReportsWriteFailure(t *testing.T) {
 	w, err := OpenWriter(filepath.Join(t.TempDir(), "test.jsonl"))
 	if err != nil {
@@ -139,12 +157,60 @@ func TestWriterErrReportsWriteFailure(t *testing.T) {
 	if w.Err() != nil {
 		t.Fatalf("Err before failure = %v, want nil", w.Err())
 	}
-	// Close the underlying file so every write fails.
-	_ = w.f.Close()
+	// Set before the first Emit, so the write goroutine sees it.
+	w.out = &failWriter{}
 	w.Emit(UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}})
-	_ = w.Close()
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
 	if w.Err() == nil {
-		t.Fatal("Err() = nil after write to closed file, want error")
+		t.Fatal("Err() = nil after failed write, want error")
+	}
+}
+
+// TestWriterNoNewlineAfterFailedWrite checks that each event is written in
+// one call that includes the newline, so a failed line write is not followed
+// by a lone newline.
+func TestWriterNoNewlineAfterFailedWrite(t *testing.T) {
+	w, err := OpenWriter(filepath.Join(t.TempDir(), "test.jsonl"))
+	if err != nil {
+		t.Fatalf("OpenWriter: %v", err)
+	}
+	fw := &failWriter{}
+	w.out = fw
+	w.Emit(UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: "a"}}})
+	w.Emit(UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: "b"}}})
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if len(fw.calls) != 2 {
+		t.Fatalf("write calls = %d, want 2 (one per event): %q", len(fw.calls), fw.calls)
+	}
+	for i, c := range fw.calls {
+		if len(c) < 2 || c[0] != '{' || c[len(c)-1] != '\n' {
+			t.Errorf("call %d = %q, want a full JSON line ending in newline", i, c)
+		}
+	}
+}
+
+// TestWriterEmitAfterCloseWarns checks that a dropped late event is logged at
+// Warn level, so it is visible without debug logging.
+func TestWriterEmitAfterCloseWarns(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	w, err := OpenWriter(filepath.Join(t.TempDir(), "test.jsonl"))
+	if err != nil {
+		t.Fatalf("OpenWriter: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	w.Emit(SessionEnd{Reason: "late"})
+	if out := buf.String(); !strings.Contains(out, "level=WARN") || !strings.Contains(out, "after close") {
+		t.Errorf("log = %q, want a WARN about the dropped event", out)
 	}
 }
 

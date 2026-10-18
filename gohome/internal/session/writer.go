@@ -2,6 +2,7 @@ package session
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 // Writer asynchronously writes JSONL events to a file.
 type Writer struct {
 	f         *os.File
+	out       io.Writer // f, replaced in tests to simulate write failures
 	ch        chan any
 	done      chan struct{}
 	closeOnce sync.Once
@@ -38,6 +40,7 @@ func OpenWriter(path string) (*Writer, error) {
 	}
 	w := &Writer{
 		f:    f,
+		out:  f,
 		ch:   make(chan any, 64),
 		done: make(chan struct{}),
 	}
@@ -51,7 +54,7 @@ func (w *Writer) Emit(ev any) {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 	if w.closed {
-		slog.Debug("session: dropping event emitted after close", "type", fmt.Sprintf("%T", ev))
+		slog.Warn("session: dropping event emitted after close", "type", fmt.Sprintf("%T", ev))
 		return
 	}
 	w.ch <- ev
@@ -108,9 +111,9 @@ func (w *Writer) run() {
 			w.setErr(err)
 			continue
 		}
-		_, err = w.f.Write(line)
-		w.setErr(err)
-		_, err = w.f.Write([]byte("\n"))
+		// One write per line, so a failed write is not followed by a lone
+		// newline.
+		_, err = w.out.Write(append(line, '\n'))
 		w.setErr(err)
 		if isCritical(ev) {
 			w.setErr(w.f.Sync())

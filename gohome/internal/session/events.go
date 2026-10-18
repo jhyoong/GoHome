@@ -18,6 +18,17 @@ type SessionStart struct {
 	ModelConfig string    `json:"modelConfig"`
 	Depth       int       `json:"depth"`
 	StartedAt   time.Time `json:"startedAt"`
+
+	// ParentToolUseID is the parent's subagent tool_use ID (children only).
+	ParentToolUseID string `json:"parentToolUseId,omitempty"`
+}
+
+// ModelChange records that the session continues with another model, for
+// example after a resume with a different model config. It overrides the
+// model in SessionStart when the session is loaded.
+type ModelChange struct {
+	Model       string `json:"model"`
+	ModelConfig string `json:"modelConfig"`
 }
 
 type UserMessage struct {
@@ -81,6 +92,8 @@ func encode(ev any) ([]byte, error) {
 	switch ev.(type) {
 	case SessionStart:
 		typeName = "session_start"
+	case ModelChange:
+		typeName = "model_change"
 	case UserMessage:
 		typeName = "user_message"
 	case AssistantMessage:

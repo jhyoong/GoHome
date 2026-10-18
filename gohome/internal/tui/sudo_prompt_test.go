@@ -806,12 +806,12 @@ func TestSudoPasswordOnly_TabExpandsFullCommand(t *testing.T) {
 	cmd := "git status;\nsudo chown nobody /etc/passwd\necho one\necho two\necho three"
 	sendPasswordOnlyReq(m, "main", cmd)
 
-	collapsed := renderSudoDialog(m.activeApproval, 80, "main")
+	collapsed := renderSudoDialog(m.activeApproval, 80, 0, "main")
 	if strings.Contains(collapsed, "echo three") {
 		t.Fatal("collapsed dialog should cap the command")
 	}
 	pressKey(m, tea.KeyTab)
-	expanded := renderSudoDialog(m.activeApproval, 80, "main")
+	expanded := renderSudoDialog(m.activeApproval, 80, 0, "main")
 	if !strings.Contains(expanded, "echo three") {
 		t.Errorf("expanded dialog should show every line:\n%s", expanded)
 	}

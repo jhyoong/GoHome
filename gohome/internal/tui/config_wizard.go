@@ -146,17 +146,20 @@ func (w *ConfigWizard) buildStep() {
 					w.errMsg = "Denylist setup failed: " + err.Error()
 					return
 				}
+				w.step = wizardStepDenylistDone
+				w.buildStep()
+				return
 			}
-			w.step = wizardStepDenylistDone
-			w.buildStep()
+			w.onCancel()
 		})
-		w.selectList.onCancel = func() {
-			w.step = wizardStepDenylistDone
-			w.buildStep()
-		}
+		w.selectList.onCancel = w.onCancel
 
 	case wizardStepDenylistDone:
-		w.onCancel()
+		w.prompt = "Wrote " + w.denylistPath()
+		w.selectList = NewSelectList([]SelectItem{{Value: "close", Label: "Close"}}, func(SelectItem) {
+			w.onCancel()
+		})
+		w.selectList.onCancel = w.onCancel
 	}
 }
 
@@ -242,8 +245,12 @@ func (w *ConfigWizard) save() error {
 	return nil
 }
 
+func (w *ConfigWizard) denylistPath() string {
+	return filepath.Join(filepath.Dir(w.outputPath), "denylist.json")
+}
+
 func (w *ConfigWizard) scaffoldDenylist() error {
-	path := filepath.Join(filepath.Dir(w.outputPath), "denylist.json")
+	path := w.denylistPath()
 	// Encode without HTML escaping so "&" stays readable in the file.
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -265,9 +272,9 @@ func (w *ConfigWizard) Render(width int) []string {
 	stepNum := int(w.step) + 1
 	lines = append(lines, fmt.Sprintf("Setup Wizard (step %d/10)", stepNum))
 	lines = append(lines, "")
-	lines = append(lines, w.prompt)
+	lines = append(lines, WrapText(w.prompt, width)...)
 	if w.errMsg != "" {
-		lines = append(lines, w.errMsg)
+		lines = append(lines, WrapText(w.errMsg, width)...)
 	}
 
 	if w.selectList != nil {

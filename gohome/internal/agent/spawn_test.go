@@ -671,3 +671,55 @@ func TestSpawn_ChildDoesNotReadParentSteer(t *testing.T) {
 		t.Error("child read the parent's steer message")
 	}
 }
+
+// TestSpawn_SkipsChildIDOnDisk reproduces item 30: a child file written before
+// a crash, with no subagent_spawn marker in the parent, must not be reused.
+func TestSpawn_SkipsChildIDOnDisk(t *testing.T) {
+	home := t.TempDir()
+	path := session.SessionPath(home, home, "parent-sess-sub-1", time.Now().UTC())
+	w, err := session.OpenWriter(path)
+	if err != nil {
+		t.Fatalf("OpenWriter: %v", err)
+	}
+	w.Emit(session.SessionStart{ID: "parent-sess-sub-1", ParentID: "parent-sess", CWD: home, Depth: 1})
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	a := buildSpawnParent(t, oneTextTurnClient("ok"), home)
+	if _, _, err := a.Spawn(context.Background(), "task", ""); err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+	var got string
+	for _, ev := range a.Frontend.(*fakeRecorder).events {
+		if ev.Kind == EventSessionStarted {
+			got = ev.SessionID
+		}
+	}
+	if got != "parent-sess-sub-2" {
+		t.Errorf("child ID = %q, want parent-sess-sub-2", got)
+	}
+}
+
+// TestSpawn_RecordsParentToolUseID checks that the child's session_start
+// records the tool_use ID of the parent's subagent call, so a resume can
+// link the child to the right entry.
+func TestSpawn_RecordsParentToolUseID(t *testing.T) {
+	home := t.TempDir()
+	a := buildSpawnParent(t, oneTextTurnClient("ok"), home)
+	ctx := tools.WithToolUseID(context.Background(), "tu42")
+	if _, _, err := a.Spawn(ctx, "task", ""); err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+	children, err := session.ListChildren(home, home, "parent-sess")
+	if err != nil || len(children) != 1 {
+		t.Fatalf("ListChildren = %v, %v; want one child", children, err)
+	}
+	child, _, err := session.Load(children[0].Path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if child.ParentToolUseID != "tu42" {
+		t.Errorf("ParentToolUseID = %q, want tu42", child.ParentToolUseID)
+	}
+}

@@ -679,3 +679,36 @@ func TestApplyModelConfig_InvalidBudgetKeepsCurrentModel(t *testing.T) {
 		t.Error("client changed after a rejected config")
 	}
 }
+
+// TestCloseWriter_ReportsWriteFailure checks that a write failure still queued
+// at shutdown is reported, not lost.
+func TestCloseWriter_ReportsWriteFailure(t *testing.T) {
+	w, err := session.OpenWriter(filepath.Join(t.TempDir(), "s.jsonl"))
+	if err != nil {
+		t.Fatalf("open writer: %v", err)
+	}
+	// An unknown event type makes the background writer record an error.
+	w.Emit(42)
+	var stderr strings.Builder
+	if err := closeWriter(w, &stderr); err == nil {
+		t.Error("closeWriter = nil, want the write error")
+	}
+	if !strings.Contains(stderr.String(), "session not saved") {
+		t.Errorf("stderr = %q, want a session not saved message", stderr.String())
+	}
+}
+
+func TestCloseWriter_NoErrorIsQuiet(t *testing.T) {
+	w, err := session.OpenWriter(filepath.Join(t.TempDir(), "s.jsonl"))
+	if err != nil {
+		t.Fatalf("open writer: %v", err)
+	}
+	w.Emit(session.SessionEnd{Reason: "test"})
+	var stderr strings.Builder
+	if err := closeWriter(w, &stderr); err != nil {
+		t.Errorf("closeWriter = %v, want nil", err)
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("stderr = %q, want empty", stderr.String())
+	}
+}

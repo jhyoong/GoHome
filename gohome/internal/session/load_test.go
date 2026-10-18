@@ -388,6 +388,12 @@ func TestLoad_RepairsMissingToolResults(t *testing.T) {
 	if tool.Role != common.RoleTool || len(tool.Content) != 3 {
 		t.Fatalf("history[2] = %+v, want RoleTool with 3 blocks", tool)
 	}
+	// Results must follow the tool_use order, synthetic ones included.
+	for i, want := range []string{"tu1", "tu2", "tu3"} {
+		if got := tool.Content[i].ToolUseID; got != want {
+			t.Errorf("tool.Content[%d].ToolUseID = %q, want %q", i, got, want)
+		}
+	}
 	byID := map[string]common.Block{}
 	for _, b := range tool.Content {
 		byID[b.ToolUseID] = b
@@ -404,6 +410,46 @@ func TestLoad_RepairsMissingToolResults(t *testing.T) {
 	last := history[5]
 	if last.Role != common.RoleTool || len(last.Content) != 1 || last.Content[0].ToolUseID != "tu4" {
 		t.Errorf("trailing tool_use not repaired: %+v", last)
+	}
+}
+
+// TestLoad_NonHistoryEventsBetweenToolUseAndResults shows why repair only
+// needs to look at the message right after each assistant turn: the agent
+// writes an assistant turn, then only non-history events (approval, subagent)
+// before its results, and any steer user_message after them. Non-history
+// events do not create messages, so the results stay next to their tool_use.
+func TestLoad_NonHistoryEventsBetweenToolUseAndResults(t *testing.T) {
+	path := writeEvents(t,
+		SessionStart{ID: "adj", CWD: "/tmp", Model: "m", ModelConfig: "e", StartedAt: time.Now().UTC()},
+		UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: "hi"}}},
+		AssistantMessage{Content: []common.Block{
+			{Kind: common.BlockToolUse, ToolUseID: "tu1", ToolName: "shell", InputJSON: `{}`},
+			{Kind: common.BlockToolUse, ToolUseID: "tu2", ToolName: "subagent", InputJSON: `{}`},
+		}},
+		Approval{ToolUseID: "tu1", Outcome: "allow"},
+		ToolResult{ToolUseID: "tu1", Content: "one"},
+		SubagentSpawn{ChildID: "c1", Task: "t"},
+		SubagentDone{ChildID: "c1"},
+		ToolResult{ToolUseID: "tu2", Content: "two"},
+		UserMessage{Content: []common.Block{{Kind: common.BlockText, Text: "steer"}}},
+	)
+
+	_, history, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	// user, assistant, tool(tu1,tu2), user
+	if len(history) != 4 {
+		t.Fatalf("len(history) = %d, want 4: %+v", len(history), history)
+	}
+	tool := history[2]
+	if tool.Role != common.RoleTool || len(tool.Content) != 2 {
+		t.Fatalf("history[2] = %+v, want RoleTool with 2 blocks", tool)
+	}
+	for i, want := range []string{"one", "two"} {
+		if b := tool.Content[i]; b.ResultText != want || b.IsError {
+			t.Errorf("tool.Content[%d] = %+v, want recorded result %q", i, b, want)
+		}
 	}
 }
 

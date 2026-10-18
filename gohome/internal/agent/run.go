@@ -46,6 +46,7 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 				})
 				return ctx.Err()
 			}
+			a.markRunFailed(sess, err)
 			return err
 		}
 
@@ -176,6 +177,22 @@ func (a *Agent) Run(ctx context.Context, sess *session.Session) error {
 	}
 }
 
+// markRunFailed appends and persists an assistant message saying the run
+// failed, so the last message is not left unanswered: the user sees it on
+// resume, the model sees it on the next turn, and roles still alternate.
+// Turn only fails before it appends an assistant message, so the history
+// ends with a user or tool message here.
+func (a *Agent) markRunFailed(sess *session.Session, err error) {
+	blocks := []common.Block{{Kind: common.BlockText, Text: runFailedPrefix + err.Error()}}
+	sess.History = append(sess.History, common.Message{Role: common.RoleAssistant, Content: blocks})
+	if w := a.State.Writer(); w != nil {
+		w.Emit(session.AssistantMessage{Content: blocks, StopReason: "error"})
+	}
+}
+
+// runFailedPrefix starts the assistant message added by markRunFailed.
+const runFailedPrefix = "[Run failed] "
+
 // invalidToolInputMsg is the tool result for a call whose input was not valid JSON.
 const invalidToolInputMsg = "arguments were truncated or invalid JSON, retry"
 
@@ -240,9 +257,9 @@ func (a *Agent) dispatchTool(
 		return fmt.Sprintf("unknown tool: %s", block.ToolName), true, 0, false
 	}
 
-	execCtx := tctx
+	execCtx := tools.WithToolUseID(tctx, block.ToolUseID)
 	if dec.SudoPassword != "" {
-		execCtx = tools.WithSudoPassword(tctx, dec.SudoPassword)
+		execCtx = tools.WithSudoPassword(execCtx, dec.SudoPassword)
 	}
 
 	start := time.Now()

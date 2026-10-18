@@ -3,6 +3,7 @@ package session
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -128,8 +129,6 @@ func parseListing(path string) (Listing, error) {
 	foundTitle := false
 
 	err = forEachLine(f, func(raw []byte) {
-		line := string(raw)
-
 		var envelope struct {
 			Type string `json:"type"`
 			TS   string `json:"ts"`
@@ -150,7 +149,7 @@ func parseListing(path string) (Listing, error) {
 				ParentID  string    `json:"parentId"`
 				StartedAt time.Time `json:"startedAt"`
 			}
-			if err := json.Unmarshal([]byte(line), &ev); err == nil {
+			if err := json.Unmarshal(raw, &ev); err == nil {
 				listing.ID = ev.ID
 				listing.Depth = ev.Depth
 				listing.ParentID = ev.ParentID
@@ -169,7 +168,7 @@ func parseListing(path string) (Listing, error) {
 						Text string `json:"text"`
 					} `json:"content"`
 				}
-				if err := json.Unmarshal([]byte(line), &ev); err == nil {
+				if err := json.Unmarshal(raw, &ev); err == nil {
 					for _, blk := range ev.Content {
 						if blk.Kind == "text" && blk.Text != "" {
 							listing.Title = truncate(blk.Text, 60)
@@ -205,21 +204,24 @@ func isBlank(path string) (bool, error) {
 		return false, err
 	}
 	defer func() { _ = f.Close() }()
+	return blankReader(f)
+}
 
+// blankReader reports whether r contains no user_message events. It stops
+// reading at the first one.
+func blankReader(r io.Reader) (bool, error) {
 	blank := true
-	err = forEachLine(f, func(raw []byte) {
-		if !blank {
-			return
-		}
+	err := forEachLineUntil(r, func(raw []byte) bool {
 		var envelope struct {
 			Type string `json:"type"`
 		}
 		if err := json.Unmarshal(raw, &envelope); err != nil {
-			return
+			return true
 		}
 		if envelope.Type == "user_message" {
 			blank = false
 		}
+		return blank
 	})
 	if err != nil {
 		return false, err
