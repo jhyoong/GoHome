@@ -198,7 +198,7 @@ Both `"anthropic"` and `"openai"` wires are supported. Set `apiKey` for a litera
 | `contextWarnPct` | `0.80` | Context window usage ratio at which a warning is shown (must be < `contextCritPct`) |
 | `contextCritPct` | `0.95` | Context window usage ratio at which a critical warning is shown (must be > `contextWarnPct` and <= 1.0) |
 | `renderThrottleMs` | `16` | Minimum interval in milliseconds between TUI redraws during token streaming. `0` uses the default (16 ms); a negative value redraws on every token. Higher values reduce CPU use and terminal flicker |
-| `retryBackoffMs` | `[250, 1000, 2000]` | Retry backoff schedule in milliseconds. The list length sets the number of retries (attempts = length + 1). A `Retry-After` header (capped at 60 s) replaces the listed delay |
+| `retryBackoffMs` | `[250, 1000, 2000]` | Retry backoff schedule in milliseconds. The list length sets the number of retries (attempts = length + 1). A `Retry-After` header (capped at 60 s) replaces the listed delay. The same schedule also retries an overloaded error that arrives mid-stream before any content is received |
 | `cacheSudoPassword` | `false` | Keep the sudo password in memory after the first entry and reuse it until `gohome` exits. See [Sudo commands](#sudo-commands) |
 
 ### 2. Run
