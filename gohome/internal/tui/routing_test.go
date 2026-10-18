@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -292,6 +293,51 @@ func TestMainErrorKeepsRunInFlightWhileRunsOutstanding(t *testing.T) {
 		pressKey(m, tea.KeyCtrlC)
 		if m.mainSession().InFlight {
 			t.Errorf("kind %v: Ctrl+C did not cancel the run", kind)
+		}
+	}
+}
+
+// TestEventErrorMarksPendingToolsFailed verifies that a stream error turns
+// tool entries that never got a result from pending to error, and leaves
+// finished and shadow entries alone.
+func TestEventErrorMarksPendingToolsFailed(t *testing.T) {
+	m := New(nil, "main")
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m.handleAgentEvent(AgentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind: agent.EventToolCallDone, ToolCallID: "t1", ToolName: "shell",
+		InputJSON: `{"command":"ls"}`,
+	}})
+	m.handleAgentEvent(AgentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind: agent.EventToolCallDone, ToolCallID: "t2", ToolName: "shell",
+		InputJSON: `{"command":"pwd"}`,
+	}})
+	m.handleAgentEvent(AgentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind:   agent.EventToolResult,
+		Result: &agent.ToolResult{ToolUseID: "t1", Content: "ok"},
+	}})
+	m.mainSession().Timeline = append(m.mainSession().Timeline, TimelineEntry{
+		Kind: KindTool, ToolName: "shell", Status: "pending", Shadow: true,
+	})
+
+	m.handleAgentEvent(AgentEventMsg{SessionID: "main", Ev: agent.Event{
+		Kind: agent.EventError, Err: errors.New("stream ended early"),
+	}})
+
+	got := map[string]string{}
+	for _, e := range m.mainSession().Timeline {
+		if e.Kind != KindTool {
+			continue
+		}
+		if e.Shadow {
+			got["shadow"] = e.Status
+			continue
+		}
+		got[e.ToolUseID] = e.Status
+	}
+	want := map[string]string{"t1": "success", "t2": "error", "shadow": "pending"}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("status[%s] = %q, want %q", k, got[k], v)
 		}
 	}
 }
