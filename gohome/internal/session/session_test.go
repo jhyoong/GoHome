@@ -1,6 +1,7 @@
 package session
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -121,5 +122,51 @@ func TestNextSubagentID(t *testing.T) {
 	}
 	if got := b.NextSubagentID(); got != "bbbb-sub-1" {
 		t.Errorf("other parent ID = %q, want bbbb-sub-1", got)
+	}
+}
+
+// symlinkDir creates <tmp>/real and <tmp>/link -> real and returns both.
+// It skips the test if symlinks are not supported.
+func symlinkDir(t *testing.T) (real, link string) {
+	t.Helper()
+	tmp := t.TempDir()
+	real = filepath.Join(tmp, "real")
+	link = filepath.Join(tmp, "link")
+	if err := os.Mkdir(real, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("symlinks not supported: %v", err)
+	}
+	return real, link
+}
+
+func TestMarkReadFollowsSymlinks(t *testing.T) {
+	real, link := symlinkDir(t)
+	if err := os.WriteFile(filepath.Join(real, "a.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	s := NewSession("id6", "/tmp/x", "m", "e")
+	s.MarkRead(filepath.Join(link, "a.txt"))
+	if !s.HasRead(filepath.Join(real, "a.txt")) {
+		t.Error("HasRead(real) = false after MarkRead(link), want true")
+	}
+
+	s = NewSession("id7", "/tmp/x", "m", "e")
+	s.MarkRead(filepath.Join(real, "a.txt"))
+	if !s.HasRead(filepath.Join(link, "a.txt")) {
+		t.Error("HasRead(link) = false after MarkRead(real), want true")
+	}
+}
+
+func TestMarkReadMissingFileUnderSymlink(t *testing.T) {
+	real, link := symlinkDir(t)
+
+	// The file does not exist, so only the parent folder can be resolved.
+	s := NewSession("id8", "/tmp/x", "m", "e")
+	s.MarkRead(filepath.Join(link, "missing.txt"))
+	if !s.HasRead(filepath.Join(real, "missing.txt")) {
+		t.Error("HasRead(real/missing.txt) = false after MarkRead(link/missing.txt), want true")
 	}
 }

@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-Fixes for follow-up items 58-62 from the 2026-10-18 live test (`docs/reviews/2026-10-18-outdated-components-live-test.md`).
+Fixes for follow-up items 58-62 from the 2026-10-18 live test (`docs/reviews/2026-10-18-outdated-components-live-test.md`), and file path fixes for items 39, 52 and 53.
 
 ### Fixed
 
@@ -11,6 +11,9 @@ Fixes for follow-up items 58-62 from the 2026-10-18 live test (`docs/reviews/202
 - **Tabs on screen** -- Tabs in assistant markdown, code blocks and thinking entries are expanded to spaces. Raw tabs left old text, such as the spinner, visible until a full redraw (60).
 - **Shell `cwd` errors** -- A missing `cwd` gives "cwd does not exist: <path>", and a file gives "cwd is not a folder: <path>", instead of `fork/exec /bin/sh: no such file or directory` (61).
 - **Spinner during approval** -- The spinner says "Waiting for approval..." while the approval menu is open (62).
+- **Edit after write** -- A file created or overwritten with `write` counts as read, so `edit` no longer needs a `read` first (52).
+- **Read-before-edit follows symlinks** -- Reading a file through a symlink and editing it through its real path (or the other way round) now works. On macOS, `/tmp/x/a.txt` and `/private/tmp/x/a.txt` match (53).
+- **One session folder per directory** -- Symlinks in the working directory are resolved before the session folder name is built, so `/resume` from `/tmp/x` and from `/private/tmp/x` finds the same sessions. Sessions saved earlier from a path that contains a symlink were stored under the unresolved path and no longer show in `/resume`. Paths without symlinks are not affected (39).
 
 ## v0.4.4-dev2
 

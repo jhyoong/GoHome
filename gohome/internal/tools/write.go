@@ -34,7 +34,7 @@ type writeInput struct {
 	Content string `json:"content"`
 }
 
-func (WriteTool) Execute(_ context.Context, in json.RawMessage, _ ProgressSink) (Result, error) {
+func (WriteTool) Execute(ctx context.Context, in json.RawMessage, _ ProgressSink) (Result, error) {
 	var inp writeInput
 	if err := json.Unmarshal(in, &inp); err != nil {
 		return Result{IsError: true, Content: "write: invalid input: " + err.Error()}, nil
@@ -48,6 +48,11 @@ func (WriteTool) Execute(_ context.Context, in json.RawMessage, _ ProgressSink) 
 
 	if err := os.WriteFile(inp.Path, []byte(inp.Content), 0644); err != nil {
 		return Result{IsError: true, Content: fmt.Sprintf("write: cannot write %q: %v", inp.Path, err)}, nil
+	}
+
+	// The model wrote the content, so it knows the file.
+	if s := SessionFrom(ctx); s != nil {
+		s.MarkRead(inp.Path)
 	}
 
 	return Result{Content: fmt.Sprintf("write: wrote %d bytes to %q", len(inp.Content), inp.Path)}, nil

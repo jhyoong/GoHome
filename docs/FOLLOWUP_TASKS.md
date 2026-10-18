@@ -66,7 +66,6 @@ Minor items found while reviewing the D1-D9 fixes (plan: `docs/old/2026-10-17-da
 ### Testing gaps
 37. **Weak assertions.** `stream_end_test.go` checks `err != nil` instead of the specific error. `countToolResultLines` matches substrings instead of decoding JSON. `TestWriterErrReportsWriteFailure` closes the file directly and ignores the double-close error.
 38. **`TestPickResume_SkipsChildAndLoadsChildren` has no recorded failing run.** `TestListExcludesChildren` covers the same case and did fail first.
-39. **A symlinked working directory makes two session folders.** On macOS, `/var/...` and `/private/var/...` name the same directory but map to two session folders, so `/resume` from one path does not see sessions from the other. Resolve the cwd with `filepath.EvalSymlinks` before building the session path. Found during the live test of the D1-D9 fixes; this existed before.
 
 ### Agent loop and TUI (found while fixing A1-A10)
 40. **A failed run leaves the user message unanswered.** The message stays in history with no reply (A1 leftover). Decide whether to drop it or mark it.
@@ -84,8 +83,6 @@ Minor items found while reviewing the D1-D9 fixes (plan: `docs/old/2026-10-17-da
 
 ### Tools (found while fixing T1-T3)
 51. **The shell `cwd` is resolved against the process folder, not the session folder.** This has no effect today: the session folder is always `os.Getwd()` and nothing calls `Chdir`. It matters only if sessions ever run in a different folder (audit T3).
-52. **A file written by `write` must be read before `edit`.** `write` does not mark the file as read, so the model needs an extra `read` call.
-53. **Read-before-edit does not follow symlinks.** Paths are compared in clean absolute form, but symlinks are not resolved. On macOS, reading `/tmp/x/a.txt` and then editing `/private/tmp/x/a.txt` returns "file must be read first". Related to item 39. Found during the live test of the T1-T3 fixes.
 
 ### TUI (deferred from the R1-R23 fixes)
 54. **Multi-line paste on Windows submits only the first line (audit R5).** Bubble Tea v1.3.10's Windows console input never sets `Paste`, so each pasted Enter submits. Fix with Bubble Tea v2 or a timing heuristic. Needs testing on Windows.

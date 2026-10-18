@@ -57,11 +57,19 @@ func NewSession(id, cwd, model, modelConfig string) *Session {
 // normalizeReadPath returns a clean absolute form of path so that
 // "foo.go", "./foo.go" and an absolute path to the same file match.
 // Relative paths resolve against the process working directory.
-// Symlinks are not resolved. If Abs fails, the cleaned path is used.
+// Symlinks are resolved so a link and its target match. If the file does
+// not exist, the parent folder is resolved and the base name joined back.
+// If that also fails, the clean absolute path is used.
 func normalizeReadPath(path string) string {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return filepath.Clean(path)
+	}
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		return resolved
+	}
+	if dir, err := filepath.EvalSymlinks(filepath.Dir(abs)); err == nil {
+		return filepath.Join(dir, filepath.Base(abs))
 	}
 	return abs
 }
