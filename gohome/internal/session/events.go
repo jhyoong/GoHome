@@ -20,6 +20,14 @@ type SessionStart struct {
 	StartedAt   time.Time `json:"startedAt"`
 }
 
+// ModelChange records that the session continues with another model, for
+// example after a resume with a different model config. It overrides the
+// model in SessionStart when the session is loaded.
+type ModelChange struct {
+	Model       string `json:"model"`
+	ModelConfig string `json:"modelConfig"`
+}
+
 type UserMessage struct {
 	Content []common.Block `json:"content"`
 }
@@ -81,6 +89,8 @@ func encode(ev any) ([]byte, error) {
 	switch ev.(type) {
 	case SessionStart:
 		typeName = "session_start"
+	case ModelChange:
+		typeName = "model_change"
 	case UserMessage:
 		typeName = "user_message"
 	case AssistantMessage:

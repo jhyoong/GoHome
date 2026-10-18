@@ -19,6 +19,7 @@ import (
 //
 // Event types handled:
 //   - session_start  -> Session metadata (id, cwd, model, modelConfig, depth, parentId, startedAt)
+//   - model_change   -> replaces the session's model and modelConfig
 //   - user_message   -> common.Message{Role: RoleUser}
 //   - assistant_message -> common.Message{Role: RoleAssistant}
 //   - tool_result    -> BlockToolResult; consecutive results are merged into
@@ -75,6 +76,14 @@ func Load(path string) (*Session, []common.Message, error) {
 			} else if t, err := time.Parse(time.RFC3339, ev.TS); err == nil {
 				sess.StartedAt = t
 			}
+
+		case "model_change":
+			var ev ModelChange
+			if sess == nil || json.Unmarshal(raw, &ev) != nil {
+				return
+			}
+			sess.Model = ev.Model
+			sess.ModelConfig = ev.ModelConfig
 
 		case "user_message":
 			var ev struct {

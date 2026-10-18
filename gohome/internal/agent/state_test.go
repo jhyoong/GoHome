@@ -3,6 +3,8 @@ package agent
 import (
 	"context"
 	"errors"
+	"os"
+	"strings"
 	"sync"
 	"testing"
 
@@ -229,6 +231,39 @@ func TestSetModelSettingsUpdatesSession(t *testing.T) {
 	}
 	if got := st.Session().Model; got != "m2" {
 		t.Errorf("session Model = %q, want m2", got)
+	}
+}
+
+// A resumed session run with a different model records the change, so
+// loading the file again gives the current model.
+func TestSetModelSettingsRecordsModelChange(t *testing.T) {
+	path := t.TempDir() + "/s.jsonl"
+	w, err := session.OpenWriter(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Emit(session.SessionStart{ID: "s1", CWD: "/tmp", Model: "old", ModelConfig: "old-cfg"})
+	st := NewSessionState(session.NewSession("s1", "/tmp", "old", "old-cfg"), w, nil)
+
+	st.SetModelSettings(ModelSettings{Name: "old", ConfigName: "old-cfg"}) // unchanged
+	st.SetModelSettings(ModelSettings{Name: "new", ConfigName: "new-cfg"})
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(string(data), `"type":"model_change"`); n != 1 {
+		t.Fatalf("model_change records = %d, want 1:\n%s", n, data)
+	}
+	sess, _, err := session.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if sess.Model != "new" || sess.ModelConfig != "new-cfg" {
+		t.Errorf("loaded model = %q/%q, want new/new-cfg", sess.Model, sess.ModelConfig)
 	}
 }
 
