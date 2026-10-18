@@ -763,3 +763,26 @@ func TestChatRenderExpandsTabs(t *testing.T) {
 		})
 	}
 }
+
+func TestChat_NoticeWrapsAtNarrowWidth(t *testing.T) {
+	text := "Could not resolve API key: environment variable ANTHROPIC_API_KEY is not set"
+	tl := []TimelineEntry{{Kind: KindNotice, Text: text}}
+	c := &ChatComponent{timeline: &tl, autoScroll: true, maxHeight: 100, cursor: -1}
+	lines := c.Render(50)
+	if len(lines) < 2 {
+		t.Fatalf("want wrapped notice, got %q", lines)
+	}
+	var words []string
+	for _, l := range lines {
+		plain := StripAnsi(l)
+		if VisualWidth(plain) > 50 {
+			t.Errorf("line wider than 50: %q", plain)
+		}
+		words = append(words, strings.Fields(plain)...)
+	}
+	joined := strings.Join(words, " ")
+	want := "[notice] " + text
+	if joined != want {
+		t.Errorf("text lost.\n got %q\nwant %q", joined, want)
+	}
+}
