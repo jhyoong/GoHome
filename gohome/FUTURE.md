@@ -1,7 +1,7 @@
 # Future work
 
-Items explicitly out of v0.2 scope. Each entry notes the seam or hook the v0.2
-design preserves so the feature can be added later without a rewrite.
+Planned and possible features, and what happened to earlier ones. Each open entry
+notes the seam in the current design where the feature can be added without a rewrite.
 
 ---
 
@@ -62,11 +62,10 @@ already creates a child `Agent`; passing a different `Guard` instance
 Without arguments, an interactive model selector shows all configured model configs.
 Cross-endpoint model selection now fully works (M2 resolved in v0.2.4).
 
-**Mouse support**
-Click to focus sessions, scroll with the mouse wheel.
-Seam: Bubble Tea supports mouse events natively. Enabling
-`tea.WithMouseCellMotion()` and adding mouse message handlers in
-`tui.Update` is the full scope.
+**Mouse support** -- PARTLY DELIVERED in v0.4.1
+Wheel scrolling works, with `/mouse` to toggle tracking and an idle timeout that
+frees the mouse for text selection. Click to focus sessions is not done.
+Seam: add click handling next to the wheel handling in `tui/model.go`.
 
 **Image rendering**
 Display image outputs from tools (sixel / kitty graphics protocol).
@@ -83,8 +82,8 @@ separate append-only file without touching any other package.
 **SSE-parser fuzzing, benchmark suite, coverage gates**
 Automated quality gates beyond the current unit-test suite.
 Seam: SSE parsing is isolated in `internal/llm/anthropic/sse.go` and
-`internal/llm/openai/sse.go`. Both are pure functions over byte slices,
-making them natural fuzzing targets. Benchmark entry points can be added to
+`internal/llm/openai/sse.go`. Both `parseSSE` functions read from an `io.Reader`,
+so a fuzz target can feed them arbitrary bytes. Benchmark entry points can be added to
 existing `_test.go` files with no structural changes.
 
 
@@ -99,4 +98,4 @@ existing `_test.go` files with no structural changes.
 - ~~Auto-compact doesn't seem to work properly- the notice triggers, but the conversation history sent to the LLM endpoint seems to invalidate the entire cache? Is it because it's modified from the system prompt? Should it be tied to a 'user message` but sent by the system instead?~~ -- FIXED in v0.4.2 (partial compaction preserves first 2 and last 4 messages for cache stability)
 - ~~When LLM intends to run a inline python tool call - it can grow to really long tool approval prompt. Cant scroll properly to view the entire thing.~~ -- FIXED in v0.4.2 (approval prompt expand/collapse with `v` key)
 - (Windows) When pasting multiple lines ( e.g copied from notepad, multiple commands ) - it seems to send the first line only ( might be due to breaklines or something? ) instead of the whole chunk. While default terminal behaves that way, gohome is a coding assistant so pasting long chunks of text should be the norm, and send only when pressing enter is the behaviour to match.
-  - Related point: When multiple messages are then queued - they fire off in turns and not altogether as one message. this causes issues. Might need a way to handle/edit/delete queued messages.
+  - ~~Related point: When multiple messages are then queued - they fire off in turns and not altogether as one message.~~ -- FIXED (queued messages are combined into one; `Ctrl+D` and `/clear-queue` remove them). The paste issue itself is still open (FOLLOWUP_TASKS item 54).

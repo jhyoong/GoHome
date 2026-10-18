@@ -1,22 +1,22 @@
 Session:  main done 
 Keyboard shortcuts
   Ctrl+C        Cancel turn / double-tap to quit
+  Esc Esc       Cancel the current run
   Ctrl+G        Open external editor
   Ctrl+P / N    Previous / next prompt from history
+  Ctrl+A / E    Start / end of input line
+  Ctrl+D        Pop last queued message
   Ctrl+H        Show this help
   Ctrl+Right    Focus next session
   Ctrl+Left     Focus prev session
   PgUp/PgDown   Scroll chat (or this help)
-  Up/Down       Scroll this help
+  Up/Down       Move timeline cursor / scroll this help
   Enter         Submit input / toggle tool detail
-  c             Copy entry to clipboard (when browsing)
+  Ctrl+Y        Copy selected entry to clipboard
   Alt+Enter     Insert newline
   Tab           Autocomplete / confirm file search
-  Esc           Close overlay / cancel
+  Esc           Close overlay / dismiss file search
   @             File search
 
-Slash commands
-  /help         Show this help
-  /new          Start a new session
 Esc to close · Press down for more
 main · ? · ░░░░░░░░░░ 0/128.0k (0%)

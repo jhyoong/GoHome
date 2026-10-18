@@ -130,7 +130,7 @@ func TestHelpOverlay_ShowsCopyKeybinding(t *testing.T) {
 	m.OpenHelpOverlay()
 
 	view := m.View()
-	if !strings.Contains(view, "Copy entry to clipboard") {
+	if !strings.Contains(view, "Ctrl+Y        Copy selected entry to clipboard") {
 		t.Fatal("expected copy keybinding in help overlay")
 	}
 }

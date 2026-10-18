@@ -490,14 +490,6 @@ func highlightCode(code, lang string) string {
 	return out
 }
 
-// resetHighlightCache empties the highlight cache.
-func resetHighlightCache() {
-	highlightMu.Lock()
-	clear(highlightCache)
-	highlightKeys = nil
-	highlightMu.Unlock()
-}
-
 func highlightUncached(code, lang string) string {
 	var lexer chroma.Lexer
 	if lang != "" {
