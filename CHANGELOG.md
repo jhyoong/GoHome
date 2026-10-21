@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-Fixes for follow-up items 58-62 from the 2026-10-18 live test, file path fixes for items 39, 52 and 53, terminal output fixes for items 11, 12 and 13, whitelist and approval prompt fixes for items 5, 6, 7, 9, 10 and 14, setup wizard, logging and TUI fixes for items 16, 17, 18, 42, 44 and 65, session loading and writer fixes for items 21-29, subagent session fixes for items 30, 31 and 32, compaction and failed run fixes for items 40, 64 and 66, stream end fixes for items 33, 34, 35 and 37, retry and watchdog fixes for items 46 and 50, SSE and OpenAI wire fixes for items 47, 48 and 49, prompt caching for item 45, wizard wrapping for item 67, and usage from message_delta for item 68.
+Fixes for follow-up items 58-62 from the 2026-10-18 live test, file path fixes for items 39, 52 and 53, terminal output fixes for items 11, 12 and 13, whitelist and approval prompt fixes for items 5, 6, 7, 9, 10 and 14, setup wizard, logging and TUI fixes for items 16, 17, 18, 42, 44 and 65, session loading and writer fixes for items 21-29, subagent session fixes for items 30, 31 and 32, compaction and failed run fixes for items 40, 64 and 66, stream end fixes for items 33, 34, 35 and 37, retry and watchdog fixes for items 46 and 50, SSE and OpenAI wire fixes for items 47, 48 and 49, prompt caching for item 45, wizard wrapping for item 67, usage from message_delta for item 68, and the `/resume` age column for item 69.
 
 ### Added
 
@@ -12,6 +12,7 @@ Fixes for follow-up items 58-62 from the 2026-10-18 live test, file path fixes f
 
 ### Fixed
 
+- **`/resume` age column** -- At narrow widths the session title is cut instead of the age, so "just now" no longer shows as "just" (69).
 - **Anthropic usage counts** -- Input and cache token counts are also read from `message_delta`. Some endpoints send zero in `message_start` and the real counts in `message_delta`, so the context meter and compaction trigger under-counted. Non-zero `message_delta` values replace the `message_start` values and are not added (68).
 - **Compaction summaries** -- The summary request now ends with a user message asking for the summary. Before, the request often ended with a tool call or tool result, and the model continued the conversation instead of summarizing it (58).
 - **E2E compaction test** -- `TestE2EAutoCompact` raises `MaxTokens` to 4096 for the summary, because a reasoning model could spend the default 256 tokens on thinking and return no text. The test also checks that the summary is a summary (59).

@@ -44,6 +44,7 @@ func NewSessionBrowser(listings []session.Listing) *SessionBrowserComponent {
 		list:     NewSelectList(listingsToItems(listings), nil),
 		listings: listings,
 	}
+	sb.list.FitLabel = true
 	return sb
 }
 
